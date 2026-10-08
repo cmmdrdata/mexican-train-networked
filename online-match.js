@@ -21,10 +21,10 @@
 require('./game.js');
 const G = globalThis.MexicanTrainGame;
 const E = G.Engine;
-const { newRound, playRound, longestFullChain, buildSteps, handPips, key, mulberry32 } = E;
+const { newRound, playRound, longestFullChain, buildSteps, handPips, key, legalMoves, cpuChoose, cpuBuildAction } = E;
 
 const MAX_PIP = 12;
-const SEATS = ['human', 'cpu'];               // the engine's two player ids: seat 0 and seat 1
+const SEATS = G.PLAYER_IDS;                   // the engine's player ids: seat 0 "human", seat 1 "cpu", seat 2 "cpu2"
 const ABORT = { aborted: true };
 
 // stand-ins for tiles the receiving player may not see: only "is it a double" is meaningful
@@ -39,41 +39,63 @@ const cleanName = G.cleanPlayerName;
 const CHAT_PHRASES = G.ONLINE_PHRASES;
 
 class OnlineMatch {
+  /* opts: rounds, hand, names (two or three; with three, the third seat is the computer when `computer` is
+   * given), computer: { level } | undefined, rng, push(seat, message), sleep(ms), stepDelay, paceRng. */
   constructor(opts) {
     this.rounds = [1, 4, 13].includes(Number(opts.rounds)) ? Number(opts.rounds) : 4;
     this.hand = [8, 12, 15].includes(Number(opts.hand)) ? Number(opts.hand) : 15;
-    this.names = [cleanName(opts.names && opts.names[0], 'Player 1'), cleanName(opts.names && opts.names[1], 'Player 2')];
+    this.n = opts.names && opts.names.length === 3 ? 3 : 2;
+    this.names = Array.from({ length: this.n }, (_, i) => cleanName(opts.names && opts.names[i], `Player ${i + 1}`));
+    this.computers = {};                                   // seat -> { level }: seats played by the computer
+    if (this.n === 3 && opts.computer) this.computers[2] = { level: E.LEVELS.includes(opts.computer.level) ? opts.computer.level : 'normal' };
+    this.humans = [];
+    for (let i = 0; i < this.n; i++) if (!this.computers[i]) this.humans.push(i);
     this.rng = opts.rng || Math.random;
+    this.paceRng = opts.paceRng || Math.random;            // kept apart from the deal, as in the game against the computer
     this.push = opts.push || (() => {});
     this.sleep = opts.sleep || (ms => new Promise(r => setTimeout(r, ms)));
     this.stepDelay = opts.stepDelay === undefined ? 90 : opts.stepDelay;   // between the plays of "Build my longest train"
     this.seq = 0;
-    this.totals = { human: 0, cpu: 0 };
+    this.totals = {};
+    SEATS.slice(0, this.n).forEach(id => { this.totals[id] = 0; });
     this.roundIndex = 0;
     this.startIndex = 0;
     this.game = null;
-    this.awaiting = [null, null];
-    this.plans = [null, null];
-    this.logs = [[], []];
-    this.banners = ['', ''];
+    const blank = f => Array.from({ length: this.n }, f);
+    this.awaiting = blank(() => null);
+    this.plans = blank(() => null);
+    this.logs = blank(() => []);
+    this.banners = blank(() => '');
     this.modal = null;
-    this.modalOk = [false, false];
+    this.modalOk = blank(() => false);
     this.paused = false;
     this.over = null;                       // null while running; 'finished', 'aborted' or 'error'
     this.error = null;
     this.done = null;
-    this.controllers = { human: this._controller(0), cpu: this._controller(1) };
+    this.controllers = {};
+    SEATS.slice(0, this.n).forEach((id, seat) => { this.controllers[id] = this._controller(seat); });
     this.hooks = this._makeHooks();
   }
+
+  /* The other seats as seen from `seat`, in table order: the first is that player's "cpu", the second their "cpu2". */
+  others(seat) { const out = []; for (let k = 1; k < this.n; k++) out.push((seat + k) % this.n); return out; }
+  /* The id a train or player has on `viewer`'s screen: "human" for themselves, then "cpu" and "cpu2", or "mexican". */
+  cid(viewer, engineId) {
+    if (engineId === 'mexican') return 'mexican';
+    const seat = SEATS.indexOf(engineId);
+    return seat === viewer ? 'human' : (this.others(viewer).indexOf(seat) === 0 ? 'cpu' : 'cpu2');
+  }
+  who(viewer, actor) { return actor === viewer ? 'me' : (this.others(viewer).indexOf(actor) === 0 ? 'opp' : 'opp2'); }
+  noEvents() { return Array.from({ length: this.n }, () => []); }
 
   /* ------------------------------ running the match ------------------------------ */
   start() {
     this.done = this._run().catch(err => {
       if (err === ABORT) { this.over = this.over || 'aborted'; return; }
-      this.over = 'error'; this.error = err;                  // a fault in the game: free anyone waiting, and tell both players
+      this.over = 'error'; this.error = err;                  // a fault in the game: free anyone waiting, and tell the players
       this.awaiting.forEach(a => { if (a) a.reject(ABORT); });
-      this.awaiting = [null, null];
-      this._broadcast([[], []]);
+      this.awaiting = this.awaiting.map(() => null);
+      this._broadcast(this.noEvents());
     });
     return this.done;
   }
@@ -81,38 +103,39 @@ class OnlineMatch {
     if (this.over) return;
     this.over = 'aborted';
     this.awaiting.forEach(a => { if (a) a.reject(ABORT); });
-    this.awaiting = [null, null];
+    this.awaiting = this.awaiting.map(() => null);
   }
-  setPaused(on) { this.paused = !!on; this._broadcast([[], []]); }
+  setPaused(on) { this.paused = !!on; this._broadcast(this.noEvents()); }
 
   async _run() {
-    let startIndex = this.rng() < 0.5 ? 0 : 1;
+    let startIndex = this.n === 2 ? (this.rng() < 0.5 ? 0 : 1) : Math.floor(this.rng() * this.n);
     for (let r = 0; r < this.rounds; r++) {
       this.roundIndex = r; this.startIndex = startIndex;
       const engine = MAX_PIP - r;
-      this.game = newRound({ engine, handSize: this.hand, rng: this.rng, simultaneousOpening: true });
-      this.game.players[0].name = this.names[0]; this.game.players[1].name = this.names[1];
-      this.logs = [[], []]; this.plans = [null, null]; this.modal = null;
+      this.game = newRound({ engine, handSize: this.hand, rng: this.rng, simultaneousOpening: true, players: this.n });
+      this.game.players.forEach((p, i) => { p.name = this.names[i]; });
+      this.logs = this.logs.map(() => []); this.plans = this.plans.map(() => null); this.modal = null;
       this._say(() => `Round ${r + 1}: the engine is double-${engine}. Everyone builds their train at the same time.`);
-      this._log(seat => `${startIndex === seat ? 'You play' : `${this.names[1 - seat]} plays`} first once the trains are built.`);
-      this._broadcast([[], []]);
+      this._log(seat => `${startIndex === seat ? 'You play' : `${this.names[startIndex]} plays`} first once the trains are built.`);
+      this._broadcast(this.noEvents());
 
       const result = await playRound(this.game, startIndex, this.controllers, this.hooks);
+      const winnerSeat = result.winner ? SEATS.indexOf(result.winner.id) : -1;
       this._say(seat => result.blocked ? 'The round is blocked.'
-        : result.tie ? 'You both played every tile.'
-        : `${SEATS[seat] === result.winner.id ? 'You' : this.names[1 - seat]} played the last tile.`);
+        : result.tie ? (this.n === 2 ? 'You both played every tile.' : 'More than one of you played every tile.')
+        : `${winnerSeat === seat ? 'You' : this.names[winnerSeat]} played the last tile.`);
       const rows = this.game.players.map(p => ({ id: p.id, name: p.name, hand: p.hand.map(t => t.slice()), pips: handPips(p) }));
       rows.forEach(row => { this.totals[row.id] += row.pips; });
-      this._broadcast([[], []]);
+      this._broadcast(this.noEvents());
       await this._modal({
         type: 'roundEnd', blocked: result.blocked, tie: !!result.tie, winnerId: result.winner ? result.winner.id : null,
-        rows, totals: { human: this.totals.human, cpu: this.totals.cpu }, last: r === this.rounds - 1,
+        rows, totals: Object.assign({}, this.totals), last: r === this.rounds - 1,
       });
-      startIndex = 1 - startIndex;
+      startIndex = (startIndex + 1) % this.n;
     }
-    this.modal = { type: 'final', totals: { human: this.totals.human, cpu: this.totals.cpu } };
+    this.modal = { type: 'final', totals: Object.assign({}, this.totals) };
     this.over = 'finished';
-    this._broadcast([[], []]);
+    this._broadcast(this.noEvents());
   }
 
   /* Wait until a seat sends the intent that answers `kind`. Resolves with the engine-shaped answer. */
@@ -120,21 +143,46 @@ class OnlineMatch {
     return new Promise((resolve, reject) => {
       if (this.over) return reject(ABORT);
       this.awaiting[seat] = Object.assign({ kind, reject, resolve: v => { this.awaiting[seat] = null; resolve(v); } }, extra || {});
-      this._broadcast([[], []]);
+      this._broadcast(this.noEvents());
     });
   }
   async _modal(modal) {
-    this.modal = modal; this.modalOk = [false, false];
-    await Promise.all([0, 1].map(seat => this._wait(seat, 'modal')));
+    this.modal = modal;
+    this.modalOk = this.modalOk.map((_, seat) => !!this.computers[seat]);   // the computer is always ready for the next round
+    await Promise.all(this.humans.map(seat => this._wait(seat, 'modal')));
     this.modal = null;
+  }
+
+  /* The computer thinks for as long as a person would. While the game is paused (a player dropped) it waits. */
+  async _think(kind) {
+    await this.sleep(Math.round(G.paceFor(kind, this.paceRng())));
+    while (this.paused && !this.over) await new Promise(r => setTimeout(r, 40));
+    if (this.over) throw ABORT;
   }
 
   /* ------------------------------ the players, as the engine sees them ------------------------------ */
   _controller(seat) {
+    const cpu = this.computers[seat];
+    if (cpu) {
+      return {
+        act: async (game, player, info) => {
+          const action = cpuBuildAction(game, player, info, cpu.level);
+          await this._think(action.type === 'done' ? 'finish' : action.type === 'draw' ? 'draw' : 'place');
+          return action;
+        },
+        choose: async (game, player, moves) => {
+          if (game.openDouble) return cpuChoose(game, player, moves, cpu.level);     // a cover is played at once, with no thinking time
+          this.humans.forEach(s => { this.banners[s] = `${this.names[seat]} is thinking...`; });
+          this._broadcast(this.noEvents());
+          await this._think('place');
+          return cpuChoose(game, player, moves, cpu.level);
+        },
+      };
+    }
     return {
       act: (game, player, info) => this._act(seat, game, player, info),
       choose: (game, player, moves) => {
-        this.banners[1 - seat] = `${this.names[seat]} is choosing a tile.`;
+        this.others(seat).forEach(s => { if (!this.computers[s]) this.banners[s] = `${this.names[seat]} is choosing a tile.`; });
         return this._wait(seat, 'move', { moves });
       },
     };
@@ -158,54 +206,60 @@ class OnlineMatch {
   _seat(player) { return SEATS.indexOf(player.id); }
 
   /* ------------------------------ what happens, told to each player in their own words ------------------------------ */
-  _say(fn) { for (const seat of [0, 1]) { const t = fn(seat); this.banners[seat] = t; this.logs[seat].push(t); } }
-  _log(fn) { for (const seat of [0, 1]) this.logs[seat].push(fn(seat)); }
+  _say(fn) { for (const seat of this.humans) { const t = fn(seat); this.banners[seat] = t; this.logs[seat].push(t); } }
+  _log(fn) { for (const seat of this.humans) this.logs[seat].push(fn(seat)); }
   _logOne(seat, text) { this.logs[seat].push(text); this.banners[seat] = text; }
+  _tell(except, text) { for (const seat of this.humans) if (seat !== except) this._logOne(seat, text); }   // everybody but one player
+  _tellLog(except, text) { for (const seat of this.humans) if (seat !== except) this.logs[seat].push(text); }
 
-  _trainRef(seat, trainId, actorSeat) {
+  _trainRef(viewer, trainId, actor) {
     if (trainId === 'mexican') return 'the Mexican train';
     const owner = SEATS.indexOf(trainId);
-    if (seat === actorSeat) return owner === seat ? 'your train' : `${this.names[owner]}'s train`;
-    return owner === actorSeat ? 'their own train' : 'your train';
+    if (viewer === actor) return owner === viewer ? 'your train' : `${this.names[owner]}'s train`;
+    return owner === actor ? 'their own train' : owner === viewer ? 'your train' : `${this.names[owner]}'s train`;
   }
 
   _makeHooks() {
     const m = this;
+    const cpuPause = async (seat, kind) => { if (m.computers[seat]) await m._think(kind); };
     return {
       // --- normal turns ---
       async onNeedDraw(game, player) {
         const seat = m._seat(player);
-        m.banners[1 - seat] = player.hand.length === 0
+        const text = player.hand.length === 0
           ? `${m.names[seat]} played a double as their last tile. It cannot go out, so they draw to cover it.`
           : `${m.names[seat]} has nothing to play and draws.`;
-        await m._wait(seat, 'draw');
+        for (const s of m.humans) if (s !== seat) m.banners[s] = text;
+        if (m.computers[seat]) { m._broadcast(m.noEvents()); await m._think('draw'); }
+        else await m._wait(seat, 'draw');
       },
       async onDraw(game, player, tile) {
         const seat = m._seat(player);
-        m._logOne(seat, `You drew ${fmt(tile)}.`);
-        m._logOne(1 - seat, `${m.names[seat]} draws a tile.`);
-        const ev = [[], []];
-        ev[seat].push({ e: 'draw', who: 'me', tile: tile.slice() });
-        ev[1 - seat].push({ e: 'draw', who: 'opp' });
+        if (!m.computers[seat]) m._logOne(seat, `You drew ${fmt(tile)}.`);
+        m._tell(seat, `${m.names[seat]} draws a tile.`);
+        const ev = m.noEvents();
+        for (const s of m.humans) ev[s].push(s === seat ? { e: 'draw', who: 'me', tile: tile.slice() } : { e: 'draw', who: m.who(s, seat) });
         m._broadcast(ev);
+        if (m.computers[seat]) await m.sleep(650);
       },
       async onPass(game, player) {
         const seat = m._seat(player);
-        m._logOne(seat, player.hand.length === 0
+        if (!m.computers[seat]) m._logOne(seat, player.hand.length === 0
           ? 'The boneyard is empty, so you cannot draw to cover your double. You pass. Once it is covered, you have gone out.'
           : game.boneyard.length === 0
-            ? 'The boneyard is empty and nothing fits. You pass and a lantern goes on your train.'
-            : 'That tile does not fit. You pass and a lantern goes on your train.');
-        m._logOne(1 - seat, player.hand.length === 0
+            ? 'The boneyard is empty and nothing fits. You pass and a marker goes on your train.'
+            : 'That tile does not fit. You pass and a marker goes on your train.');
+        m._tell(seat, player.hand.length === 0
           ? `${m.names[seat]} cannot draw to cover their double and passes. Once it is covered, they have gone out.`
-          : `${m.names[seat]} cannot play and passes. A lantern goes on their train: you can play there.`);
-        const ev = [[], []];
-        ev[0].push({ e: 'pass', who: seat === 0 ? 'me' : 'opp' }); ev[1].push({ e: 'pass', who: seat === 1 ? 'me' : 'opp' });
+          : `${m.names[seat]} cannot play and passes. A marker goes on their train: you can play there.`);
+        const ev = m.noEvents();
+        for (const s of m.humans) ev[s].push({ e: 'pass', who: m.who(s, seat) });
         m._broadcast(ev);
+        await cpuPause(seat, 'draw');
       },
       async onPlay(game, player, move, info) {
         const seat = m._seat(player);
-        for (const s of [0, 1]) {
+        for (const s of m.humans) {
           const mine = s === seat;
           m._logOne(s, `${mine ? 'You played' : `${m.names[seat]} played`} ${fmt(move.tile)} on ${m._trainRef(s, move.trainId, seat)}.`);
           if (info.lastTileDouble) m.logs[s].push(mine
@@ -216,6 +270,9 @@ class OnlineMatch {
           if (player.hand.length === 1) m.logs[s].push(mine ? 'You have one tile left.' : `${m.names[seat]} has one tile left.`);
         }
         m._broadcast(m._playEvents(seat, move, game.trains[move.trainId].tiles.length - 1, false));
+        // a cover that can be played straight away needs no pause, for anyone
+        const coverNow = info.doubleOpened && !info.lastTileDouble && legalMoves(game, player).length > 0;
+        if (!coverNow) await cpuPause(seat, 'settle');
       },
 
       // --- the opening: everybody builds at once ---
@@ -225,70 +282,71 @@ class OnlineMatch {
       },
       async onBuildUndo(game, player) {
         const seat = m._seat(player);
-        const ev = [[], []];
-        ev[seat].push({ e: 'undo', who: 'me' }); ev[1 - seat].push({ e: 'undo', who: 'opp' });
+        const ev = m.noEvents();
+        for (const s of m.humans) ev[s].push({ e: 'undo', who: m.who(s, seat) });
         m._broadcast(ev);
       },
       async onBuildDraw(game, player, tile) {
         const seat = m._seat(player);
-        m._logOne(seat, `You drew ${fmt(tile)}.`);
-        m.logs[1 - seat].push(`${m.names[seat]} draws a tile.`);
-        const ev = [[], []];
-        ev[seat].push({ e: 'draw', who: 'me', tile: tile.slice() });
-        ev[1 - seat].push({ e: 'draw', who: 'opp' });
+        if (!m.computers[seat]) m._logOne(seat, `You drew ${fmt(tile)}.`);
+        m._tellLog(seat, `${m.names[seat]} draws a tile.`);
+        const ev = m.noEvents();
+        for (const s of m.humans) ev[s].push(s === seat ? { e: 'draw', who: 'me', tile: tile.slice() } : { e: 'draw', who: m.who(s, seat) });
         m._broadcast(ev);
       },
       async onBuildPass(game, player) {
         const seat = m._seat(player);
-        m._logOne(seat, game.boneyard.length === 0 && !game.opening[player.id].drew
-          ? 'The boneyard is empty and nothing fits the engine. You pass and a lantern goes on your train.'
-          : 'Nothing fits the engine. You pass and a lantern goes on your train.');
-        m.logs[1 - seat].push(`${m.names[seat]} cannot start a train and passes. A lantern goes on their train: you can play there.`);
-        const ev = [[], []];
-        ev[0].push({ e: 'pass', who: seat === 0 ? 'me' : 'opp' }); ev[1].push({ e: 'pass', who: seat === 1 ? 'me' : 'opp' });
-        ev[1 - seat].push({ e: 'reveal' });
+        if (!m.computers[seat]) m._logOne(seat, game.boneyard.length === 0 && !game.opening[player.id].drew
+          ? 'The boneyard is empty and nothing fits the engine. You pass and a marker goes on your train.'
+          : 'Nothing fits the engine. You pass and a marker goes on your train.');
+        m._tellLog(seat, `${m.names[seat]} cannot start a train and passes. A marker goes on their train: you can play there.`);
+        const ev = m.noEvents();
+        for (const s of m.humans) { ev[s].push({ e: 'pass', who: m.who(s, seat) }); if (s !== seat) ev[s].push({ e: 'reveal', who: m.who(s, seat) }); }
         m._broadcast(ev);
       },
       async onBuildDone(game, player, count) {
         const seat = m._seat(player);
         m.plans[seat] = null;
-        m.logs[seat].push(`You finished a train of ${count} ${count === 1 ? 'tile' : 'tiles'}.`);
-        m.logs[1 - seat].push(`${m.names[seat]} finished a train of ${count} ${count === 1 ? 'tile' : 'tiles'}.`);
-        const ev = [[], []];
-        ev[1 - seat].push({ e: 'reveal' });
+        const word = `${count} ${count === 1 ? 'tile' : 'tiles'}`;
+        if (!m.computers[seat]) m.logs[seat].push(`You finished a train of ${word}.`);
+        m._tellLog(seat, `${m.names[seat]} finished a train of ${word}.`);
+        const ev = m.noEvents();
+        for (const s of m.humans) if (s !== seat) ev[s].push({ e: 'reveal', who: m.who(s, seat) });
         m._broadcast(ev);
       },
       async onOpeningDone(game) {
-        m._say(seat => `All trains are built. ${m.startIndex === seat ? 'You play' : `${m.names[1 - seat]} plays`} first.`);
-        m._broadcast([[], []]);
+        m._say(seat => `All trains are built. ${m.startIndex === seat ? 'You play' : `${m.names[m.startIndex]} plays`} first.`);
+        m._broadcast(m.noEvents());
       },
     };
   }
 
-  /* The "a tile was played" event, for each player. In the opening the opponent's tile stays secret. */
+  /* The "a tile was played" event, for each human player. In the opening the other players' tiles stay secret. */
   _playEvents(seat, move, index, opening) {
-    const ev = [[], []];
-    const trainFor = s => (move.trainId === 'mexican' ? 'mexican' : SEATS[s] === move.trainId ? 'human' : 'cpu');
+    const ev = this.noEvents();
     const isDouble = move.tile[0] === move.tile[1];
-    ev[seat].push({ e: 'play', who: 'me', train: trainFor(seat), index, placed: move.placed.slice(), tile: move.tile.slice(), hidden: false });
-    ev[1 - seat].push({
-      e: 'play', who: 'opp', train: trainFor(1 - seat), index,
-      placed: opening ? (isDouble ? HIDDEN_DOUBLE : HIDDEN_PLAIN).slice() : move.placed.slice(),
-      tile: opening ? null : move.tile.slice(), hidden: !!opening,
-    });
+    for (const s of this.humans) {
+      const train = this.cid(s, move.trainId);
+      if (s === seat) ev[s].push({ e: 'play', who: 'me', train, index, placed: move.placed.slice(), tile: move.tile.slice(), hidden: false });
+      else ev[s].push({
+        e: 'play', who: this.who(s, seat), train, index,
+        placed: opening ? (isDouble ? HIDDEN_DOUBLE : HIDDEN_PLAIN).slice() : move.placed.slice(),
+        tile: opening ? null : move.tile.slice(), hidden: !!opening,
+      });
+    }
     return ev;
   }
 
   /* ------------------------------ sending views ------------------------------ */
   _broadcast(events) {
     const seq = ++this.seq;
-    for (const seat of [0, 1]) this.push(seat, { t: 'state', seq, view: this.viewFor(seat), events: events[seat] || [] });
+    for (const seat of this.humans) this.push(seat, { t: 'state', seq, view: this.viewFor(seat), events: events[seat] || [] });
   }
 
   viewFor(seat) {
-    const meId = SEATS[seat], oppId = SEATS[1 - seat];
-    const cid = id => (id === 'mexican' ? 'mexican' : id === meId ? 'human' : 'cpu');
-    const flipTotals = t => ({ human: t[meId], cpu: t[oppId] });
+    const cid = id => this.cid(seat, id);
+    const order = [seat, ...this.others(seat)];                  // this player first, then the others in table order
+    const flipTotals = t => { const out = {}; order.forEach(sx => { out[cid(SEATS[sx])] = t[SEATS[sx]]; }); return out; };
     const g = this.game;
     const aw = this.awaiting[seat];
     let awaiting = null;
@@ -305,41 +363,39 @@ class OnlineMatch {
       const md = this.modal;
       if (md.type === 'final') modal = { type: 'final', totals: flipTotals(md.totals) };
       else {
-        const order = [meId, oppId];
         modal = {
           type: 'roundEnd', blocked: md.blocked, tie: md.tie, winnerId: md.winnerId ? cid(md.winnerId) : null,
-          rows: order.map(id => { const r = md.rows.find(x => x.id === id); return { id: cid(id), name: id === meId ? 'You' : r.name, hand: r.hand.map(t => t.slice()), pips: r.pips }; }),
+          rows: order.map(sx => { const r = md.rows.find(x => x.id === SEATS[sx]); return { id: cid(r.id), name: sx === seat ? 'You' : r.name, hand: r.hand.map(t => t.slice()), pips: r.pips }; }),
           totals: flipTotals(md.totals), last: md.last,
         };
       }
     }
+    const opps = this.others(seat).map((sx, i) => ({ id: i === 0 ? 'cpu' : 'cpu2', name: this.names[sx], computer: !!this.computers[sx], level: this.computers[sx] ? this.computers[sx].level : null }));
     const view = {
       seq: this.seq, round: this.roundIndex, rounds: this.rounds,
-      me: { name: this.names[seat] }, opp: { name: this.names[1 - seat] },
+      me: { name: this.names[seat] }, opp: { name: opps[0].name }, opps,
       totals: flipTotals(this.totals), paused: this.paused, over: this.over,
       log: this.logs[seat].slice(-8), banner: this.banners[seat], modal, awaiting, game: null,
     };
     if (!g) return view;
-    const me = g.players.find(p => p.id === meId), opp = g.players.find(p => p.id === oppId);
-    const hiddenOpp = !!g.opening && !g.opening[oppId].finished;
+    const hiddenOf = sx => !!g.opening && sx !== seat && !g.opening[SEATS[sx]].finished;       // another player's train, while they are still building
     const train = (t, hide) => ({
       id: cid(t.id), marker: !!t.marker,
       tiles: t.tiles.map(x => (hide ? (x[0] === x[1] ? HIDDEN_DOUBLE : HIDDEN_PLAIN).slice() : x.slice())),
       end: hide ? 0 : t.end,
     });
+    const trains = {};
+    order.forEach(sx => { trains[cid(SEATS[sx])] = train(g.trains[SEATS[sx]], hiddenOf(sx)); });
+    trains.mexican = train(g.trains.mexican, false);
+    const opening = g.opening ? {} : null;
+    if (opening) order.forEach(sx => { const o = g.opening[SEATS[sx]]; opening[cid(SEATS[sx])] = { finished: o.finished, drew: o.drew, lastDrew: sx === seat && o.lastDrew ? o.lastDrew.slice() : null }; });
     view.game = {
       engine: g.engine,
-      players: [
-        { id: 'human', name: 'You', hand: me.hand.map(t => t.slice()) },
-        { id: 'cpu', name: this.names[1 - seat], hand: opp.hand.map(() => HIDDEN_DOUBLE.slice()) },
-      ],
+      players: order.map(sx => { const p = g.players[sx]; return sx === seat ? { id: 'human', name: 'You', hand: p.hand.map(t => t.slice()) } : { id: cid(p.id), name: this.names[sx], hand: p.hand.map(() => HIDDEN_DOUBLE.slice()) }; }),
       boneyard: g.boneyard.map(() => HIDDEN_DOUBLE.slice()),
-      trains: { human: train(g.trains[meId], false), cpu: train(g.trains[oppId], hiddenOpp), mexican: train(g.trains.mexican, false) },
+      trains,
       openDouble: g.openDouble ? { trainId: cid(g.openDouble.trainId), value: g.openDouble.value } : null,
-      opening: g.opening ? {
-        human: { finished: g.opening[meId].finished, drew: g.opening[meId].drew, lastDrew: g.opening[meId].lastDrew ? g.opening[meId].lastDrew.slice() : null },
-        cpu: { finished: g.opening[oppId].finished, drew: g.opening[oppId].drew, lastDrew: null },
-      } : null,
+      opening,
     };
     return view;
   }
@@ -353,7 +409,8 @@ class OnlineMatch {
     const aw = this.awaiting[seat];
     if (!aw) return bad('not_now', 'It is not your turn to act.');
     const a = msg.a;
-    const engineTrain = id => (id === 'mexican' ? 'mexican' : id === 'human' ? SEATS[seat] : id === 'cpu' ? SEATS[1 - seat] : null);
+    const others = this.others(seat);
+    const engineTrain = id => (id === 'mexican' ? 'mexican' : id === 'human' ? SEATS[seat] : id === 'cpu' ? SEATS[others[0]] : id === 'cpu2' && others[1] !== undefined ? SEATS[others[1]] : null);
     const findMove = moves => {
       if (!isTile(msg.tile)) return null;
       const tid = engineTrain(msg.train);
@@ -396,9 +453,10 @@ class OnlineMatch {
       case 'modal':
         if (a !== 'ok') return bad('bad_message', 'Press OK to go on.');
         this.modalOk[seat] = true;
-        this._logOne(seat, this.modal && this.modal.last ? 'Waiting for the final score.' : `Waiting for ${this.names[1 - seat]} to be ready for the next round.`);
+        this._logOne(seat, this.modal && this.modal.last ? 'Waiting for the final score.'
+          : this.n === 2 ? `Waiting for ${this.names[1 - seat]} to be ready for the next round.` : 'Waiting for the others to be ready for the next round.');
         aw.resolve();
-        this._broadcast([[], []]);                              // her dialog goes away at once and she sees she is waiting
+        this._broadcast(this.noEvents());                       // her dialog goes away at once and she sees she is waiting
         return { ok: true };
       default:
         return bad('bad_message', 'That is not something you can do right now.');

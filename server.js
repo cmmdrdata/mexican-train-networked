@@ -29,6 +29,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { upgrade } = require('./ws-lite.js');
 const { OnlineMatch, cleanName, CHAT_PHRASES } = require('./online-match.js');
+const G = globalThis.MexicanTrainGame;                 // (loaded by online-match.js)
 
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';        // no 0/O or 1/I/L: easy to read out loud
 const PROTOCOL = 1;
@@ -37,13 +38,27 @@ const randomCode = () => { const b = crypto.randomBytes(6); let s = ''; for (let
 const showCode = c => c.slice(0, 3) + '-' + c.slice(3);
 const normalizeCode = raw => String(raw === undefined || raw === null ? '' : raw).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
 
-/* The addresses other computers can use to reach this server. */
+/* How good an address is for another computer on the same network to use: the ordinary home and office
+ * ranges first (192.168.x.x, then 10.x.x.x, then 172.16-31.x.x), then anything else (a VPN, say), and last
+ * the self-assigned 169.254.x.x addresses that mean a network is not really connected. */
+function addressRank(ip) {
+  const [a, b] = String(ip).split('.').map(Number);
+  if (a === 192 && b === 168) return 0;
+  if (a === 10) return 1;
+  if (a === 172 && b >= 16 && b <= 31) return 2;
+  if (a === 169 && b === 254) return 4;
+  return 3;
+}
+const sortAddresses = ips => ips.map((ip, i) => ({ ip, i })).sort((x, y) => addressRank(x.ip) - addressRank(y.ip) || x.i - y.i).map(x => x.ip);
+
+/* The addresses other computers can use to reach this server, best first, as "ip:port". A server that only
+ * accepts this computer has one: 127.0.0.1. */
 function lanAddresses(port, localOnly) {
-  if (localOnly) return [`localhost:${port}`];
-  const out = [];
+  if (localOnly) return [`127.0.0.1:${port}`];
+  const ips = [];
   const nets = os.networkInterfaces();
-  for (const name of Object.keys(nets)) for (const n of nets[name] || []) if ((n.family === 'IPv4' || n.family === 4) && !n.internal) out.push(`${n.address}:${port}`);
-  return out;
+  for (const name of Object.keys(nets)) for (const n of nets[name] || []) if ((n.family === 'IPv4' || n.family === 4) && !n.internal) ips.push(n.address);
+  return sortAddresses(ips).map(ip => `${ip}:${port}`);
 }
 
 function createGameServer(options) {
@@ -88,6 +103,12 @@ function createGameServer(options) {
       const body = readPage();
       if (!body) { res.writeHead(500, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, headers)); return res.end('The game page (' + path.basename(opt.pagePath) + ') was not found next to the server.'); }
       res.writeHead(200, Object.assign({ 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': body.length }, headers));
+      return res.end(req.method === 'HEAD' ? undefined : body);
+    }
+    if (url === '/info') {                                    // the address(es) the host's page should show: this computer's network address, never "localhost"
+      const list = lanAddresses(boundPort, opt.localOnly);
+      const body = JSON.stringify({ game: 'mexican-train', addresses: list, preferred: list[0] || `127.0.0.1:${boundPort}` });
+      res.writeHead(200, Object.assign({ 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) }, headers));
       return res.end(req.method === 'HEAD' ? undefined : body);
     }
     if (url === '/healthz') { res.writeHead(200, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, headers)); return res.end('ok'); }
@@ -145,7 +166,8 @@ function createGameServer(options) {
   function newRoom(c, name, settings) {
     let code; do { code = randomCode(); } while (rooms.has(code));
     const room = {
-      code, settings: { rounds: [1, 4, 13].includes(Number(settings.rounds)) ? Number(settings.rounds) : 4, hand: [8, 12, 15].includes(Number(settings.hand)) ? Number(settings.hand) : 15 },
+      code, settings: { rounds: [1, 4, 13].includes(Number(settings.rounds)) ? Number(settings.rounds) : 4, hand: [8, 12, 15].includes(Number(settings.hand)) ? Number(settings.hand) : 15, computer: cleanComputer(settings.computer) },
+      computerName: null,
       players: [{ name, token: crypto.randomBytes(16).toString('hex'), conn: null, lostAt: null, timer: null }, null],
       state: 'lobby', match: null, chatAt: [0, 0], lastActivity: Date.now(), over: null,
     };
@@ -159,7 +181,8 @@ function createGameServer(options) {
   function lobbyMessage(room, seat) {
     return {
       t: 'lobby', code: room.code, display: showCode(room.code), seat, settings: room.settings,
-      players: room.players.map(p => (p ? { name: p.name, connected: !!(p.conn && p.conn.ws.open) } : null)),
+      players: room.players.map(p => (p ? { name: p.name, connected: !!(p.conn && p.conn.ws.open) } : null))
+        .concat(room.settings.computer ? [{ name: room.computerName, connected: true, computer: true, level: room.settings.computer }] : []),
       canStart: !!(room.state === 'lobby' && room.players[0] && room.players[1] && connectedSeats(room).every(Boolean)),
       addresses: lanAddresses(boundPort, opt.localOnly), state: room.state,
     };
@@ -193,12 +216,21 @@ function createGameServer(options) {
   }
 
   /* ------------------------------ messages ------------------------------ */
-  const cleanSettings = msg => ({ rounds: msg.rounds, hand: msg.hand });
+  const cleanSettings = msg => ({ rounds: msg.rounds, hand: msg.hand, computer: msg.computer });
+  const cleanComputer = v => (G.Engine.LEVELS.includes(v) ? v : null);       // 'easy', 'normal' or 'hard'; anything else means no computer player
+  /* A name for the computer player, from the computer players of its level, not one a person at the table has. */
+  function nameComputer(room) {
+    if (!room.settings.computer) { room.computerName = null; return; }
+    const taken = new Set(room.players.filter(Boolean).map(p => p.name.toLowerCase()));
+    if (room.computerName && !taken.has(room.computerName.toLowerCase()) && G.levelOfName(room.computerName) === room.settings.computer) return;   // keep its name while the level is unchanged
+    room.computerName = G.pickCpuName(room.settings.computer, opt.nameRng || Math.random, taken);
+  }
 
   function onCreate(c, msg) {
     if (c.session) return reply(c, 'already_in_game', 'You are already in a game.');
     if (rooms.size >= opt.maxRooms) return reply(c, 'server_full', 'This server is hosting as many games as it can. Try again later.');
     const room = newRoom(c, cleanName(msg.name, 'Host'), cleanSettings(msg));
+    nameComputer(room);
     attach(room, 0, c);
     opt.log(`game ${showCode(room.code)} created by ${room.players[0].name}`);
     send(c, { t: 'created', code: room.code, display: showCode(room.code), token: room.players[0].token, seat: 0, settings: room.settings, addresses: lanAddresses(boundPort, opt.localOnly) });
@@ -217,7 +249,8 @@ function createGameServer(options) {
     if (room.state !== 'lobby' || room.players[1]) return reply(c, 'game_full', 'That game already has two players.');
     failures.delete(c.ip);
     room.players[1] = { name: cleanName(msg.name, 'Guest'), token: crypto.randomBytes(16).toString('hex'), conn: null, lostAt: null, timer: null };
-    if (room.players[1].name === room.players[0].name) room.players[1].name = cleanName(room.players[1].name.slice(0, 17) + ' 2');   // keep it within 20 characters
+    const sameName = n => n === room.players[0].name || (room.computerName && n.toLowerCase() === room.computerName.toLowerCase());
+    if (sameName(room.players[1].name)) room.players[1].name = cleanName(room.players[1].name.slice(0, 17) + ' 2');   // keep it within 20 characters
     attach(room, 1, c);
     opt.log(`${room.players[1].name} joined game ${showCode(room.code)}`);
     send(c, { t: 'joined', code: room.code, display: showCode(room.code), token: room.players[1].token, seat: 1, settings: room.settings, addresses: lanAddresses(boundPort, opt.localOnly) });
@@ -244,6 +277,11 @@ function createGameServer(options) {
     const s = cleanSettings(msg);
     if (s.rounds !== undefined && [1, 4, 13].includes(Number(s.rounds))) room.settings.rounds = Number(s.rounds);
     if (s.hand !== undefined && [8, 12, 15].includes(Number(s.hand))) room.settings.hand = Number(s.hand);
+    if (Object.prototype.hasOwnProperty.call(msg, 'computer')) {            // a level sets it; an explicit "none" removes it; anything else is ignored
+      const v = msg.computer;
+      if (v === null || v === false || v === 'none' || v === '') { room.settings.computer = null; nameComputer(room); }
+      else if (cleanComputer(v)) { room.settings.computer = v; nameComputer(room); }
+    }
     sendLobby(room);
   }
   function onStart(c) {
@@ -252,12 +290,15 @@ function createGameServer(options) {
     if (room.state !== 'lobby') return reply(c, 'not_allowed', 'The game has already started.');
     if (!room.players[1] || !connectedSeats(room).every(Boolean)) return reply(c, 'not_ready', 'Wait for the other player to join.');
     room.state = 'playing';
+    nameComputer(room);
     room.match = new OnlineMatch({
-      rounds: room.settings.rounds, hand: room.settings.hand, names: [room.players[0].name, room.players[1].name],
+      rounds: room.settings.rounds, hand: room.settings.hand,
+      names: room.settings.computer ? [room.players[0].name, room.players[1].name, room.computerName] : [room.players[0].name, room.players[1].name],
+      computer: room.settings.computer ? { level: room.settings.computer } : undefined,
       rng: opt.rng ? opt.rng(room) : undefined, stepDelay: opt.stepDelay, sleep: opt.sleep,
       push: (seat, msg) => sendSeat(room, seat, msg),
     });
-    opt.log(`game ${showCode(room.code)} started: ${room.players[0].name} vs ${room.players[1].name}`);
+    opt.log(`game ${showCode(room.code)} started: ${room.players[0].name} vs ${room.players[1].name}${room.settings.computer ? ' vs ' + room.computerName + ' (computer, ' + room.settings.computer + ')' : ''}`);
     sendLobby(room);
     room.match.start().then(() => {
       room.lastActivity = Date.now();
@@ -341,6 +382,7 @@ function createGameServer(options) {
   function listen(port, host) {
     return new Promise((resolve, reject) => {
       http_.once('error', reject);
+      if (host === '127.0.0.1' || host === 'localhost' || host === '::1') opt.localOnly = true;    // only this computer can reach it, so that is its address
       http_.listen(port, host || (opt.localOnly ? '127.0.0.1' : '0.0.0.0'), () => {
         http_.removeListener('error', reject);
         boundPort = http_.address().port;
@@ -396,14 +438,21 @@ Your firewall may ask whether to allow Node.js: say yes for private networks.`);
     log: args.quiet ? () => {} : msg => console.log(`[${new Date().toLocaleTimeString()}] ${msg}`),
   });
   server.listen(args.port).then(port => {
+    const addrs = lanAddresses(port, args.localOnly);
     console.log('\nMexican Train server is running.\n');
-    console.log(`  On this computer:   http://localhost:${port}`);
-    const lan = lanAddresses(port, args.localOnly).filter(a => !a.startsWith('localhost'));
-    if (lan.length) { console.log('  From other computers on your network:'); lan.forEach(a => console.log(`                      http://${a}`)); }
-    else if (!args.localOnly) console.log('  (no network address was found: connect this computer to a network for others to join)');
-    else console.log('  (local-only mode: only this computer can connect)');
-    console.log('\nOpen one of those addresses in a browser, press "Host online game", and give the other');
-    console.log('player the address and the join code. Press Ctrl+C to stop the server.\n');
+    if (args.localOnly) {
+      console.log(`  Open  http://127.0.0.1:${port}  in a browser on this computer.`);
+      console.log('  (local-only mode: only this computer can connect)');
+    } else if (addrs.length) {
+      console.log(`  Open  http://${addrs[0]}  in your browser to host a game.`);
+      console.log('  The other player opens the same address to join.');
+      if (addrs.length > 1) { console.log('\n  This computer has other network addresses too:'); addrs.slice(1).forEach(a => console.log(`      http://${a}`)); }
+    } else {
+      console.log(`  Open  http://127.0.0.1:${port}  in a browser on this computer.`);
+      console.log('  (no network address was found: connect this computer to a network for others to join)');
+    }
+    console.log('\nPress "Host online game", and give the other player the address and the join code.');
+    console.log('Press Ctrl+C to stop the server.\n');
     if (!fs.existsSync(server.options.pagePath)) console.log(`  Warning: ${server.options.pagePath} was not found, so the page cannot be served.\n`);
   }).catch(err => {
     if (err.code === 'EADDRINUSE') console.error(`Port ${args.port} is already in use. Pick another with --port, or stop the other program.`);
@@ -417,4 +466,4 @@ Your firewall may ask whether to allow Node.js: say yes for private networks.`);
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { createGameServer, lanAddresses, normalizeCode, showCode, CODE_ALPHABET };
+module.exports = { createGameServer, lanAddresses, addressRank, sortAddresses, normalizeCode, showCode, CODE_ALPHABET };

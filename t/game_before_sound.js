@@ -1,427 +1,6 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark light">
-<title>Mexican Train</title>
-<style>
-/* Mexican Train - felt table, bone tiles, brass highlights, a toy train marker for each player. */
-
-:root {
-  --display: "Rockwell", "Rockwell Nova", "Roboto Slab", "Bitter", "Cambria", Georgia, serif;
-  --ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-
-  --page: #0f3a33;
-  --felt: #1d5c52;
-  --felt-deep: #164a42;
-  --text: #f3eee0;
-  --muted: #bcd3cc;
-  --line: rgba(243, 238, 224, 0.2);
-  --brass: #d6a84f;
-  --brass-soft: rgba(214, 168, 79, 0.16);
-  --brass-ink: #34270a;
-  --signal: #ec4a3a;
-  --wood: #5a3f2a;
-  --wood-deep: #46301f;
-  --bone: #f6f0e0;
-  --focus: #fff3c4;
-
-  --dlg-bg: #f6f0e0;
-  --dlg-ink: #1b2523;
-  --dlg-muted: #55625f;
-  --dlg-line: rgba(27, 37, 35, 0.22);
-  --dlg-focus: #6b4e0f;
-
-  --s: 40px;       /* half-tile size on the board */
-  --hs: 46px;      /* half-tile size in your hand */
-
-  box-sizing: border-box;
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --page: #0a2521;
-    --felt: #12423b;
-    --felt-deep: #0d342e;
-    --wood: #46301f;
-    --wood-deep: #35241a;
-    --dlg-bg: #1d2a28;
-    --dlg-ink: #f1ece0;
-    --dlg-muted: #a9bdb7;
-    --dlg-line: rgba(241, 236, 224, 0.22);
-    --dlg-focus: #fff3c4;
-  }
-}
-:root[data-theme="dark"] {
-  --page: #0a2521;
-  --felt: #12423b;
-  --felt-deep: #0d342e;
-  --wood: #46301f;
-  --wood-deep: #35241a;
-  --dlg-bg: #1d2a28;
-  --dlg-ink: #f1ece0;
-  --dlg-muted: #a9bdb7;
-  --dlg-line: rgba(241, 236, 224, 0.22);
-  --dlg-focus: #fff3c4;
-}
-
-*, *::before, *::after { box-sizing: inherit; }
-html { scroll-padding-top: env(safe-area-inset-top, 0px); -webkit-text-size-adjust: 100%; min-height: 100%; }
-body {
-  margin: 0;
-  min-height: 100%;
-  background: var(--page);
-  color: var(--text);
-  font: 16px/1.4 var(--ui);
-}
-button { font: inherit; color: inherit; }
-button:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-
-.shell { max-width: 1180px; margin: 0 auto; }
-
-/* ------------------------------------------------------------- header */
-.bar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.6rem;
-  padding: 0.9rem max(1rem, env(safe-area-inset-left)) 0.8rem max(1rem, env(safe-area-inset-right));
-}
-.brand h1 { margin: 0; font: 700 1.7rem/1.1 var(--display); letter-spacing: 0.01em; }
-.brand .sub { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.9rem; }
-.round { display: grid; gap: 0.05rem; font-size: 0.92rem; color: var(--muted); }
-.round span:first-child { color: var(--text); font-weight: 600; }
-.totals { display: flex; align-items: baseline; gap: 1.1rem; margin-left: auto; }
-.totals .hint { margin: 0; font-size: 0.8rem; color: var(--muted); }
-.tot { display: grid; justify-items: center; line-height: 1.1; }
-.tot b { font: 700 1.9rem/1 var(--display); font-variant-numeric: tabular-nums; }
-.tot span { font-size: 0.82rem; color: var(--muted); }
-.tools { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-
-.btn {
-  padding: 0.45rem 0.85rem; border-radius: 9px; border: 1px solid var(--line);
-  background: transparent; cursor: pointer;
-}
-.btn:hover { background: rgba(243, 238, 224, 0.1); }
-.btn.primary { background: var(--brass); color: var(--brass-ink); border-color: transparent; font-weight: 700; }
-.btn.primary:hover { background: #e2b85f; }
-
-/* -------------------------------------------------------------- table */
-.table {
-  background: radial-gradient(ellipse at 50% 30%, var(--felt) 0%, var(--felt-deep) 100%);
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 0.7rem max(0.8rem, env(safe-area-inset-left)) 1rem max(0.8rem, env(safe-area-inset-right));
-}
-.empty { padding: 4rem 1rem; text-align: center; color: var(--muted); }
-
-/* The boneyard sits in its own cell at the top right and never moves: not when the computer's
-   tiles wrap, not when a comment appears, not when it starts to flash. */
-.opp {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "cpu yard" "bubble yard";
-  column-gap: 0.8rem; align-items: start; padding: 0.2rem 0 0.7rem;
-}
-.cpu-hand { grid-area: cpu; }
-.bubble-slot { grid-area: bubble; }
-.boneyard { grid-area: yard; justify-self: end; align-self: start; }
-.cpu-hand { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; min-width: 0; }
-.who { font-weight: 700; }
-.backs { display: inline-flex; flex-wrap: wrap; gap: 3px; max-width: 34rem; }
-.back {
-  display: inline-block; width: 15px; height: 26px; border-radius: 3px;
-  background: linear-gradient(#2f7468, #1e5149); border: 1px solid #0a2c27;
-}
-.count { color: var(--muted); font-size: 0.9rem; }
-.count b { color: var(--text); font-variant-numeric: tabular-nums; }
-
-.boneyard {
-  display: inline-flex; align-items: center; gap: 0.7rem; padding: 0.4rem 0.7rem; box-sizing: border-box;
-  width: 15.5rem; min-height: 3.9rem;                  /* a fixed size: it does not grow when "Draw a tile" appears */
-  background: transparent; border: 2px dashed var(--line); border-radius: 10px; cursor: default; text-align: left;
-}
-.yard-text { display: grid; gap: 0.1rem; align-content: center; min-width: 0; }
-.boneyard:disabled { opacity: 1; }
-.boneyard .stack { position: relative; width: 30px; height: 32px; }
-.boneyard .stack i {
-  position: absolute; width: 18px; height: 30px; border-radius: 3px;
-  background: linear-gradient(#2f7468, #1e5149); border: 1px solid #0a2c27;
-}
-.boneyard .stack i:nth-child(1) { left: 0; top: 2px; transform: rotate(-9deg); }
-.boneyard .stack i:nth-child(2) { left: 6px; top: 1px; transform: rotate(2deg); }
-.boneyard .stack i:nth-child(3) { left: 12px; top: 2px; transform: rotate(11deg); }
-.boneyard.ready {
-  cursor: pointer; border: 2px solid var(--brass); background: var(--brass-soft);
-  animation: drawFlash 1.1s ease-in-out infinite;   /* keep in step with FLASH_MS in the script */
-}
-@keyframes drawFlash {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(214, 168, 79, 0);    background: rgba(214, 168, 79, 0.16); }
-  50%      { box-shadow: 0 0 0 7px rgba(214, 168, 79, 0.6), 0 0 16px 5px rgba(214, 168, 79, 0.45); background: rgba(214, 168, 79, 0.4); }
-}
-.boneyard .cta { font-weight: 700; color: var(--brass); }
-
-/* ------------------------------------------------------------- tracks */
-/* An open train wears a small, shiny toy train in its player's colour at the far left of the row. It sits in .rail, beside the
- * scrolling row rather than in it, so it stays put (and does not fade) as a long train scrolls past underneath. */
-.rail { position: relative; min-width: 0; }
-.toy-train { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); z-index: 4; pointer-events: none; line-height: 0;
-  filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.5)); }
-.toy-train svg { display: block; height: calc(var(--s) * 0.84); width: calc(var(--s) * 1.3); }
-.toy-train.p-human { --tc: #d8372c; --tc-hi: #ff9a8f; --tc-lo: #8c1c14; --tc-dk: #5a0f0a; }
-.toy-train.p-cpu   { --tc: #2e72d9; --tc-hi: #98c0ff; --tc-lo: #153d84; --tc-dk: #0a2557; }
-.toy-train.p-cpu2  { --tc: #f2b01a; --tc-hi: #ffe495; --tc-lo: #a56f00; --tc-dk: #6a4600; }
-.track.has-toy .track-tiles { padding-left: calc(var(--s) * 1.3 + 22px); }
-.tracks { border-top: 1px solid var(--line); }
-.track {
-  display: grid; grid-template-columns: 10.5rem minmax(0, 1fr); align-items: stretch;
-  border-bottom: 1px solid var(--line);
-}
-.track-label { padding: 0.6rem 0.7rem 0.6rem 0.2rem; display: grid; align-content: center; gap: 0.25rem; }
-.track-name { font: 700 1.05rem/1.2 var(--display); }
-.track-info { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
-.lamp { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--text); }
-.needs { display: inline-flex; align-items: center; gap: 0.4rem; }
-.num {
-  display: inline-grid; place-items: center; min-width: 1.7em; height: 1.7em; padding: 0 0.15em;
-  border-radius: 50%; background: var(--bone); color: var(--c, #222);
-  font: 700 0.95rem/1 var(--display);
-}
-.cover { color: var(--brass); font-weight: 700; font-size: 0.85rem; }
-.num.unknown { color: #5b6a67; }
-
-.scroller { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; }
-.scroller::-webkit-scrollbar { display: none; }
-/* no scroll bar: when the train is longer than the screen, its older end fades out instead */
-.scroller.more-left { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 36px); mask-image: linear-gradient(to right, transparent 0, #000 36px); }
-.track-tiles {
-  display: flex; align-items: center; gap: 4px; padding: 8px calc(var(--s) * 3.923 + 18px) 8px 10px;   /* always room for two more dominoes after the last one (2 x 1.9615 x --s, and the gaps) */
-  min-height: calc(var(--s) * 2 + 22px); width: max-content; min-width: 100%;
-}
-.track.target { background: var(--brass-soft); box-shadow: inset 0 0 0 2px var(--brass); cursor: pointer; }
-.track.must:not(.target) { box-shadow: inset 0 0 0 2px var(--signal); }
-/* hovering a hand tile: outline the trains it can go on and show an empty slot at the end */
-.track.preview:not(.target) { background: rgba(214, 168, 79, 0.1); box-shadow: inset 0 0 0 2px rgba(214, 168, 79, 0.7); }
-.track.preview:not(.target) .track-tiles::after {
-  content: ""; flex: none; margin-left: 4px; width: calc(var(--s) * 1.9615); height: var(--s);
-  border: 2px dashed var(--brass); border-radius: 9px; background: rgba(214, 168, 79, 0.2);
-}
-
-/* -------------------------------------------------------------- tiles */
-.tile { display: block; flex: none; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35)); transform-origin: center; }
-.tile.h { height: var(--s); width: calc(var(--s) * 1.9615); }
-.tile.v { width: var(--s); height: calc(var(--s) * 1.9615); }
-.tile.engine { margin-right: 6px; }
-.tile.pop { animation: pop 0.38s ease-out; }
-.tile.reveal { animation: reveal 0.6s ease-out; }
-@keyframes reveal {
-  0%   { transform: scale(0.8); opacity: 0.15; }
-  100% { transform: scale(1);   opacity: 1; }
-}
-@keyframes pop {
-  0%   { transform: scale(1.4); filter: drop-shadow(0 0 10px var(--brass)); }
-  100% { transform: scale(1);   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35)); }
-}
-
-.ghost {
-  flex: none; display: inline-flex; align-items: center; gap: 0.6rem; padding: 6px 12px 6px 8px;
-  border: 2px dashed var(--brass); border-radius: 12px; background: var(--brass-soft); cursor: pointer;
-  margin-left: 4px; color: var(--text); font-weight: 600;
-}
-.ghost .tile { opacity: 0.75; filter: none; }
-
-/* ------------------------------------------------------ status and tray */
-.status { padding: 0.8rem 0.2rem 0.4rem; min-height: 3.2rem; }
-.msg { margin: 0; font-size: 1.05rem; font-weight: 600; }
-.build { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.6rem; }
-
-.tray {
-  --s: var(--hs);
-  background: linear-gradient(var(--wood), var(--wood-deep));
-  border-radius: 14px; padding: 0.5rem 0.7rem 0.8rem;
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.12), 0 6px 14px rgba(0, 0, 0, 0.35);
-}
-.tray-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 0.2rem 0.3rem; font-weight: 700; }
-/* a train that the tile being dragged can be played on, with the tile over it */
-.track.drop { outline: 3px solid var(--brass); outline-offset: -3px; background: rgba(214, 168, 79, 0.2); }
-
-/* tiles lie down, in rows: half the tiles per row, so two or more rows, and a spare spot for drawing */
-.hand { padding-top: 14px; }
-.hand.can-draw { cursor: pointer; }
-.hand-grid {
-  --cell: calc(var(--hs) * 1.9615 + 8px);              /* a lying tile plus the button's padding */
-  display: grid; grid-template-columns: repeat(auto-fill, var(--cell)); gap: 16px 6px; justify-content: center;
-  max-width: calc(var(--cols, 8) * (var(--cell) + 6px)); margin: 0 auto;
-}
-.slot-draw, .slot-empty { box-sizing: border-box; width: var(--cell); height: calc(var(--hs) + 8px); border-radius: 12px; }
-.slot-empty { border: 2px dashed rgba(255, 255, 255, 0.1); }
-.slot-draw {
-  appearance: none; cursor: pointer; border: 2px dashed var(--brass); background: var(--brass-soft); color: var(--text);
-  font: inherit; font-weight: 700; animation: drawFlash 1.1s ease-in-out infinite;   /* in step with the boneyard button */
-}
-.slot-draw.calm { animation: none; border-color: rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.06); }   /* hints off: there, but not highlighted */
-.slot-draw.calm:disabled { cursor: default; opacity: 0.4; }
-.tile-btn.selected, .tile-btn.playable:hover { position: relative; z-index: 1; }
-.tile-btn {
-  appearance: none; border: 0; background: transparent; padding: 4px; border-radius: 12px; cursor: default;
-  transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
-}
-.tile-btn .tile { filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.4)); }
-.tile-btn.playable { cursor: pointer; transform: translateY(-8px); box-shadow: 0 0 0 3px var(--brass); background: var(--brass-soft); }
-.tile-btn.playable:hover { transform: translateY(-11px); }
-.tile-btn.selected { transform: translateY(-16px); box-shadow: 0 0 0 4px var(--focus), 0 10px 18px rgba(0, 0, 0, 0.5); background: rgba(255, 243, 196, 0.22); }
-.tile-btn.dim { opacity: 0.4; }                                   /* your turn, but this tile cannot be played */
-.tile-btn.idle { opacity: 0.4; }                                  /* not your turn: the whole hand is dimmed */
-.tile-btn.fresh:not(.selected) { box-shadow: 0 0 0 2px rgba(255, 243, 196, 0.6); }
-.tile-btn:disabled { color: inherit; }
-
-.log { padding: 0.7rem 0.2rem 0; min-height: 7.2rem; }
-.log ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.15rem; font-size: 0.9rem; color: var(--muted); }
-.log li.latest { color: var(--text); }
-
-/* dominoes flying onto the board (the copy lives on <body>, above everything) */
-.flying { position: fixed; z-index: 50; margin: 0; pointer-events: none; will-change: transform, filter; }
-.flying .tile { position: absolute; left: 0; top: 0; width: 100%; height: 100%; filter: none; }
-
-/* arranging your hand by dragging */
-.tile-btn { touch-action: none; -webkit-user-select: none; user-select: none; }
-.tile-btn:not(.playable) { cursor: grab; }
-.tile-btn.drag-src { opacity: 0.25; }
-.dragfloat { position: fixed; left: 0; top: 0; z-index: 60; margin: 0; pointer-events: none; will-change: transform;
-  filter: drop-shadow(0 12px 14px rgba(0, 0, 0, 0.5)); }
-.dragfloat .tile { display: block; width: 100%; height: 100%; filter: none; }
-body.dragging, body.dragging * { cursor: grabbing !important; }
-.tray-head { gap: 0.7rem; }
-.tray-head .tip { font-weight: 400; font-size: 0.85rem; color: rgba(255, 255, 255, 0.78); }
-.tray-head .count { margin-left: auto; }
-
-/* online play */
-.opp.three { grid-template-areas: "cpu yard" "cpu2 yard" "bubble yard"; }
-.cpu-hand.second { grid-area: cpu2; margin-top: 0.35rem; }
-.net-dot { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #8a8f8c; vertical-align: middle; flex: none; }
-.net-dot.up { background: #3ec27a; }
-.net-dot.down { background: #d8564b; }
-.codebox { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin: 0.1rem 0 0.9rem; }
-.code-big {
-  font: 700 2.1rem/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: 0.12em;
-  padding: 0.4rem 0.75rem; border: 2px dashed var(--dlg-focus); border-radius: 10px; user-select: all;
-}
-.addrs { margin: 0.2rem 0 0.9rem; padding-left: 1.2rem; }
-.addrs code, .dialog p code { font: 600 1rem ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: rgba(127, 127, 127, 0.15); padding: 0.05rem 0.35rem; border-radius: 5px; }
-.players { list-style: none; padding: 0; margin: 0.4rem 0 0.9rem; display: grid; gap: 0.35rem; }
-.players li { display: flex; align-items: center; gap: 0.55rem; }
-.players li.empty { opacity: 0.65; font-style: italic; }
-.field-row { display: flex; flex-wrap: wrap; gap: 1rem; }
-.form-error { margin: 0.2rem 0 0.8rem; padding: 0.5rem 0.7rem; border-radius: 8px; background: rgba(216, 86, 75, 0.14); border: 1px solid rgba(216, 86, 75, 0.6); }
-.qrbox { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin: 0.2rem 0 0.9rem; }
-.qr { width: 11rem; height: 11rem; flex: none; background: #fff; border-radius: 6px; }
-.qrtext { display: grid; gap: 0.3rem; justify-items: start; max-width: 22rem; }
-.qrtext p { margin: 0; overflow-wrap: anywhere; }
-.btn.small { padding: 0.1rem 0.55rem; font-size: 0.8rem; margin-left: 0.4rem; }
-.hints-toggle { padding: 0.15rem 0.6rem; font-size: 0.85rem; }
-.hints-toggle[aria-pressed="false"] { opacity: 0.75; }
-.btn.toggle[aria-pressed="true"] { background: var(--brass-soft); box-shadow: inset 0 0 0 2px var(--brass); }
-.say-panel { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.4rem; }
-.say-panel .say { padding: 0.2rem 0.65rem; font-size: 0.85rem; }
-.you-said { margin-top: 0.3rem; font-size: 0.85rem; opacity: 0.8; font-style: italic; }
-
-/* the computer's level, shown beside its name */
-.tag { display: inline-block; padding: 0.05rem 0.55rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-.tag-easy { background: #2f7d4f; color: #fff; }
-.tag-normal { background: #e0a83a; color: #2b1d03; }
-.tag-hard { background: #a23b3b; color: #fff; }
-
-/* a comment in the computer player's own language, with its translation underneath */
-.bubble [lang]:not([lang="en"]) { font-size: 1.08rem; font-family: "Segoe UI", "Noto Sans", "Noto Sans CJK SC", "Hiragino Sans", "Yu Gothic", "Microsoft YaHei", "Malgun Gothic", "Nirmala UI", Arial, sans-serif; }
-.bubble span[dir="rtl"] { display: inline-block; }
-.bubble small.trans { display: block; margin-top: 0.15rem; font-size: 0.78rem; opacity: 0.72; font-style: italic; }
-
-/* the computer's comments */
-.bubble-slot { flex: 1 1 100%; min-height: 2.9rem; display: flex; align-items: center; }
-.bubble {
-  max-width: 46rem; padding: 0.45rem 0.85rem; border-radius: 15px 15px 15px 4px;
-  background: var(--bone); color: #1b2523; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35); font-size: 0.95rem;
-  animation: bubbleIn 0.22s ease-out;
-}
-.bubble b { margin-right: 0.45rem; font-family: var(--display); }
-@keyframes bubbleIn { from { transform: translateY(6px) scale(0.96); opacity: 0; } to { transform: none; opacity: 1; } }
-.chat-toggle { padding: 0.08rem 0.6rem; font-size: 0.8rem; color: var(--muted); }
-
-/* ------------------------------------------------------------- dialogs */
-.overlay {
-  position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; overflow: auto;
-  background: rgba(5, 22, 19, 0.74);
-  padding: calc(1rem + env(safe-area-inset-top, 0px)) max(1rem, env(safe-area-inset-right))
-           calc(1rem + env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left));
-}
-.dialog {
-  width: min(34rem, 100%); max-height: calc(100vh - 2.5rem); max-height: calc(100dvh - 2.5rem); overflow: auto;
-  background: var(--dlg-bg); color: var(--dlg-ink); border-radius: 14px; padding: 1.4rem 1.5rem 1.3rem;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
-}
-.dialog.wide { width: min(46rem, 100%); }
-.dialog :focus-visible { outline-color: var(--dlg-focus); }
-.dialog h2 { margin: 0 0 0.6rem; font: 700 1.7rem/1.15 var(--display); }
-.dialog p { margin: 0 0 0.9rem; }
-.dialog .btn { border-color: var(--dlg-line); }
-.dialog .btn:hover { background: rgba(127, 127, 127, 0.14); }
-.dialog .btn.primary { border-color: transparent; }
-.field { display: grid; gap: 0.25rem; margin-bottom: 0.8rem; }
-.field label { font-weight: 600; }
-.field input[type="text"].fixed { cursor: not-allowed; background: rgba(127, 127, 127, 0.18); border-style: dashed; color: var(--dlg-muted); font-weight: 600; }   /* looks locked: shaded, dashed, greyed */
-.field-note { margin: 0.1rem 0 0; font-size: 0.85rem; color: var(--dlg-muted); max-width: 46ch; }
-select, .field input[type="text"] {
-  font: inherit; padding: 0.45rem 0.6rem; border-radius: 8px; border: 1px solid var(--dlg-line);
-  background: transparent; color: var(--dlg-ink);
-}
-select option { color: #1b2523; background: #fff; }
-.how { margin: 0.4rem 0 1rem; color: var(--dlg-ink); }
-.how summary { cursor: pointer; font-weight: 600; }
-.rules { margin: 0.6rem 0 0; padding-left: 1.2rem; display: grid; gap: 0.5rem; max-width: 62ch; }
-.dialog > .rules { margin-bottom: 1rem; }
-.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.6rem; margin-top: 0.4rem; }
-
-.rows { display: grid; gap: 0.8rem; margin-bottom: 1rem; }
-.row {
-  display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto auto; gap: 0.6rem 0.9rem; align-items: center;
-  padding-bottom: 0.8rem; border-bottom: 1px solid var(--dlg-line);
-}
-.row .who { font-family: var(--display); font-size: 1.1rem; }
-.mini { display: flex; flex-wrap: wrap; gap: 3px; --s: 20px; min-height: 22px; }
-.mini .tile { filter: none; }
-.mini .none { color: var(--dlg-muted); font-size: 0.9rem; }
-.pts { display: grid; justify-items: end; line-height: 1.1; }
-.pts b { font: 700 1.35rem/1.1 var(--display); font-variant-numeric: tabular-nums; }
-.pts span { font-size: 0.78rem; color: var(--dlg-muted); }
-.final { display: flex; gap: 2rem; margin: 0.4rem 0 0.8rem; }
-.final .tot b { font-size: 2.6rem; }
-.final .tot span { color: var(--dlg-muted); }
-
-/* ------------------------------------------------------------ small screens */
-@media (max-width: 640px) {
-  :root { --s: 27px; --hs: 36px; }
-  .brand h1 { font-size: 1.45rem; }
-  .totals { margin-left: 0; }
-  .track { grid-template-columns: 1fr; }
-  .boneyard { width: 11.5rem; padding: 0.35rem 0.55rem; }
-  .track-label { grid-auto-flow: column; justify-content: space-between; align-items: center; padding: 0.45rem 0.3rem 0; }
-  .track-info { grid-auto-flow: column; gap: 0.8rem; align-items: center; }
-  .cover { display: none; }
-  .track-tiles { min-height: calc(var(--s) * 2 + 18px); }
-  .row { grid-template-columns: 2.6rem minmax(0, 1fr); }
-  .row .pts { grid-column: 2; justify-items: start; grid-auto-flow: column; gap: 0.5rem; display: flex; align-items: baseline; }
-  .dialog { padding: 1.1rem 1.1rem 1rem; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
-  .boneyard.ready { box-shadow: 0 0 0 5px rgba(214, 168, 79, 0.6); }   /* no flashing: a steady strong ring instead */
-}
-
-</style>
-</head>
-<body>
-<div id="app"></div>
-<noscript>Mexican Train needs JavaScript turned on to run.</noscript>
-<script>
+/* Mexican Train (double-12) - play against the computer in the browser.
+ * Sections: ENGINE (rules + computer player), TILE ART (SVG), VIEWS (HTML strings),
+ * APP (state + turn flow), BOOT. Everything is plain JavaScript, no libraries. */
 (function (global) {
   'use strict';
 
@@ -460,14 +39,9 @@ select option { color: #1b2523; background: #fff; }
     return { id, tiles: [], end: engine, marker: false };
   }
 
-  // The ids of the players at the table, in turn order. Two players are "human" and "cpu"; a third is "cpu2".
-  // (The ids are also the ids of their trains. They are only names: any of the players may be a person.)
-  const PLAYER_IDS = ['human', 'cpu', 'cpu2'];
-
   /* simultaneousOpening: every player builds their own train at the same time before the
-   * first normal turn (see buildPhase). Off by default so the plain rules stay testable.
-   * players: 2 (the default) or 3 at the table; each is dealt handSize tiles. */
-  function newRound({ engine, handSize, rng, simultaneousOpening, players }) {
+   * first normal turn (see buildPhase). Off by default so the plain rules stay testable. */
+  function newRound({ engine, handSize, rng, simultaneousOpening }) {
     const tiles = [];
     for (let a = 0; a <= MAX_PIP; a++) {
       for (let b = a; b <= MAX_PIP; b++) {
@@ -475,23 +49,24 @@ select option { color: #1b2523; background: #fff; }
       }
     }
     shuffle(tiles, rng);
-    const ids = PLAYER_IDS.slice(0, players === 3 ? 3 : 2);
-    const names = { human: 'You', cpu: 'CPU', cpu2: 'CPU 2' };
-    const seated = ids.map(id => ({ id, name: names[id], hand: tiles.splice(0, handSize) }));   // (the first two hands are dealt exactly as in a two-player game)
-    const trains = {};
-    ids.forEach(id => { trains[id] = newTrain(id, engine); });
-    trains.mexican = newTrain('mexican', engine);
-    const opening = {};
-    ids.forEach(id => { opening[id] = { finished: false, drew: false, lastDrew: null }; });
     return {
       engine,
-      players: seated,
+      players: [
+        { id: 'human', name: 'You', hand: tiles.splice(0, handSize) },
+        { id: 'cpu', name: 'CPU', hand: tiles.splice(0, handSize) },
+      ],
       boneyard: tiles,
-      trains,
+      trains: {
+        human: newTrain('human', engine),
+        cpu: newTrain('cpu', engine),
+        mexican: newTrain('mexican', engine),
+      },
       openDouble: null,
       winner: null,
       rng,
-      opening: simultaneousOpening ? opening : null,
+      opening: simultaneousOpening
+        ? { human: { finished: false, drew: false, lastDrew: null }, cpu: { finished: false, drew: false, lastDrew: null } }
+        : null,
     };
   }
 
@@ -600,7 +175,7 @@ select option { color: #1b2523; background: #fff; }
    *  - done: finish. Not allowed while the train ends on an uncovered double (cover it or
    *    take it back). A double can never be your last tile down: it could not win the round.
    * If nothing is down, nothing fits, and no draw is possible, the player passes and a
-   * marker goes on their train, exactly as on a normal turn. */
+   * lantern (marker) goes on their train, exactly as on a normal turn. */
   async function buildPhase(game, player, agent, ui) {
     const st = game.opening[player.id];
     const train = game.trains[player.id];
@@ -660,11 +235,10 @@ select option { color: #1b2523; background: #fff; }
     return !anyMove;
   }
 
-  /* A blocked round goes to the player holding the fewest pips; if the lowest count is shared, nobody wins it. */
   function blockedResult(game) {
-    const pips = game.players.map(handPips), low = Math.min(...pips);
-    const lowest = game.players.filter((p, i) => pips[i] === low);
-    return { winner: lowest.length === 1 ? lowest[0] : null, blocked: true };
+    const [a, b] = game.players;
+    const pa = handPips(a), pb = handPips(b);
+    return { winner: pa === pb ? null : (pa < pb ? a : b), blocked: true };
   }
 
   async function playRound(game, startIndex, controllers, ui, hooks) {
@@ -712,7 +286,7 @@ select option { color: #1b2523; background: #fff; }
   const HARD_LOOKAHEAD = 12;     // Hard: bonus per tile of the longest chain still buildable afterwards
 
   // The computer player's normal-turn heuristic: dump heavy tiles, only play a double it
-  // can follow up, keep its own train extendable, and take its own marker off when it can.
+  // can follow up, keep its own train extendable, and close its own lantern when it can.
   function cpuChoose(game, player, moves, level) {
     if (level === 'easy' && game.rng() < EASY_RANDOM) return moves[Math.floor(game.rng() * moves.length)];
     const hard = level === 'hard';
@@ -870,48 +444,31 @@ select option { color: #1b2523; background: #fff; }
   }
 
   /* ================================ SOUND ================================= */
-  /* The "click" of two dominoes meeting, synthesised (no audio files). Two small hard tiles touch
-   * for well under a millisecond and then ring at several kilohertz for a few milliseconds, which
-   * is why the sound is high and crisp, not a low knock on a table. Here: a sharp bit of noise
-   * with the lows removed at the moment of contact, four quickly fading resonances between about
-   * 3 and 8.5 kHz, and a second, quieter and slightly higher contact a few milliseconds later as
-   * the tile settles against the other. Nothing below about 1 kHz. renderClack is plain maths on
-   * an array, so it can be checked without a browser or a speaker. */
-  function clackGapMs(seed) { return 4.5 + mulberry32(seed)() * 5; }          // when the second contact lands (the first number drawn for a variant)
-
+  /* The "clack" of a domino meeting the table, synthesised (no audio files): a sharp noise
+   * tick, a few quickly fading wood resonances and a soft low thud. renderClack is plain
+   * maths on an array, so it can be checked without a browser or a speaker. */
   function renderClack(sampleRate, seed) {
     const rnd = mulberry32(seed);
-    const gap = sampleRate * (4.5 + rnd() * 5) / 1000;
-    const n = Math.floor(sampleRate * 0.095);
+    const n = Math.floor(sampleRate * 0.16);
     const out = new Float32Array(n);
+    const jig = () => 0.93 + rnd() * 0.14;                 // every variant is slightly different
+    const f1 = 780 * jig(), f2 = 1680 * jig(), f3 = 3150 * jig(), fLow = 190 * jig();
     const TAU = Math.PI * 2;
-    const jig = w => 1 - w + rnd() * 2 * w;                // every variant is slightly different
-    // the resonances of a small hard tile: [frequency in Hz, strength, how fast it fades in seconds]
-    const first = [[2900, 0.45, 0.0085], [4300, 0.55, 0.0055], [6100, 0.48, 0.0036], [8400, 0.30, 0.0022]]
-      .map(([f, a, d]) => [f * jig(0.05), a * jig(0.12), d]);
-    const second = first.map(([f, a, d]) => [f * (1.05 + rnd() * 0.08), a * 0.8, d * 0.8]);   // the other tile: a touch higher
-    const ring = (t, modes, gain) => {
-      if (t < 0) return 0;
-      let v = 0;
-      for (const [f, a, d] of modes) v += Math.sin(TAU * f * t) * Math.exp(-t / d) * a;
-      return v * gain * Math.min(1, t / 0.00012);          // a very sharp start
-    };
-    // noise whose lows are taken out, for the instant of contact
-    const tick = new Float32Array(n);
-    let w1 = 0;
-    for (let i = 0; i < n; i++) { const w = rnd() * 2 - 1; tick[i] = w - w1; w1 = w; }
-    const hp = Math.exp(-TAU * 1100 / sampleRate);         // one-pole high-pass: keep nothing below about 1 kHz
-    const fade = Math.max(1, Math.floor(sampleRate * 0.008));
-    let px = 0, py = 0, peak = 0;
+    const fade = Math.max(1, Math.floor(sampleRate * 0.01));
+    let prevW = 0, lp = 0, peak = 0;
     for (let i = 0; i < n; i++) {
-      const t = i / sampleRate, tg = (i - gap) / sampleRate;
-      let v = ring(t, first, 1) + ring(tg, second, 0.55);
-      v += tick[i] * Math.min(1, t / 0.00006) * Math.exp(-t / 0.0004) * 0.9 + (tg >= 0 ? tick[i] * Math.min(1, tg / 0.00006) * Math.exp(-tg / 0.0003) * 0.45 : 0);
-      v *= Math.min(1, (n - i) / fade);
-      const y = hp * (py + v - px);
-      px = v; py = y;
-      out[i] = y;
-      if (Math.abs(y) > peak) peak = Math.abs(y);
+      const t = i / sampleRate;
+      const w = rnd() * 2 - 1;
+      lp += ((w - prevW) * 0.5 - lp) * 0.6;                // noise with the lows removed, rounded off a little
+      prevW = w;
+      const tick = lp * Math.exp(-t / 0.0022) * 1.4;
+      const body = Math.sin(TAU * f1 * t) * Math.exp(-t / 0.016) * 0.5 +
+                   Math.sin(TAU * f2 * t) * Math.exp(-t / 0.008) * 0.32 +
+                   Math.sin(TAU * f3 * t) * Math.exp(-t / 0.0035) * 0.16;
+      const thud = Math.sin(TAU * fLow * t) * Math.exp(-t / 0.03) * 0.32;
+      const v = (tick + body + thud) * Math.min(1, t / 0.0004) * Math.min(1, (n - i) / fade);
+      out[i] = v;
+      if (Math.abs(v) > peak) peak = Math.abs(v);
     }
     const g = peak > 0 ? 0.7 / peak : 1;
     for (let i = 0; i < n; i++) out[i] *= g;
@@ -921,23 +478,8 @@ select option { color: #1b2523; background: #fff; }
   /* Plays the clack through Web Audio. Browsers only allow sound after a click or key press,
    * so unlock() must be called from one; until then (or with no audio at all) clack() quietly
    * does nothing and the game plays exactly the same. */
-  /* The sound that says "it is your move": short and low, so it cannot be mistaken for a domino's
-   * click (which is a high, sharp tick). A soft tone near 165 Hz sliding down a little as it fades,
-   * with two quiet overtones, 0.22 seconds long. */
-  function renderTurn(sampleRate) {
-    const n = Math.floor(sampleRate * 0.22), out = new Float32Array(n);
-    let phase = 0;
-    for (let i = 0; i < n; i++) {
-      const t = i / sampleRate;
-      phase += 2 * Math.PI * (165 - 120 * t) / sampleRate;                         // 165 Hz gliding down to about 140 Hz
-      const env = Math.min(1, t / 0.008) * Math.exp(-t / 0.05) * Math.min(1, (n - 1 - i) / (sampleRate * 0.02));   // quick attack, fade, no click at the end
-      out[i] = env * (Math.sin(phase) + 0.35 * Math.sin(2 * phase) + 0.12 * Math.sin(3 * phase)) / 1.47;           // never above 1
-    }
-    return out;
-  }
-
   function createSound(AudioCtor, rng) {
-    let ctx = null, buffers = [], turnBuffer = null;
+    let ctx = null, buffers = [];
     rng = rng || Math.random;
     function unlock() {
       if (!AudioCtor) return;
@@ -950,9 +492,6 @@ select option { color: #1b2523; background: #fff; }
             buf.getChannelData(0).set(data);
             buffers.push(buf);
           }
-          const tdata = renderTurn(ctx.sampleRate);
-          turnBuffer = ctx.createBuffer(1, tdata.length, ctx.sampleRate);
-          turnBuffer.getChannelData(0).set(tdata);
         }
         if (ctx.state === 'suspended' && ctx.resume) ctx.resume();
         // iOS only starts audio from inside a gesture: play one silent sample right here
@@ -969,30 +508,17 @@ select option { color: #1b2523; background: #fff; }
         src.buffer = buffers[Math.floor(rng() * buffers.length)];
         if (src.playbackRate) src.playbackRate.value = 0.95 + rng() * 0.1;
         const gain = ctx.createGain();
-        gain.gain.value = 0.7;                       // a bright click sounds louder than a dull one at the same level
+        gain.gain.value = 0.8;
         src.connect(gain);
         gain.connect(ctx.destination);
         src.start(0);
       } catch (e) { /* ignore */ }
     }
-    // "it is your move": starts just after the click of the move that preceded it, so the two do not blur
-    function turn() {
-      if (!ctx || ctx.state !== 'running' || !turnBuffer) return;
-      try {
-        const src = ctx.createBufferSource();
-        src.buffer = turnBuffer;
-        const gain = ctx.createGain();
-        gain.gain.value = 0.55;
-        src.connect(gain);
-        gain.connect(ctx.destination);
-        src.start((ctx.currentTime || 0) + 0.12);
-      } catch (e) { /* ignore */ }
-    }
-    return { unlock, clack, turn };
+    return { unlock, clack };
   }
 
   /* =============================== TILE ART =============================== */
-  /* Each tile is one self-contained SVG. Pips are color-coded by number, the
+  /* Each tile is one self-contained SVG. Pips are colour-coded by number, the
    * way real double-12 sets are, so an 11 and a 12 are easy to tell apart. */
 
   const BONE = '#f6f0e0', BONE_EDGE = '#c9bd9c', GROOVE = '#8c8068', BRASS = '#d6a84f';
@@ -1115,7 +641,7 @@ select option { color: #1b2523; background: #fff; }
     return next;
   }
 
-  /* Which tile the pointer is over (or nearest to): the index of the closest rectangle center. */
+  /* Which tile the pointer is over (or nearest to): the index of the closest rectangle centre. */
   function slotAt(rects, x, y) {
     let best = -1, bestD = Infinity;
     rects.forEach((r, i) => {
@@ -1154,13 +680,7 @@ select option { color: #1b2523; background: #fff; }
     const flights = [];
     const ok = !!(doc && doc.createElement && doc.body && root.querySelector);
     const rectOf = el => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
-    // the last face-down tile in an opponent's row (with two opponents, each has a row of their own)
-    const lastBack = pid => {
-      const two = root.querySelector && root.querySelector('.cpu-hand[data-player="cpu2"]');
-      const sel = pid === 'cpu2' ? '.cpu-hand[data-player="cpu2"] .back' : two ? '.cpu-hand[data-player="cpu"] .back' : '.cpu-hand .back';
-      const b = root.querySelectorAll(sel);
-      return b && b.length ? b[b.length - 1] : null;
-    };
+    const lastBack = () => { const b = root.querySelectorAll('.cpu-hand .back'); return b && b.length ? b[b.length - 1] : null; };
 
     // one flight: a copy built from `layers` ({face, back}) goes from `from` to `dest`
     function fly(find, dest, from, rotate, layers, duration) {
@@ -1217,7 +737,7 @@ select option { color: #1b2523; background: #fff; }
       if (!ok) return null;
       let el = null;
       if (spec.playerId === 'human') el = root.querySelector('.tile-btn[data-key="' + spec.key + '"] .tile');
-      else el = lastBack(spec.playerId);
+      else el = lastBack();
       if (!el) return null;
       const r = rectOf(el);
       return r.width > 0 && r.height > 0 ? { from: r } : null;
@@ -1228,7 +748,7 @@ select option { color: #1b2523; background: #fff; }
       const dest = find();
       if (!dest) return;
       // a computer tile that will be public on arrival starts face down and turns over in flight
-      const turnsOver = (spec.playerId === 'cpu' || spec.playerId === 'cpu2') && !spec.hidden;
+      const turnsOver = spec.playerId === 'cpu' && !spec.hidden;
       const back = turnsOver ? backLayer(spec.placed[0] === spec.placed[1] ? 'v' : 'h') : null;
       const lyingDown = tok.from.width > tok.from.height;
       fly(find, dest, tok.from, flightRotation(spec.placed, lyingDown), { face: cleanFace(dest), back }, opts && opts.fast ? 260 : 440);
@@ -1250,9 +770,9 @@ select option { color: #1b2523; background: #fff; }
         if (!dest) return;
         fly(find, dest, tok.from, 0, { face: cleanFace(dest), back: backLayer('h') }, 480);   // arrives face down, turns face up in your hand
       } else {
-        const dest = lastBack(spec.playerId);
+        const dest = lastBack();
         if (!dest) return;
-        fly(() => lastBack(spec.playerId), dest, tok.from, 0, { face: null, back: backLayer('v') }, 480);         // the computer's draw stays face down
+        fly(lastBack, dest, tok.from, 0, { face: null, back: backLayer('v') }, 480);         // the computer's draw stays face down
       }
     }
 
@@ -1447,14 +967,14 @@ select option { color: #1b2523; background: #fff; }
     ],
     draw: [
       'Nothing fits? Off to the boneyard with you.',
-      'Shopping for tiles again? Your favorite.',
+      'Shopping for tiles again? Your favourite.',
       'Out of moves already? Painful.',
       'The boneyard must know you by name now.',
       'Draw, draw, draw. It is your best skill.',
     ],
     pass: [
       'Passing? Bold. Silly, but bold.',
-      'A marker on your train. How welcoming.',
+      'A lantern on your train. How welcoming.',
       'Thanks for leaving the door open.',
       'A pass? I will happily take that train for a spin.',
     ],
@@ -1562,7 +1082,7 @@ select option { color: #1b2523; background: #fff; }
     ],
     pass: [
       'A pass? Do I get to play on your train now? Fun!',
-      'Oh, a little train marker! Very festive.',
+      'Oh, a lantern! Very festive.',
       'You passed! I do that all the time and it never helps.',
       'Passing, huh? Brave. Or lost.',
     ],
@@ -1670,7 +1190,7 @@ select option { color: #1b2523; background: #fff; }
     ],
     pass: [
       'A pass. Your train is now an open invitation.',
-      'A train marker. How generous of you.',
+      'A lantern. How generous of you.',
       'You passed. I will use that.',
       'No play. Your train is mine to use now.',
     ],
@@ -1711,7 +1231,7 @@ select option { color: #1b2523; background: #fff; }
       missedOut: [['Партию можно было закончить! Зачем так?', 'The round could have been finished! Why do that?'], ['Победа была в руках, но ускользнула.', 'The win was in your hands, but it slipped away.']],
       slow: [['Эй, ты ещё здесь?', 'Hey, are you still there?'], ['Я успел состариться, пока ты думал.', 'I have grown old while you were thinking.'], ['Фишки сами не сыграют, знаешь ли.', 'The tiles will not play themselves, you know.'], ['Пойду заварю чай. Скажешь, когда решишь.', 'I will go and make tea. Tell me when you decide.']],
       draw: [['Ничего не подходит? Тяни из кучи.', 'Nothing fits? Draw from the pile.'], ['Опять тянешь? Это твой главный талант.', 'Drawing again? That is your greatest talent.']],
-      pass: [['Пасуешь? Спасибо, что оставил дверь открытой.', 'Passing? Thanks for leaving the door open.'], ['Маркер на твоём поезде. Как мило.', 'A marker on your train. How sweet.']],
+      pass: [['Пасуешь? Спасибо, что оставил дверь открытой.', 'Passing? Thanks for leaving the door open.'], ['Фонарь на твоём поезде. Как мило.', 'A lantern on your train. How sweet.']],
     },
     ja: {
       great: [['なかなかやるね。調子に乗らないでよ。', 'Not bad. Do not let it go to your head.'], ['まあ、いい手だったよ。認めてあげる。', 'Well, that was a good move. I will give you that.'], ['実力？それとも偶然？偶然に一票。', 'Skill or luck? I vote luck.']],
@@ -1722,7 +1242,7 @@ select option { color: #1b2523; background: #fff; }
       missedOut: [['上がれたのに！どうして上がらなかったの？', 'You could have gone out! Why did you not?'], ['勝ちが目の前にあったのに、見逃したね。', 'The win was right in front of you and you missed it.']],
       slow: [['もしもーし、まだいる？', 'Hello, are you still there?'], ['待ってる間に歳をとったよ。', 'I aged while waiting.'], ['ドミノは勝手に動かないよ。', 'The dominoes will not move by themselves.'], ['お茶を入れてくるね。決まったら教えて。', 'I will go and make tea. Tell me when you decide.']],
       draw: [['出せるのがないの？山から引いてきなよ。', 'Nothing to play? Go draw from the pile.'], ['また引くの？得意技だね。', 'Drawing again? Your specialty.']],
-      pass: [['パス？扉を開けてくれてありがとう。', 'Pass? Thanks for leaving the door open.'], ['マーカーがついたよ。親切だね。', 'A marker on your train. How kind.']],
+      pass: [['パス？扉を開けてくれてありがとう。', 'Pass? Thanks for leaving the door open.'], ['ランタンがついたよ。親切だね。', 'A lantern on your train. How kind.']],
     },
     zh: {
       great: [['不错嘛，别得意。', 'Not bad, do not get cocky.'], ['好吧，这步走得挺好。就这一步。', 'Alright, that was a good move. Just that one.'], ['是实力还是运气？我押运气。', 'Skill or luck? I bet on luck.']],
@@ -1733,7 +1253,7 @@ select option { color: #1b2523; background: #fff; }
       missedOut: [['你本来可以出完的！为什么不出？', 'You could have gone out! Why did you not?'], ['胜利就在手里，你却放走了。', 'Victory was in your hand and you let it go.']],
       slow: [['喂，你还在吗？', 'Hey, are you still there?'], ['等你等得我都老了。', 'I have aged waiting for you.'], ['骨牌自己是不会动的哦。', 'Dominoes will not move by themselves, you know.'], ['我去泡杯茶，你想好了叫我。', 'I will go make tea, call me when you have decided.']],
       draw: [['没牌可出？去牌堆里摸吧。', 'Nothing to play? Go draw from the pile.'], ['又摸牌？这可是你的拿手好戏。', 'Drawing again? That is your specialty.']],
-      pass: [['跳过？谢谢你替我开门。', 'A pass? Thanks for opening the door for me.'], ['你的牌路上放了标记，真贴心。', 'There is a marker on your train, how thoughtful.']],
+      pass: [['跳过？谢谢你替我开门。', 'A pass? Thanks for opening the door for me.'], ['你的牌路上亮灯了，真贴心。', 'There is a lantern on your train, how thoughtful.']],
     },
     ko: {
       great: [['꽤 잘하네. 우쭐대지는 마.', 'Pretty good. Do not get cocky.'], ['좋아, 방금은 괜찮은 수였어. 딱 한 번.', 'Okay, that was a decent move. Just once.'], ['실력이야 운이야? 난 운에 걸게.', 'Skill or luck? I bet on luck.']],
@@ -1744,7 +1264,7 @@ select option { color: #1b2523; background: #fff; }
       missedOut: [['끝낼 수 있었는데! 왜 안 끝냈어?', 'You could have finished! Why did you not?'], ['승리가 손안에 있었는데 놓쳤네.', 'Victory was in your hand and you let it slip.']],
       slow: [['여보세요, 아직 있어?', 'Hello, are you still there?'], ['기다리다 늙겠어.', 'I will grow old waiting.'], ['도미노는 저절로 안 움직여.', 'Dominoes do not move by themselves.'], ['차 한잔 하고 올게. 정하면 불러.', 'I will go have some tea. Call me when you decide.']],
       draw: [['낼 게 없어? 더미에서 뽑아.', 'Nothing to play? Draw from the pile.'], ['또 뽑아? 네 특기네.', 'Drawing again? Your specialty.']],
-      pass: [['패스? 문을 열어줘서 고마워.', 'Pass? Thanks for opening the door.'], ['네 기차에 마커가 놓였네. 친절하기도 하지.', 'A marker on your train. How kind.']],
+      pass: [['패스? 문을 열어줘서 고마워.', 'Pass? Thanks for opening the door.'], ['네 기차에 랜턴이 켜졌네. 친절하기도 하지.', 'A lantern on your train. How kind.']],
     },
     hi: {
       great: [['बुरा नहीं। ज़्यादा उड़ो मत।', 'Not bad. Do not get carried away.'], ['ठीक है, यह अच्छी चाल थी। बस एक।', 'Okay, that was a good move. Just one.'], ['हुनर था या किस्मत? मेरा दाँव किस्मत पर है।', 'Skill or luck? My bet is on luck.']],
@@ -1755,7 +1275,7 @@ select option { color: #1b2523; background: #fff; }
       missedOut: [['राउंड खत्म हो सकता था! आपने क्यों नहीं किया?', 'The round could have ended! Why did you not do it?'], ['जीत हाथ में थी और हाथ से निकल गई।', 'The win was in hand and slipped away.']],
       slow: [['अरे, कोई है?', 'Hey, is anyone there?'], ['इंतज़ार करते-करते उम्र निकल गई।', 'A whole lifetime has passed waiting.'], ['डोमिनो अपने आप नहीं चलते, पता है न?', 'Dominoes do not move by themselves, you know?'], ['चाय बन रही है। फ़ैसला हो जाए तो बताना।', 'Tea is brewing. Tell me when you have decided.']],
       draw: [['कुछ नहीं चल रहा? ढेर से उठा लो।', 'Nothing playable? Pick from the pile.'], ['फिर से उठा रहे हो? यही तुम्हारी खासियत है।', 'Drawing again? That is your specialty.']],
-      pass: [['पास? दरवाज़ा खुला छोड़ने के लिए शुक्रिया।', 'Pass? Thanks for leaving the door open.'], ['तुम्हारी ट्रेन पर मार्कर लग गया। कितनी मेहरबानी!', 'A marker on your train. How kind!']],
+      pass: [['पास? दरवाज़ा खुला छोड़ने के लिए शुक्रिया।', 'Pass? Thanks for leaving the door open.'], ['तुम्हारी ट्रेन पर लालटेन जल गई। कितनी मेहरबानी!', 'A lantern lit on your train. How kind!']],
     },
     ar: {
       great: [['ليس سيئًا. لا تغتر.', 'Not bad. Do not get conceited.'], ['حسنًا، كانت حركة جيدة. واحدة فقط.', 'Fine, that was a good move. Only one.'], ['مهارة أم حظ؟ أراهن على الحظ.', 'Skill or luck? I bet on luck.']],
@@ -1946,13 +1466,9 @@ select option { color: #1b2523; background: #fff; }
   const fmt = t => t[0] + '-' + t[1];
   const esc = t => String(t).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   const cpuName = S => S.cpuName || 'Computer';
-  /* Who is at the table, in the order the screen shows them: you, then the opponent(s). Two players is the
-   * usual game; three is an online game with a computer as the third player. */
-  const tableIds = S => (S.game && Array.isArray(S.game.players) && S.game.players.length === 3 ? ['human', 'cpu', 'cpu2'] : ['human', 'cpu']);
-  const nameOf = (S, id) => (id === 'human' ? 'You' : id === 'cpu2' ? (S.cpu2Name || 'Computer') : cpuName(S));
 
   function trainName(S, id) {
-    return id === 'human' ? 'Your train' : id === 'cpu' ? `${cpuName(S)}'s train` : id === 'cpu2' ? `${nameOf(S, 'cpu2')}'s train` : 'Mexican train';
+    return id === 'human' ? 'Your train' : id === 'cpu' ? `${cpuName(S)}'s train` : 'Mexican train';
   }
 
   function trainRef(S, id, actor) {
@@ -1962,21 +1478,14 @@ select option { color: #1b2523; background: #fff; }
   }
 
   function bannerText(S) {
-    const a = S.awaiting, g = S.game, hints = hintsOn(S);
-    if (S.notice) return S.notice;                              // "that tile cannot go there", after a try with hints off
+    const a = S.awaiting, g = S.game;
     if (a && a.kind === 'build') {
       const lead = S.drawnKey ? `You drew ${S.drawnKey}. ` : '';
-      if (a.canDraw && hints) return 'Nothing fits the engine. Draw a tile from the boneyard.';
+      if (a.canDraw) return 'Nothing fits the engine. Draw a tile from the boneyard.';
       if (a.lastDouble) return 'Your last tile is a double. A double cannot go out, so it stays in your hand. Press Done.';
       if (!a.canDone) return 'A double needs a tile on top of it. Cover it, or take it back.';
-      if (a.placed === 0) return hints ? `${lead}Everyone builds their train at the same time. Tap tiles to add them, or let the game build your longest train.` : `${lead}Everyone builds their train at the same time. Pick a tile, then tap your train.`;
+      if (a.placed === 0) return `${lead}Everyone builds their train at the same time. Tap tiles to add them, or let the game build your longest train.`;
       return 'Keep adding tiles, take the last one back, or press Done. You can take tiles back until you press Done.';
-    }
-    if (!hints && a && (a.kind === 'move' || a.kind === 'draw')) {
-      const lead = S.drawnKey ? `You drew ${S.drawnKey}. ` : '';
-      if (S.selectedKey) return `Playing ${S.selectedKey}: tap the train to play it on.`;
-      if (g.openDouble) return `${lead}A double is open: play a tile showing ${g.openDouble.value} on the outlined train.`;
-      return `${lead}Your turn. Pick a tile, then the train to play it on.`;
     }
     if (a && a.kind === 'move') {
       if (S.selectedKey) return soleTile(a.moves) === S.selectedKey
@@ -1992,85 +1501,63 @@ select option { color: #1b2523; background: #fff; }
       if (g.openDouble && g.players[0].hand.length === 0) return 'Your last tile was a double, and a double cannot go out. Draw a tile to try to cover it.';
       return 'Nothing fits. Draw a tile from the boneyard.';
     }
-    if (g && g.opening && g.opening.human.finished) {
-      const waiting = tableIds(S).filter(id => id !== 'human' && g.opening[id] && !g.opening[id].finished).map(id => nameOf(S, id));
-      if (waiting.length) return `Your train is set. Waiting for ${waiting.join(' and ')} to finish building.`;
+    if (g && g.opening && g.opening.human.finished && !g.opening.cpu.finished) {
+      return `Your train is set. Waiting for ${cpuName(S)} to finish building.`;
     }
     return S.banner || '';
   }
 
   function viewBar(S) {
-    const g = S.game, on = S.online;
+    const g = S.game;
     const round = g
-      ? `<div class="round"><span>Round ${S.roundIndex + 1} of ${on ? on.rounds : S.opts.rounds}</span><span>Engine double-${g.engine}</span>${on ? `<span>Online game ${on.display}</span>` : `<span>Computer: ${LEVEL_LABEL[S.opts.level]}</span>`}</div>`
+      ? `<div class="round"><span>Round ${S.roundIndex + 1} of ${S.opts.rounds}</span><span>Engine double-${g.engine}</span><span>Computer: ${LEVEL_LABEL[S.opts.level]}</span></div>`
       : '';
     return `<header class="bar">
-      <div class="brand"><h1>Mexican Train</h1><p class="sub">${on ? 'Double-12 online' : 'Double-12 against the computer'}</p></div>
+      <div class="brand"><h1>Mexican Train</h1><p class="sub">Double-12 against the computer</p></div>
       ${round}
       <div class="totals" role="group" aria-label="Scores, lowest wins">
-        ${tableIds(S).map(id => `<div class="tot"><b>${S.totals[id] || 0}</b><span>${nameOf(S, id)}</span></div>`).join('\n        ')}
+        <div class="tot"><b>${S.totals.human}</b><span>You</span></div>
+        <div class="tot"><b>${S.totals.cpu}</b><span>${cpuName(S)}</span></div>
         <p class="hint">Lowest score wins</p>
       </div>
       <nav class="tools">
         <button class="btn" data-action="toggleSound" aria-pressed="${S.opts.sound ? 'false' : 'true'}" data-focus-id="tools-sound">${S.opts.sound ? 'Mute' : 'Unmute'}</button>
         <button class="btn" data-action="toggleStyle" data-focus-id="tools-style">${S.opts.style === 'numbers' ? 'Show pips' : 'Show numbers'}</button>
         <button class="btn" data-action="openRules" data-focus-id="tools-rules">Rules</button>
-        ${on ? '<button class="btn" data-action="askLeave" data-focus-id="tools-new">Leave game</button>' : '<button class="btn" data-action="newGame" data-focus-id="tools-new">New game</button>'}
+        <button class="btn" data-action="newGame" data-focus-id="tools-new">New game</button>
       </nav>
     </header>`;
   }
 
   function viewOpp(S) {
     const g = S.game;
+    const n = g.players[1].hand.length;
     const a = S.awaiting;
-    const ready = drawOnly(S) && hintsOn(S);               // flashes only when hints are on
-    const clickable = ready || (!hintsOn(S) && !!a && (a.kind === 'move' || a.kind === 'build' || a.kind === 'draw'));   // with hints off you may try to draw on your turn
-    const on = S.online;
-    const c = on ? S.comment : (S.opts.chat ? S.comment : null);
-    const ids = tableIds(S).slice(1);                       // the opponents: one, or two when a computer is the third player
-    const rows = ids.map((id, i) => {
-      const n = g.players.find(p => p.id === id).hand.length;
-      const info = on && S.opps ? S.opps.find(o => o.id === id) : null;
-      const who = on
-        ? (info && info.computer
-          ? `<span class="tag tag-${info.level}" title="${LEVEL_LABEL[info.level]} computer player">${LEVEL_LABEL[info.level]}</span>`
-          : `<span class="net-dot ${on.oppConnected !== false ? 'up' : 'down'}" title="${on.oppConnected !== false ? 'connected' : 'disconnected'}"></span>`)
-        : `<span class="tag tag-${S.opts.level}" title="${LEVEL_LABEL[S.opts.level]} computer player">${LEVEL_LABEL[S.opts.level]}</span>`;
-      const toggle = i > 0 ? '' : (on
-        ? `<button class="btn chat-toggle" data-action="toggleSay" aria-expanded="${S.sayOpen ? 'true' : 'false'}" data-focus-id="say">Say something</button>`
-        : `<button class="btn chat-toggle" data-action="toggleChat" aria-pressed="${S.opts.chat ? 'true' : 'false'}" data-focus-id="chat">Comments: ${S.opts.chat ? 'on' : 'off'}</button>`);
-      return `<div class="cpu-hand${i > 0 ? ' second' : ''}" data-player="${id}">
-        <span class="who">${nameOf(S, id)}</span>
-        ${who}
+    const ready = drawOnly(S);
+    const c = S.opts.chat ? S.comment : null;
+    return `<section class="opp" aria-label="Opponent and boneyard">
+      <div class="cpu-hand">
+        <span class="who">${cpuName(S)}</span>
+        <span class="tag tag-${S.opts.level}" title="${LEVEL_LABEL[S.opts.level]} computer player">${LEVEL_LABEL[S.opts.level]}</span>
         <span class="backs" aria-hidden="true">${'<i class="back"></i>'.repeat(n)}</span>
         <span class="count">${n} ${n === 1 ? 'tile' : 'tiles'}</span>
-        ${toggle}
-      </div>`;
-    }).join('\n      ');
-    const panel = on && S.sayOpen
-      ? `<div class="say-panel" role="group" aria-label="Quick phrases">${ONLINE_PHRASES.map((ph, i) => `<button class="btn say" data-action="sendChat" data-key="${i}">${esc(ph)}</button>`).join('')}</div>` : '';
-    const mine = on && S.mySay ? `<div class="you-said">You said: ${esc(S.mySay.text)}</div>` : '';
-    const speaker = c && c.from ? c.from : cpuName(S);
-    return `<section class="opp${ids.length > 1 ? ' three' : ''}" aria-label="Opponent and boneyard">
-      ${rows}
-      <button class="boneyard${ready ? ' ready' : ''}" data-action="draw" data-focus-id="draw"${ready ? ` style="animation-delay:-${S.flashPhase || 0}ms"` : clickable ? '' : ' disabled'}
+        <button class="btn chat-toggle" data-action="toggleChat" aria-pressed="${S.opts.chat ? 'true' : 'false'}" data-focus-id="chat">Comments: ${S.opts.chat ? 'on' : 'off'}</button>
+      </div>
+      <button class="boneyard${ready ? ' ready' : ''}" data-action="draw" data-focus-id="draw"${ready ? ` style="animation-delay:-${S.flashPhase || 0}ms"` : ' disabled'}
         aria-label="${ready ? 'Draw a tile. ' : ''}${g.boneyard.length} tiles in the boneyard">
         <span class="stack" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="yard-text"><span class="count"><b>${g.boneyard.length}</b> in the boneyard</span>${ready ? '<span class="cta">Draw a tile</span>' : ''}</span>
       </button>
       <div class="bubble-slot" aria-live="polite">${!c ? '' : c.lang
-        ? `<div class="bubble native"><b>${esc(speaker)}</b><span lang="${c.lang}"${NATIVE_DIR[c.lang] ? ' dir="rtl"' : ''}>${esc(c.text)}</span><small class="trans" lang="en">${esc(c.trans)}</small></div>`
-        : `<div class="bubble"><b>${esc(speaker)}</b><span>${esc(c.text)}</span></div>`}${mine}${panel}</div>
+        ? `<div class="bubble native"><b>${esc(cpuName(S))}</b><span lang="${c.lang}"${NATIVE_DIR[c.lang] ? ' dir="rtl"' : ''}>${esc(c.text)}</span><small class="trans" lang="en">${esc(c.trans)}</small></div>`
+        : `<div class="bubble"><b>${esc(cpuName(S))}</b><span>${esc(c.text)}</span></div>`}</div>
     </section>`;
   }
 
-  /* Hints: which tiles can be played and where is shown. They are off if the player turned "Allow hints" off on the
-   * main screen, or has switched "Show hints" off on their hand (the button only exists when hints are allowed). */
-  const hintsOn = S => S.opts.allowHints !== false && S.showHints !== false;
   function targetsOf(S) {
     const a = S.awaiting;
     const set = {};
-    if (hintsOn(S) && a && a.kind === 'move' && S.selectedKey) {
+    if (a && a.kind === 'move' && S.selectedKey) {
       a.moves.forEach(m => { if (key(m.tile) === S.selectedKey) set[m.trainId] = m; });
     }
     return set;
@@ -2079,7 +1566,7 @@ select option { color: #1b2523; background: #fff; }
   // Trains the hovered (or keyboard-focused) hand tile could be played on.
   function previewOf(S) {
     const a = S.awaiting, set = {};
-    if (hintsOn(S) && S.hoverKey && a && (a.kind === 'move' || a.kind === 'build')) {
+    if (S.hoverKey && a && (a.kind === 'move' || a.kind === 'build')) {
       a.moves.forEach(m => { if (key(m.tile) === S.hoverKey) set[m.trainId] = true; });
     }
     return set;
@@ -2097,52 +1584,20 @@ select option { color: #1b2523; background: #fff; }
     return !!(a && (a.kind === 'draw' || (a.kind === 'build' && a.canDraw)));
   }
 
-  /* The marker on an open train: a small, shiny, 3D-looking toy locomotive in the colour of its player, sitting at the far
-   * left of their train. (The physical game has a coloured train piece for each player to show their train is open.)
-   * It is one colour: every shade in it (the lighter top, the darker underside, the wheels, the window) comes from the
-   * player's colour, and the only other thing is the white shine. The body comes down to the middle of the wheels, so
-   * only the lower half of each shows. Pure SVG; the colours come from CSS (.p-human, .p-cpu, .p-cpu2) and every gradient
-   * has an id of its own. */
-  function toyTrainSVG(id) {
-    const g = n => `${n}-${id}`;
-    const edge = 'stroke="var(--tc-lo)" stroke-width="0.9" stroke-linejoin="round"';
-    return `<span class="toy-train p-${id}" aria-hidden="true"><svg viewBox="0 0 62 40" focusable="false">
-      <defs>
-        <linearGradient id="${g('tb')}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--tc-hi)"/><stop offset="0.4" style="stop-color:var(--tc)"/><stop offset="1" style="stop-color:var(--tc-lo)"/></linearGradient>
-        <linearGradient id="${g('tr')}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--tc-hi)"/><stop offset="1" style="stop-color:var(--tc)"/></linearGradient>
-        <linearGradient id="${g('tw')}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--tc)"/><stop offset="1" style="stop-color:var(--tc-dk)"/></linearGradient>
-        <linearGradient id="${g('tg')}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--tc-lo)"/><stop offset="1" style="stop-color:var(--tc-dk)"/></linearGradient>
-      </defs>
-      <circle cx="14" cy="33" r="6.3" fill="url(#${g('tw')})" stroke="var(--tc-dk)" stroke-width="0.9"/>
-      <circle cx="44" cy="33" r="6.3" fill="url(#${g('tw')})" stroke="var(--tc-dk)" stroke-width="0.9"/>
-      <path d="M56 24 L61 33 L56 33 Z" fill="url(#${g('tb')})" ${edge}/>
-      <path d="M42 14 v-7 l-2 -3 h10 l-2 3 v7 z" fill="url(#${g('tb')})" ${edge}/>
-      <rect x="22" y="13" width="35" height="20" rx="5" fill="url(#${g('tb')})" ${edge}/>
-      <path d="M30 13.3 a4.5 4.5 0 0 1 9 0 z" fill="url(#${g('tb')})" ${edge}/>
-      <rect x="3" y="9" width="21" height="24" rx="2.5" fill="url(#${g('tb')})" ${edge}/>
-      <rect x="1" y="4.5" width="25" height="5" rx="2.2" fill="url(#${g('tr')})" ${edge}/>
-      <rect x="8" y="12" width="11" height="8" rx="1.8" fill="url(#${g('tg')})" stroke="var(--tc-dk)" stroke-width="0.8"/>
-      <path d="M26 17.5 Q42 14.6 54 17.5" fill="none" stroke="#fff" stroke-opacity="0.6" stroke-width="2.6" stroke-linecap="round"/>
-      <path d="M5 11.5 H21" fill="none" stroke="#fff" stroke-opacity="0.5" stroke-width="1.6" stroke-linecap="round"/>
-      <path d="M9.5 14.2 H13.5" fill="none" stroke="#fff" stroke-opacity="0.75" stroke-width="1.4" stroke-linecap="round"/>
-      <path d="M4.5 30.2 H55.5" fill="none" stroke="var(--tc-dk)" stroke-opacity="0.3" stroke-width="2.4" stroke-linecap="round"/>
-    </svg></span>`;
-  }
-
   function viewTrack(S, id) {
     const g = S.game, tr = g.trains[id];
     const targets = targetsOf(S);
     const target = !!targets[id];
-    const must = !!(g.openDouble && g.openDouble.trainId === id);      // always shown, with or without hints: it is a rule of the game, not a hint
+    const must = !!(g.openDouble && g.openDouble.trainId === id);
     const style = S.opts.style;
     // While the computer is still building, its tiles stay face down.
-    const hidden = id !== 'human' && id !== 'mexican' && !!g.opening && !!g.opening[id] && !g.opening[id].finished;
+    const hidden = id === 'cpu' && !!g.opening && !g.opening.cpu.finished;
 
     let note = '';
     if (id === 'mexican') note = '<span class="shared">Open to both players</span>';
     else if (hidden) note = '<span class="shared">Building, tiles face down</span>';
     else if (tr.marker) {
-      note = `<span class="lamp"><span>${id === 'human' ? `Open: ${tableIds(S).slice(1).map(x => nameOf(S, x)).join(' and ')} can play here` : 'Open: you can play here'}</span></span>`;
+      note = `<span class="lamp"><i class="lantern" aria-hidden="true"></i><span>${id === 'human' ? `Open: ${cpuName(S)} can play here` : 'Open: you can play here'}</span></span>`;
     }
     const need = tr.end;
     const needs = hidden
@@ -2156,7 +1611,7 @@ select option { color: #1b2523; background: #fff; }
 
     const tiles = tr.tiles.map((t, i) => {
       const pop = S.lastPlay && S.lastPlay.trainId === id && S.lastPlay.index === i;
-      if (hidden) return tileBackSVG(t[0] === t[1] ? 'v' : 'h', pop ? 'pop' : '', i);   // even face down, a double stands across the train
+      if (hidden) return tileBackSVG('h', pop ? 'pop' : '', i);
       const cls = [pop ? 'pop' : '', S.revealed === id ? 'reveal' : ''].join(' ').trim();
       return tileSVG(t[0], t[1], { style, cls, idx: i });
     }).join('');
@@ -2169,10 +1624,9 @@ select option { color: #1b2523; background: #fff; }
 
     const preview = !target && !!previewOf(S)[id];
     const drop = S.dropTrain === id;
-    const toy = id !== 'mexican' && !hidden && !!tr.marker;           // an open train wears its player's toy train
-    return `<div class="track${target ? ' target' : ''}${must ? ' must' : ''}${preview ? ' preview' : ''}${drop ? ' drop' : ''}${toy ? ' has-toy' : ''}" data-train="${id}">
+    return `<div class="track${target ? ' target' : ''}${must ? ' must' : ''}${preview ? ' preview' : ''}${drop ? ' drop' : ''}" data-train="${id}">
       ${label}
-      <div class="rail">${toy ? toyTrainSVG(id) : ''}<div class="scroller" data-train="${id}"><div class="track-tiles">${engineTile}${tiles}${ghost}</div></div></div>
+      <div class="scroller" data-train="${id}"><div class="track-tiles">${engineTile}${tiles}${ghost}</div></div>
     </div>`;
   }
 
@@ -2184,7 +1638,7 @@ select option { color: #1b2523; background: #fff; }
       const lastT = mine[mine.length - 1];
       const n = a.buildCount;
       controls = '<div class="build">' +
-        (a.canBuild && hintsOn(S) ? `<button class="btn primary" data-action="autoBuild" data-focus-id="autobuild">Build my longest train (${n} ${n === 1 ? 'tile' : 'tiles'})</button>` : '') +
+        (a.canBuild ? `<button class="btn primary" data-action="autoBuild" data-focus-id="autobuild">Build my longest train (${n} ${n === 1 ? 'tile' : 'tiles'})</button>` : '') +
         (a.canUndo && lastT ? `<button class="btn" data-action="undoTile" data-focus-id="undo">Take back ${fmt(lastT)}</button>` : '') +
         (a.canDone ? '<button class="btn" data-action="endBuild" data-focus-id="endbuild">Done</button>' : '') +
         '</div>';
@@ -2210,38 +1664,33 @@ select option { color: #1b2523; background: #fff; }
   function viewTray(S) {
     const g = S.game, me = g.players[0];
     const a = S.awaiting;
-    const hints = hintsOn(S);
     const moving = !!(a && (a.kind === 'move' || a.kind === 'build')) || drawOnly(S);
     const playable = {};
     if (moving && a.moves) a.moves.forEach(m => { playable[key(m.tile)] = true; });
     const style = S.opts.style;
     const tiles = orderedHand(S).map(t => {
       const k = key(t);
-      const mode = moving ? (hints ? (playable[k] ? 'playable' : 'dim') : 'plain') : 'idle';   // with hints off nothing says which tiles can be played
+      const mode = moving ? (playable[k] ? 'playable' : 'dim') : 'idle';
       const sel = S.selectedKey === k;
       const label = `${t[0]} and ${t[1]}${mode === 'playable' ? ', playable' : ''}${sel ? ', selected' : ''}`;
       // not "disabled": every tile can be dragged, and a click on one that cannot be played does nothing
       return `<button class="tile-btn ${mode}${sel ? ' selected' : ''}${S.freshKey === k ? ' fresh' : ''}${S.dragKey === k ? ' drag-src' : ''}"
         data-action="selectTile" data-key="${k}" data-focus-id="t${k}" aria-pressed="${sel}"
-        aria-label="${label}"${mode === 'playable' || mode === 'plain' ? '' : ' aria-disabled="true"'}>${tileSVG(t[0], t[1], { orient: 'h', style })}</button>`;
+        aria-label="${label}"${mode === 'playable' ? '' : ' aria-disabled="true"'}>${tileSVG(t[0], t[1], { orient: 'h', style })}</button>`;
     }).join('');
     const tip = S.roundIndex === 0 && !S.handOrder ? '<span class="tip">Drag a tile onto a train to play it, or around your hand to rearrange</span>' : '';
-    // only when hints are allowed (main screen): a switch to show or hide them during the game
-    const hintBtn = S.opts.allowHints !== false ? `<button class="btn hints-toggle" data-action="toggleShowHints" aria-pressed="${hints ? 'true' : 'false'}" data-focus-id="hints">Show hints: ${hints ? 'on' : 'off'}</button>` : '';
+    const sort = S.handOrder ? '<button class="btn sort-btn" data-action="sortHand" data-focus-id="sort">Sort hand</button>' : '';
     // Two or more rows: half the tiles (plus one spare spot) per row, at most 10 across. On a narrow
     // screen the grid simply wraps into more rows.
     const n = me.hand.length;
     const cols = Math.min(10, Math.max(1, Math.ceil((n + 1) / 2)));
-    const canDraw = drawOnly(S) && hints;                  // (with hints off, the boneyard is the only way to draw: no flashing spot)
-    const myTurn = !!a && (a.kind === 'move' || a.kind === 'build' || a.kind === 'draw');
+    const canDraw = drawOnly(S);
     const spot = canDraw
       ? `<button class="slot-draw" data-action="draw" data-focus-id="slotdraw" aria-label="Draw a tile from the boneyard"
           style="animation-delay:-${S.flashPhase || 0}ms"><span>Draw</span></button>`
-      : !hints                                              // hints off: the Draw button is always there, but never flashes (and is not clickable when it is not your turn)
-        ? `<button class="slot-draw calm" data-action="draw" data-focus-id="slotdraw" aria-label="Draw a tile from the boneyard"${myTurn ? '' : ' disabled'}><span>Draw</span></button>`
-        : '<div class="slot-empty" aria-hidden="true"></div>';
+      : '<div class="slot-empty" aria-hidden="true"></div>';
     return `<section class="tray" aria-label="Your hand">
-      <div class="tray-head"><span>Your hand</span>${tip}${hintBtn}<span class="count">${n} ${n === 1 ? 'tile' : 'tiles'}</span></div>
+      <div class="tray-head"><span>Your hand</span>${tip}${sort}<span class="count">${n} ${n === 1 ? 'tile' : 'tiles'}</span></div>
       <div class="hand${canDraw ? ' can-draw' : ''}"${canDraw ? ' data-action="draw"' : ''}><div class="hand-grid" style="--cols:${cols}">${tiles}${spot}</div></div>
     </section>`;
   }
@@ -2257,9 +1706,9 @@ select option { color: #1b2523; background: #fff; }
       <li>Each round starts from the engine, a double: 12-12 in round 1, then 11-11, and so on down to 0-0. Your train, your opponent's train and the shared Mexican train all begin from that number.</li>
       <li>At the start of every round, all players build their own trains at the same time. Tap tiles to add them one after another, or press Build my longest train. You can take back your last tile as often as you like until you press Done. Your opponent's tiles stay face down until they finish.</li>
       <li>To play a tile, tap it and then tap the train, or drag it onto the train you want (the trains it can go on light up). You can also arrange your hand any way you like by dragging tiles around it, or with Shift plus the left and right arrow keys. Sort hand puts it back in order.</li>
-      <li>If nothing in your hand fits the engine, draw one tile. If it still does not fit, you pass and a toy train marker goes on your train.</li>
-      <li>Then you take turns. Play one tile that matches the number a train needs: your own train, the Mexican train, or your opponent's train when it has a toy train marker on it.</li>
-      <li>Nothing fits? Draw one tile. If it fits, play it. If not, you pass and a marker goes on your train, which lets your opponent play there until you next play on it yourself.</li>
+      <li>If nothing in your hand fits the engine, draw one tile. If it still does not fit, you pass and a lantern goes on your train.</li>
+      <li>Then you take turns. Play one tile that matches the number a train needs: your own train, the Mexican train, or your opponent's train when it shows a red lantern.</li>
+      <li>Nothing fits? Draw one tile. If it fits, play it. If not, you pass and a lantern goes on your train, which lets your opponent play there until you next play on it yourself.</li>
       <li>After you play a double, you must play another tile onto it straight away. If you can't, the next player has to cover it before anything else is played.</li>
       <li>Play your last tile to win the round and score 0, but not with a double: a double has to be covered. If your last tile is a double, you draw a tile and cover it to go out, or pass if it does not fit. In the opening, a double cannot be your last tile down.</li>
       <li>Otherwise you score the pips left in your hand (the 0-0 tile counts 50). A blocked round scores both players their pips. The lowest total wins.</li>
@@ -2275,7 +1724,7 @@ select option { color: #1b2523; background: #fff; }
     const o = S.opts;
     return `<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
       <h2 id="dlg-title">Mexican Train</h2>
-      <p>Empty your hand before your opponent empties theirs. Play on your train, the shared Mexican train, or any train with a marker on it.</p>
+      <p>Empty your hand before your opponent empties theirs. Play on your train, the shared Mexican train, or any train showing a lantern.</p>
       <div class="field"><label for="opt-rounds">Game length</label>
         <select id="opt-rounds">${optionList([1, 4, 13], o.rounds, v => v === 1 ? 'One round' : v === 4 ? 'Short game, 4 rounds' : 'Full game, 13 rounds')}</select></div>
       <div class="field"><label for="opt-hand">Tiles dealt to each player</label>
@@ -2283,16 +1732,11 @@ select option { color: #1b2523; background: #fff; }
       <div class="field"><label for="opt-level">Computer skill</label>
         <select id="opt-level">${optionList(LEVELS, o.level, v => LEVEL_TEXT[v])}</select>
         <p class="field-note">Easy often plays at random and builds short trains. Hard plans ahead and keeps long chains available so it can go out sooner. Each level has its own computer players, who talk differently too.</p></div>
-      <div class="field"><label for="opt-hints">Hints</label>
-        <button type="button" id="opt-hints" class="btn toggle" data-action="toggleAllowHints" aria-pressed="${o.allowHints !== false ? 'true' : 'false'}">Allow hints: ${o.allowHints !== false ? 'on' : 'off'}</button>
-        <p class="field-note">On: the tiles you can play and the trains they can go on are highlighted, and your hand gets a Show hints button to switch that off or on. Off: nothing is highlighted and nothing is played for you: you pick the tile and then the train.</p></div>
       <div class="field"><label for="opt-style">Tile faces</label>
-        <select id="opt-style">${optionList(['pips', 'numbers'], o.style, v => v === 'pips' ? 'Colored pips' : 'Large numbers')}</select></div>
+        <select id="opt-style">${optionList(['pips', 'numbers'], o.style, v => v === 'pips' ? 'Coloured pips' : 'Large numbers')}</select></div>
       <details class="how"><summary>How to play</summary>${RULES_HTML}</details>
       <div class="actions">
         ${S.matchActive ? '<button class="btn" data-action="closeOverlay">Keep playing</button>' : ''}
-        <button class="btn" data-action="openHost">Host online game</button>
-        <button class="btn" data-action="openJoin">Join online game</button>
         <button class="btn primary" data-action="startGame" data-primary="1">Start game</button>
       </div></div></div>`;
   }
@@ -2314,9 +1758,9 @@ select option { color: #1b2523; background: #fff; }
     const m = S.modal;
     const cpu = cpuName(S);
     let title;
-    if (m.blocked) title = m.winnerId ? (m.winnerId === 'human' ? 'Blocked, and you hold fewer pips' : `Blocked, and ${nameOf(S, m.winnerId)} holds fewer pips`) : 'Blocked, and it is a tie';
-    else if (m.tie) title = tableIds(S).length === 2 ? 'You both played every tile' : 'More than one of you played every tile';
-    else title = m.winnerId === 'human' ? 'You went out first' : `${nameOf(S, m.winnerId)} went out first`;
+    if (m.blocked) title = m.winnerId ? (m.winnerId === 'human' ? 'Blocked, and you hold fewer pips' : `Blocked, and ${cpu} holds fewer pips`) : 'Blocked, and it is a tie';
+    else if (m.tie) title = 'You both played every tile';
+    else title = m.winnerId === 'human' ? 'You went out first' : `${cpu} went out first`;
     const rows = m.rows.map(r => `<div class="row">
         <div class="who">${r.name}</div>
         <div class="mini">${miniTiles(r.hand, S.opts.style)}</div>
@@ -2332,388 +1776,37 @@ select option { color: #1b2523; background: #fff; }
 
   function viewFinal(S) {
     const m = S.modal;
-    const ids = tableIds(S), score = id => m.totals[id] || 0;
-    const low = Math.min(...ids.map(score)), lows = ids.filter(id => score(id) === low);
-    const title = lows.length === 1 ? (lows[0] === 'human' ? 'You win' : `${nameOf(S, lows[0])} wins`)
-      : lows.length === ids.length ? 'A tie' : `A tie between ${lows.map(id => nameOf(S, id)).join(' and ')}`;
-    const rivals = ids.slice(1).map(id => nameOf(S, id)).join(' and ');
+    const you = m.totals.human, cpu = m.totals.cpu;
+    const title = you === cpu ? 'A tie' : you < cpu ? 'You win' : `${cpuName(S)} wins`;
     return `<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
       <h2 id="dlg-title">${title}</h2>
-      <div class="final">${ids.map(id => `<div class="tot"><b>${score(id)}</b><span>${nameOf(S, id)}</span></div>`).join('')}</div>
-      <p>Lowest score wins. ${S.online ? `You played ${rivals} online.` : `You played ${cpuName(S)} on ${LEVEL_LABEL[S.opts.level]}.`}</p>
-      <div class="actions">${S.online ? '<button class="btn primary" data-action="onlineBack" data-primary="1">Back to the menu</button>' : '<button class="btn primary" data-action="newGame" data-primary="1">Play again</button>'}</div>
+      <div class="final"><div class="tot"><b>${you}</b><span>You</span></div><div class="tot"><b>${cpu}</b><span>${cpuName(S)}</span></div></div>
+      <p>Lowest score wins. You played ${cpuName(S)} on ${LEVEL_LABEL[S.opts.level]}.</p>
+      <div class="actions"><button class="btn primary" data-action="newGame" data-primary="1">Play again</button></div>
     </div></div>`;
   }
 
-  /* Which dialog is showing, if any: the player's own choice first, then what the online game needs. */
-  function overlayId(S) {
-    if (S.overlay) return S.overlay;
-    const o = S.online;
-    if (o) {
-      if (o.ended) return 'online-ended';
-      if (o.phase === 'resuming' || o.conn !== 'open' || (o.phase === 'playing' && o.oppConnected === false)) return 'online-wait';
-      if (o.phase === 'lobby') return 'online-lobby';
-    }
-    return (S.modal && S.modal.type) || null;
-  }
   function viewOverlay(S) {
-    switch (overlayId(S)) {
-      case 'rules': return viewRules();
-      case 'setup': return viewSetup(S);
-      case 'online-host': return viewOnlineForm(S, true);
-      case 'online-join': return viewOnlineForm(S, false);
-      case 'online-leave': return viewOnlineLeave(S);
-      case 'online-ended': return viewOnlineEnded(S);
-      case 'online-wait': return viewOnlineWait(S);
-      case 'online-lobby': return viewOnlineLobby(S);
-      case 'roundEnd': return viewRoundEnd(S);
-      case 'final': return viewFinal(S);
-      default: return '';
-    }
+    if (S.overlay === 'rules') return viewRules();
+    if (S.overlay === 'setup') return viewSetup(S);
+    if (S.modal && S.modal.type === 'roundEnd') return viewRoundEnd(S);
+    if (S.modal && S.modal.type === 'final') return viewFinal(S);
+    return '';
   }
-
-  /* ---- online dialogs ---- */
-  const clock = ms => { const t = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
-  function viewOnlineForm(S, host) {
-    const f = S.form || {}, busy = !!(S.online && S.online.phase === 'connecting');
-    const err = S.onlineError ? `<p class="form-error" role="alert">${esc(S.onlineError)}</p>` : '';
-    return `<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
-      <h2 id="dlg-title">${host ? 'Host an online game' : 'Join an online game'}</h2>
-      ${host
-        ? '<p>This page must be opened from the game server on this computer (<code>node server.js</code>). You will get a join code to give to the other player, together with this computer\'s network address.</p>'
-        : '<p>Ask the host for the server address and the join code.</p>'}
-      ${host ? (() => {
-        const hi = S.hostInfo || { state: 'none', address: '', addresses: [] };
-        const note = hi.state === 'ready'
-          ? 'This computer\'s address on your network. The server sets it, so it cannot be changed here; the other player uses it to join.' + (hi.addresses.length > 1 ? ' (This computer has other addresses too: ' + hi.addresses.slice(1).map(esc).join(', ') + '.)' : '')
-          : hi.state === 'loading' ? 'Looking up this computer\'s address...'
-            : 'The game server did not give its address. Open this page from the server: start it with node server.js and open the address it prints.';
-        return `<div class="field"><label for="net-server">Server address</label>
-        <input id="net-server" type="text" value="${esc(hi.address)}" readonly aria-readonly="true" class="fixed" placeholder="${hi.state === 'loading' ? 'Looking up...' : 'Not available'}" autocomplete="off" spellcheck="false">
-        <p class="field-note">${note}</p></div>`;
-      })() : `<div class="field"><label for="net-server">Server address</label>
-        <input id="net-server" type="text" value="${esc(f.server || '')}" placeholder="192.168.1.23:8080" autocomplete="off" spellcheck="false" autocapitalize="off"></div>`}
-      ${host ? '' : `<div class="field"><label for="net-code">Join code</label>
-        <input id="net-code" type="text" value="${esc(f.code || '')}" placeholder="ABC-DEF" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12"></div>`}
-      <div class="field"><label for="net-name">Your name</label>
-        <input id="net-name" type="text" value="${esc(f.name || '')}" placeholder="${host ? 'Host' : 'Guest'}" autocomplete="nickname" maxlength="20"></div>
-      ${host ? `<div class="field"><label for="net-rounds">Game length</label>
-        <select id="net-rounds">${optionList([1, 4, 13], Number(f.rounds) || 4, v => v === 1 ? 'One round' : v === 4 ? 'Short game, 4 rounds' : 'Full game, 13 rounds')}</select></div>
-      <div class="field"><label for="net-hand">Tiles dealt to each player</label>
-        <select id="net-hand">${optionList([8, 12, 15], Number(f.hand) || 15, v => v === 15 ? '15 (standard)' : String(v))}</select></div>
-      <div class="field"><label for="net-computer">Computer player</label>
-        <select id="net-computer">${optionList(['none', 'easy', 'normal', 'hard'], f.computer || 'none', v => v === 'none' ? 'None: two players' : 'Add a ' + LEVEL_LABEL[v] + ' computer as a third player')}</select>
-        <p class="field-note">With a computer player, all three are at the table from the start.</p></div>` : ''}
-      ${err}
-      <div class="actions">
-        <button class="btn" data-action="closeOverlay">Back</button>
-        <button class="btn primary" data-action="${host ? 'hostGame' : 'joinGame'}" data-primary="1"${busy || (host && !(S.hostInfo && S.hostInfo.state === 'ready')) ? ' disabled' : ''}>${busy ? 'Connecting...' : host ? 'Create game' : 'Join game'}</button>
-      </div></div></div>`;
-  }
-  function viewOnlineLobby(S) {
-    const o = S.online, host = o.host;
-    const players = (o.settings.computer ? [0, 1, 2] : [0, 1]).map(i => {
-      const p = o.players[i];
-      return `<li class="${p ? (p.connected ? 'up' : 'down') : 'empty'}"><i class="net-dot ${p ? (p.connected ? 'up' : 'down') : ''}"></i><span>${p ? p.name + (i === o.seat ? ' (you)' : '') + (i === 0 ? ', host' : '') + (p.computer ? `, computer, ${LEVEL_LABEL[p.level || o.settings.computer]}` : '') : 'Waiting for a player...'}</span></li>`;
-    }).join('');
-    const qi = Math.min(Math.max(0, S.qrIndex || 0), Math.max(0, o.addresses.length - 1));
-    const link = o.addresses.length ? `http://${o.addresses[qi]}/?join=${o.code}` : '';
-    const qr = host && link
-      ? `<div class="qrbox">${qrSvg(link, 'QR code: scan it to join the game')}
-          <div class="qrtext"><p>Scan with a phone on the same network to join.</p><p class="field-note"><code>${esc(link)}</code></p>
-          <button class="btn" data-action="copyLink" data-key="${esc(link)}">${S.copied === 'link' ? 'Copied' : 'Copy link'}</button></div></div>` : '';
-    const addrs = host
-      ? (o.addresses.length
-        ? `${qr}<p>Or the other player opens one of these addresses in a browser, or enters it under <b>Join online game</b>:</p><ul class="addrs">${o.addresses.map((a, i) => `<li><code>${esc(a)}</code>${o.addresses.length > 1 ? ` <button class="btn small" data-action="selectQr" data-key="${i}" aria-pressed="${i === qi ? 'true' : 'false'}">${i === qi ? 'QR shown' : 'Show QR'}</button>` : ''}</li>`).join('')}</ul>`
-        : '<p>This server is only reachable from this computer (it was started with <code>--local-only</code>, or has no network address).</p>')
-      : '';
-    const settings = host
-      ? `<div class="field-row"><div class="field"><label for="net-rounds">Game length</label>
-          <select id="net-rounds">${optionList([1, 4, 13], o.settings.rounds, v => v === 1 ? 'One round' : v === 4 ? '4 rounds' : '13 rounds')}</select></div>
-        <div class="field"><label for="net-hand">Tiles each</label>
-          <select id="net-hand">${optionList([8, 12, 15], o.settings.hand, v => String(v))}</select></div>
-        <div class="field"><label for="net-computer">Computer player</label>
-          <select id="net-computer">${optionList(['none', 'easy', 'normal', 'hard'], o.settings.computer || 'none', v => v === 'none' ? 'None' : LEVEL_LABEL[v])}</select></div></div>`
-      : `<p>${o.settings.rounds === 1 ? 'One round' : o.settings.rounds + ' rounds'}, ${o.settings.hand} tiles each${o.settings.computer ? `, with a ${LEVEL_LABEL[o.settings.computer]} computer player` : ''}. ${o.players[0] ? o.players[0].name : 'The host'} will start the game.</p>`;
-    return `<div class="overlay"><div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
-      <h2 id="dlg-title">Online game</h2>
-      <p>Join code</p>
-      <div class="codebox"><span class="code-big" aria-label="Join code ${esc(o.display)}">${o.display}</span>
-        <button class="btn" data-action="copyCode" data-key="${esc(o.display)}">${S.copied === 'code' ? 'Copied' : 'Copy code'}</button></div>
-      ${addrs}
-      <ul class="players">${players}</ul>
-      ${settings}
-      <div class="actions">
-        <button class="btn" data-action="confirmLeave">Leave</button>
-        ${host ? `<button class="btn primary" data-action="startOnline" data-primary="1"${o.canStart ? '' : ' disabled'}>${o.canStart ? 'Start game' : 'Waiting for a player...'}</button>` : ''}
-      </div></div></div>`;
-  }
-  function viewOnlineWait(S) {
-    const o = S.online, opp = o.oppName || S.cpuName || 'The other player';
-    let title, body;
-    if (o.phase === 'resuming' && o.conn === 'open') { title = 'Rejoining your game'; body = '<p>Asking the server for your game...</p>'; }
-    else if (o.conn !== 'open') {
-      title = 'Connection lost';
-      body = `<p>${o.conn === 'connecting' ? 'Connecting' : 'Trying to reconnect'} to <code>${esc(o.server)}</code>... The server keeps your seat for a few minutes, so you can carry on where you left off.</p>`;
-    } else {
-      title = 'Game paused';
-      const left = o.graceUntil ? clock(o.graceUntil - (S.nowMs || 0)) : '';
-      body = `<p>${opp} lost the connection. Waiting for them to come back${left ? ': <b>' + left + '</b> left' : ''}.</p><p class="field-note">If they do not return in time, the game ends.</p>`;
-    }
-    return `<div class="overlay"><div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="dlg-title">
-      <h2 id="dlg-title">${title}</h2>${body}
-      <div class="actions"><button class="btn" data-action="confirmLeave" data-primary="1">Leave game</button></div>
-    </div></div>`;
-  }
-  function viewOnlineEnded(S) {
-    const e = S.online.ended;
-    const title = e.reason === 'timeout' ? 'Game over' : e.reason === 'left' ? 'The game was left' : e.reason === 'error' ? 'The game had a problem' : e.reason === 'replaced' ? 'Opened somewhere else' : 'Game closed';
-    return `<div class="overlay"><div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="dlg-title">
-      <h2 id="dlg-title">${title}</h2><p>${e.message}</p>
-      <div class="actions"><button class="btn primary" data-action="onlineBack" data-primary="1">Back to the menu</button></div>
-    </div></div>`;
-  }
-  function viewOnlineLeave(S) {
-    return `<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
-      <h2 id="dlg-title">Leave the game?</h2>
-      <p>This ends the game for both players. (To take a break instead, just close the page: you have a few minutes to come back.)</p>
-      <div class="actions"><button class="btn" data-action="closeOverlay" data-primary="1">Keep playing</button><button class="btn primary" data-action="confirmLeave">Leave game</button></div>
-    </div></div>`;
-  }
-
-/* Mexican Train (double-12) - play against the computer in the browser.
- * Sections: ENGINE (rules + computer player), TILE ART (SVG), VIEWS (HTML strings),
- * APP (state + turn flow), BOOT. Everything is plain JavaScript, no libraries. */
 
   function viewApp(S) {
     const g = S.game;
     const body = g
       ? viewOpp(S) +
-        `<section class="tracks" aria-label="Trains">${tableIds(S).slice(1).map(id => viewTrack(S, id)).join('')}${viewTrack(S, 'mexican')}${viewTrack(S, 'human')}</section>` +
+        `<section class="tracks" aria-label="Trains">${viewTrack(S, 'cpu')}${viewTrack(S, 'mexican')}${viewTrack(S, 'human')}</section>` +
         viewStatus(S) + viewTray(S) + viewLog(S)
       : '<section class="empty"><p>Choose your game settings to deal the first round.</p></section>';
     return `<div class="shell">${viewBar(S)}<main class="table">${body}</main>${viewOverlay(S)}</div>`;
   }
 
-  /* ================================== QR CODE ================================== */
-  /* A small QR code generator with no dependencies: byte mode, versions 1 to 10, error correction
-   * level M. Enough for a link such as http://192.168.1.23:8080/?join=K7QF2M (up to 213 bytes).
-   * qrEncode(text) -> a square array of rows of booleans (true = dark), or null if it is too long.
-   * qrSvg(text) -> an <svg> string with the 4-module quiet zone the scanners need. */
-
-  // [error-correction codewords per block, blocks in group 1, data codewords each, blocks in group 2, data codewords each]
-  const QR_BLOCKS_M = {
-    1: [10, 1, 16, 0, 0], 2: [16, 1, 28, 0, 0], 3: [26, 1, 44, 0, 0], 4: [18, 2, 32, 0, 0], 5: [24, 2, 43, 0, 0],
-    6: [16, 4, 27, 0, 0], 7: [18, 4, 31, 0, 0], 8: [22, 2, 38, 2, 39], 9: [22, 3, 36, 2, 37], 10: [26, 4, 43, 1, 44],
-  };
-  const QR_ALIGN = { 1: [], 2: [6, 18], 3: [6, 22], 4: [6, 26], 5: [6, 30], 6: [6, 34], 7: [6, 22, 38], 8: [6, 24, 42], 9: [6, 26, 46], 10: [6, 28, 50] };
-  const QR_TOTAL_CODEWORDS = { 1: 26, 2: 44, 3: 70, 4: 100, 5: 134, 6: 172, 7: 196, 8: 242, 9: 292, 10: 346 };
-
-  // arithmetic in GF(256) with the QR polynomial x^8 + x^4 + x^3 + x^2 + 1
-  const GF_EXP = new Array(512), GF_LOG = new Array(256);
-  (function () {
-    let x = 1;
-    for (let i = 0; i < 255; i++) { GF_EXP[i] = x; GF_LOG[x] = i; x <<= 1; if (x & 256) x ^= 0x11D; }
-    for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
-  }());
-  const gfMul = (a, b) => (a && b ? GF_EXP[GF_LOG[a] + GF_LOG[b]] : 0);
-
-  /* The Reed-Solomon error-correction codewords for a block of data codewords. */
-  function rsEncode(data, ecLen) {
-    let gen = [1];                                         // the product of (x + alpha^i), highest power first
-    for (let i = 0; i < ecLen; i++) {
-      const next = new Array(gen.length + 1).fill(0);
-      for (let k = 0; k <= gen.length; k++) next[k] = (k < gen.length ? gen[k] : 0) ^ (k > 0 ? gfMul(gen[k - 1], GF_EXP[i]) : 0);
-      gen = next;
-    }
-    const rem = new Array(ecLen).fill(0);
-    for (const d of data) {
-      const factor = d ^ rem.shift();
-      rem.push(0);
-      for (let i = 0; i < ecLen; i++) rem[i] ^= gfMul(gen[i + 1], factor);
-    }
-    return rem;
-  }
-
-  function utf8Bytes(text) {
-    const out = [];
-    for (const ch of String(text)) {
-      const c = ch.codePointAt(0);
-      if (c < 0x80) out.push(c);
-      else if (c < 0x800) out.push(0xC0 | (c >> 6), 0x80 | (c & 63));
-      else if (c < 0x10000) out.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-      else out.push(0xF0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-    }
-    return out;
-  }
-  const qrDataCapacity = v => { const b = QR_BLOCKS_M[v]; return b[1] * b[2] + b[3] * b[4]; };
-
-  /* The data and error-correction codewords for some bytes, interleaved as the standard requires. */
-  function qrCodewords(bytes, version) {
-    const [ecLen, n1, d1, n2, d2] = QR_BLOCKS_M[version];
-    const capacity = qrDataCapacity(version);
-    const bits = [];
-    const put = (value, count) => { for (let i = count - 1; i >= 0; i--) bits.push((value >>> i) & 1); };
-    put(4, 4);                                             // byte mode
-    put(bytes.length, version < 10 ? 8 : 16);
-    bytes.forEach(b => put(b, 8));
-    put(0, Math.min(4, capacity * 8 - bits.length));       // terminator
-    while (bits.length % 8) bits.push(0);
-    const cw = [];
-    for (let i = 0; i < bits.length; i += 8) cw.push(parseInt(bits.slice(i, i + 8).join(''), 2));
-    for (let pad = 0xEC; cw.length < capacity; pad ^= 0xEC ^ 0x11) cw.push(pad);
-    const blocks = []; let at = 0;
-    for (let b = 0; b < n1 + n2; b++) { const len = b < n1 ? d1 : d2; blocks.push(cw.slice(at, at + len)); at += len; }
-    const ecs = blocks.map(blk => rsEncode(blk, ecLen));
-    const out = [];
-    for (let i = 0; i < Math.max(d1, d2); i++) blocks.forEach(blk => { if (i < blk.length) out.push(blk[i]); });
-    for (let i = 0; i < ecLen; i++) ecs.forEach(e => out.push(e[i]));
-    return out;
-  }
-
-  function qrEncode(text) {
-    const bytes = utf8Bytes(text);
-    let version = 0;
-    for (let v = 1; v <= 10; v++) if (4 + (v < 10 ? 8 : 16) + 8 * bytes.length <= 8 * qrDataCapacity(v)) { version = v; break; }
-    if (!version) return null;
-    const codewords = qrCodewords(bytes, version);
-    const size = 17 + 4 * version;
-    const dark = Array.from({ length: size }, () => new Array(size).fill(false));
-    const fixed = Array.from({ length: size }, () => new Array(size).fill(false));
-    const setFn = (x, y, v) => { dark[y][x] = v; fixed[y][x] = true; };
-    const bit = (n, i) => ((n >>> i) & 1) !== 0;
-
-    // the fixed patterns: timing, three finders with their separators, alignment patterns
-    for (let i = 0; i < size; i++) { setFn(6, i, i % 2 === 0); setFn(i, 6, i % 2 === 0); }
-    for (const [cx, cy] of [[3, 3], [size - 4, 3], [3, size - 4]]) {
-      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
-        const x = cx + dx, y = cy + dy, d = Math.max(Math.abs(dx), Math.abs(dy));
-        if (x >= 0 && x < size && y >= 0 && y < size) setFn(x, y, d !== 2 && d !== 4);
-      }
-    }
-    const pos = QR_ALIGN[version], last = pos.length - 1;
-    pos.forEach((cy, i) => pos.forEach((cx, j) => {
-      if ((i === 0 && j === 0) || (i === 0 && j === last) || (i === last && j === 0)) return;
-      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) setFn(cx + dx, cy + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
-    }));
-    // the 15 format bits (error-correction level M and the mask), written twice
-    const drawFormat = mask => {
-      const data = mask;                                   // level M's two bits are 00
-      let rem = data;
-      for (let i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
-      const bits = ((data << 10) | rem) ^ 0x5412;
-      for (let i = 0; i <= 5; i++) setFn(8, i, bit(bits, i));
-      setFn(8, 7, bit(bits, 6)); setFn(8, 8, bit(bits, 7)); setFn(7, 8, bit(bits, 8));
-      for (let i = 9; i < 15; i++) setFn(14 - i, 8, bit(bits, i));
-      for (let i = 0; i < 8; i++) setFn(size - 1 - i, 8, bit(bits, i));
-      for (let i = 8; i < 15; i++) setFn(8, size - 15 + i, bit(bits, i));
-      setFn(8, size - 8, true);                            // the one module that is always dark
-    };
-    drawFormat(0);
-    if (version >= 7) {                                    // the 18 version bits, written twice
-      let rem = version;
-      for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1F25);
-      const bits = (version << 12) | rem;
-      for (let i = 0; i < 18; i++) { const a = size - 11 + (i % 3), b = Math.floor(i / 3); setFn(a, b, bit(bits, i)); setFn(b, a, bit(bits, i)); }
-    }
-    // the data, in pairs of columns zigzagging up and down from the bottom right
-    let k = 0;
-    const total = codewords.length * 8;
-    for (let right = size - 1; right >= 1; right -= 2) {
-      if (right === 6) right = 5;
-      for (let vert = 0; vert < size; vert++) {
-        for (let j = 0; j < 2; j++) {
-          const x = right - j, y = ((right + 1) & 2) === 0 ? size - 1 - vert : vert;
-          if (!fixed[y][x] && k < total) { dark[y][x] = bit(codewords[k >>> 3], 7 - (k & 7)); k++; }
-        }
-      }
-    }
-    const MASKS = [
-      (x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, (x, y) => x % 3 === 0, (x, y) => (x + y) % 3 === 0,
-      (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => (x * y) % 2 + (x * y) % 3 === 0,
-      (x, y) => ((x * y) % 2 + (x * y) % 3) % 2 === 0, (x, y) => ((x + y) % 2 + (x * y) % 3) % 2 === 0,
-    ];
-    const applyMask = m => { for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!fixed[y][x] && MASKS[m](x, y)) dark[y][x] = !dark[y][x]; };
-    // the standard's four penalty rules, so the scanner-friendliest mask is the one used
-    const penalty = () => {
-      let score = 0;
-      const lines = [];
-      for (let a = 0; a < size; a++) { lines.push(dark[a].slice()); lines.push(dark.map(row => row[a])); }
-      for (const line of lines) {
-        let run = 1;
-        for (let i = 1; i <= size; i++) {
-          if (i < size && line[i] === line[i - 1]) run++;
-          else { if (run >= 5) score += 3 + (run - 5); run = 1; }
-        }
-        for (let i = 0; i + 11 <= size; i++) {
-          const w = line.slice(i, i + 11).map(Number).join('');
-          if (w === '10111010000' || w === '00001011101') score += 40;
-        }
-      }
-      for (let y = 0; y + 1 < size; y++) for (let x = 0; x + 1 < size; x++) {
-        const c = dark[y][x];
-        if (c === dark[y][x + 1] && c === dark[y + 1][x] && c === dark[y + 1][x + 1]) score += 3;
-      }
-      let count = 0; dark.forEach(row => row.forEach(c => { if (c) count++; }));
-      score += 10 * Math.floor(Math.abs(count * 100 / (size * size) - 50) / 5);
-      return score;
-    };
-    let best = 0, bestScore = Infinity;
-    for (let m = 0; m < 8; m++) {
-      applyMask(m); drawFormat(m);
-      const sc = penalty();
-      if (sc < bestScore) { bestScore = sc; best = m; }
-      applyMask(m);                                        // (undo)
-    }
-    applyMask(best); drawFormat(best);
-    return dark;
-  }
-
-  function qrSvg(text, label) {
-    const m = qrEncode(text);
-    if (!m) return '';
-    const quiet = 4, n = m.length + quiet * 2;
-    let d = '';
-    m.forEach((row, y) => row.forEach((c, x) => { if (c) d += `M${x + quiet} ${y + quiet}h1v1h-1z`; }));
-    return `<svg class="qr" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n} ${n}" role="img" aria-label="${esc(label || 'QR code')}" shape-rendering="crispEdges"><rect width="${n}" height="${n}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
-  }
-
-  /* ============================== ONLINE HELPERS ============================== */
-  /* Shared by the page and by the game server (which loads this file for the rules), so each
-   * rule about names, phrases and addresses is written once. */
-
-  // Quick phrases instead of free chat: nothing a player types can reach the other screen.
-  const ONLINE_PHRASES = [
-    'Nice play!', 'Well played!', 'Good game!', 'Ouch!', 'Oops!', 'Hurry up!', 'Take your time.', 'Thanks!',
-    'Ha, I needed that.', 'Nothing fits...', 'Your move!', 'One tile left!',
-  ];
-
-  /* Names end up in text on the other player's screen, so they are cleaned both where they are
-   * made (the server) and where they arrive (the page): letters, digits, spaces and . _ - ' only,
-   * at most 20 characters. */
-  function cleanPlayerName(raw, fallback) {
-    const s = String(raw === undefined || raw === null ? '' : raw).replace(/[^\p{L}\p{N} ._'-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 20);
-    return s || fallback || 'Player';
-  }
-
-  /* "192.168.1.23:8080", "http://myhost:3000/", "ws://10.0.0.5" -> "192.168.1.23:8080" ... or null.
-   * The port defaults to 8080, the server's default. */
-  function parseServerAddress(raw) {
-    let t = String(raw === undefined || raw === null ? '' : raw).trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/[/?#].*$/, '');
-    if (!t || t.length > 255) return null;
-    let host = t, port = '8080';
-    const m = /^(\[[0-9a-fA-F:.]+\]|[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?)(?::(\d{1,5}))?$/.exec(t);
-    if (!m) return null;
-    host = m[1];
-    if (m[3] !== undefined) { if (Number(m[3]) < 1 || Number(m[3]) > 65535) return null; port = String(Number(m[3])); }
-    if (/^\d+\.\d+\.\d+\.\d+$/.test(host) && host.split('.').some(n => Number(n) > 255)) return null;
-    return host + ':' + port;
-  }
-  const ONLINE_SESSION_KEY = 'mt-online';
-
   /* ================================= APP ================================== */
 
-  const DEFAULT_OPTS = { rounds: 4, hand: 15, style: 'pips', sound: true, level: 'normal', chat: true, allowHints: true };
+  const DEFAULT_OPTS = { rounds: 4, hand: 15, style: 'pips', sound: true, level: 'normal', chat: true };
   const FLASH_MS = 1100;   // length of the draw-button flash; must match the CSS animation
 
   // Names the computer player can pick from (none ends in "s", so "Name's train" reads well).
@@ -2760,9 +1853,6 @@ select option { color: #1b2523; background: #fff; }
     const nativeChance = env.nativeChance !== undefined ? env.nativeChance : CHAT.nativeChance;
     const foodChance = env.foodChance !== undefined ? env.foodChance : CHAT.foodChance;
     const fx = env.fx && !env.reducedMotion ? env.fx : null;   // flying tiles; skipped when the player prefers reduced motion
-    const defaultServer = env.defaultServer || '';              // where this page was served from, if from a game server
-    const fetchImpl = env.fetch || null;                        // used to ask the game server for its own network address
-    let infoToken = 0;
     const now = env.now || (() => Date.now());
     const doSleep = env.sleep || (ms => new Promise(res => setTimeout(res, ms)));
     const ABORT = { aborted: true };
@@ -2777,8 +1867,7 @@ select option { color: #1b2523; background: #fff; }
       const snd = !(o.sound === false || o.sound === 'false');
       const level = LEVELS.includes(o.level) ? o.level : DEFAULT_OPTS.level;
       const chat = !(o.chat === false || o.chat === 'false');
-      const allowHints = !(o.allowHints === false || o.allowHints === 'false');
-      return { rounds, hand, style, sound: snd, level, chat, allowHints };
+      return { rounds, hand, style, sound: snd, level, chat };
     }
     function loadOpts() {
       try { return sanitize(Object.assign({}, DEFAULT_OPTS, JSON.parse(storage.get('mt-opts') || '{}'))); }
@@ -2793,8 +1882,6 @@ select option { color: #1b2523; background: #fff; }
       hoverKey: null, flashPhase: 0, handOrder: null, dragKey: null,
       dropTrain: null, dropFrom: null, comment: null, pendingRating: null, lastCommentAt: -Infinity, lastLine: null,
       banner: '', log: [], lastCounts: {}, lastDialog: null,
-      opps: null, cpu2Name: null, hostInfo: null, showHints: true, notice: '',
-      online: null, onlineError: '', form: null, sayOpen: false, mySay: null, copied: false, qrIndex: 0,
     };
     S.opts = loadOpts();
 
@@ -2805,7 +1892,6 @@ select option { color: #1b2523; background: #fff; }
     function render(force) {
       if (!force && S.overlay && S.lastDialog === S.overlay) return;
       S.flashPhase = Math.floor(now() % FLASH_MS);   // re-drawing restarts CSS animations; this keeps the flash in step
-      S.nowMs = now();                               // for the countdown shown while waiting for a dropped player
       const saved = {};
       if (root.querySelectorAll) root.querySelectorAll('.scroller').forEach(el => { saved[el.dataset.train] = el.scrollLeft; });
       const doc = root.ownerDocument;
@@ -2825,7 +1911,7 @@ select option { color: #1b2523; background: #fff; }
         });
         S.lastCounts = counts;
 
-        const dialogId = overlayId(S);
+        const dialogId = S.overlay || (S.modal && S.modal.type) || null;
         if (dialogId && dialogId !== S.lastDialog) {
           const primary = root.querySelector('[data-primary]');
           if (primary && primary.focus) primary.focus();
@@ -2841,7 +1927,6 @@ select option { color: #1b2523; background: #fff; }
     }
 
     function clack() { if (S.opts.sound) sound.clack(); }
-    function turnCue() { if (S.opts.sound && sound.turn) sound.turn(); }
     function say(text) { S.banner = text; S.log.push(text); }
     function setBanner(text) { S.banner = text; }
 
@@ -2920,8 +2005,6 @@ select option { color: #1b2523; background: #fff; }
     }
     function awaitUser(kind, extra) {
       return new Promise((resolve, reject) => {
-        S.notice = '';
-        if (!hintsOn(S)) S.selectedKey = null;               // with hints off, a tile picked up for one prompt does not stay armed for the next
         S.awaiting = Object.assign({
           kind, reject,
           resolve: v => { S.awaiting = null; cancelSlow(); resolve(v); },
@@ -2973,12 +2056,12 @@ select option { color: #1b2523; background: #fff; }
           say(player.hand.length === 0
             ? 'The boneyard is empty, so you cannot draw to cover your double. You pass. Once it is covered, you have gone out.'
             : game.boneyard.length === 0
-              ? 'The boneyard is empty and nothing fits. You pass and a marker goes on your train.'
-              : 'That tile does not fit. You pass and a marker goes on your train.');
+              ? 'The boneyard is empty and nothing fits. You pass and a lantern goes on your train.'
+              : 'That tile does not fit. You pass and a lantern goes on your train.');
         } else {
           say(player.hand.length === 0
             ? `${cpuName(S)} cannot draw to cover their double and passes. Once it is covered, they have gone out.`
-            : `${cpuName(S)} cannot play and passes. A marker goes on their train: you can play there.`);
+            : `${cpuName(S)} cannot play and passes. A lantern goes on their train: you can play there.`);
         }
         render();
         await pause(1200);
@@ -3043,11 +2126,11 @@ select option { color: #1b2523; background: #fff; }
           maybeComment('pass');
           S.drawnKey = null; S.freshKey = null;
           say(game.boneyard.length === 0 && !game.opening.human.drew
-            ? 'The boneyard is empty and nothing fits the engine. You pass and a marker goes on your train.'
-            : 'Nothing fits the engine. You pass and a marker goes on your train.');
+            ? 'The boneyard is empty and nothing fits the engine. You pass and a lantern goes on your train.'
+            : 'Nothing fits the engine. You pass and a lantern goes on your train.');
         } else {
           S.revealed = 'cpu';
-          S.log.push(`${cpuName(S)} cannot start a train and passes. A marker goes on their train: you can play there.`);
+          S.log.push(`${cpuName(S)} cannot start a train and passes. A lantern goes on their train: you can play there.`);
         }
         render();
         await pause(700);
@@ -3103,397 +2186,6 @@ select option { color: #1b2523; background: #fff; }
       return action;
     }
 
-    /* ---------- online play ---------- */
-    // The game itself runs on a server (server.js). In an online game this page only shows what the
-    // server sends and sends back what the player does: every tap that would play a tile becomes an
-    // "intent" over a WebSocket, the server checks it against the rules, and answers with a new view
-    // of the game for this player. The views are already from this player's side ("you" is always the
-    // bottom player), so the screens draw them as they are.
-    const WebSocketImpl = env.WebSocket || null;
-    let ws = null, wsId = 0, lastSeq = -1, intentId = 0, tries = 0, pingN = 0;
-    let reconnectTimer = null, pingTimer = null, pongTimer = null, tickTimer = null, pendingTimer = null;
-
-    const clean = t => esc(String(t === undefined || t === null ? '' : t));   // all text from the network is escaped before it reaches the page
-    function loadSession() { try { const v = storage.get(ONLINE_SESSION_KEY); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
-    function saveSession() {
-      const o = S.online;
-      if (o && o.token) { try { storage.set(ONLINE_SESSION_KEY, JSON.stringify({ server: o.server, code: o.code, token: o.token, seat: o.seat, name: o.name })); } catch (e) { /* ignore */ } }
-    }
-    function clearSession() { try { storage.set(ONLINE_SESSION_KEY, ''); } catch (e) { /* ignore */ } }
-
-    function stopTimers() {
-      [reconnectTimer, pingTimer, pongTimer, tickTimer, pendingTimer].forEach(t => { if (t !== null) timer.clear(t); });
-      reconnectTimer = pingTimer = pongTimer = tickTimer = pendingTimer = null;
-    }
-    function netClose() {
-      wsId++;                                         // anything the old socket says from now on is ignored
-      stopTimers();
-      const w = ws; ws = null;
-      if (w) { try { w.close(); } catch (e) { /* ignore */ } }
-    }
-    function netSend(obj) {
-      if (!ws || ws.readyState !== 1) return false;
-      try { ws.send(JSON.stringify(obj)); return true; } catch (e) { return false; }
-    }
-    function onlineFailed(message) { S.online = null; S.onlineError = message; render(true); }
-
-    function netConnect(first) {
-      const o = S.online;
-      if (!o) return;
-      netClose();
-      const id = wsId;
-      if (!WebSocketImpl) return onlineFailed('This browser cannot open a network connection.');
-      let sock;
-      try { sock = new WebSocketImpl('ws://' + o.server + '/ws'); }
-      catch (e) { return onlineFailed(`Could not open a connection to ${o.server}.`); }
-      ws = sock; o.conn = 'connecting';
-      sock.onopen = () => {
-        if (id !== wsId) return;
-        o.conn = 'open'; tries = 0;
-        if (first) netSend(first); else if (o.token) netSend({ t: 'resume', code: o.code, token: o.token });
-        schedulePing();
-        render(true);
-      };
-      sock.onmessage = e => {
-        if (id !== wsId) return;
-        let m; try { m = JSON.parse(e.data); } catch (x) { return; }
-        if (m && typeof m === 'object') { try { netMessage(m); } catch (err) { if (typeof console !== 'undefined') console.error(err); } }   // nothing the network says may break the page
-      };
-      sock.onclose = e => {
-        if (id !== wsId) return;
-        if (e && e.code === 4000 && S.online === o) {   // the server gave our seat to a newer window: do not fight over it
-          netClose();
-          o.ended = { reason: 'replaced', message: 'This game was opened in another window or tab, so it is closed here.' };
-          render(true);
-          return;
-        }
-        netClosed();
-      };
-      sock.onerror = () => {                          // a refused connection may report only an error, with no close after it
-        if (id !== wsId) return;
-        wsId++; ws = null;
-        try { sock.close(); } catch (e) { /* ignore */ }
-        netClosed();
-      };
-      render(true);
-    }
-    // the connection ended without us asking
-    function netClosed() {
-      const o = S.online;
-      timer.clear(pingTimer); timer.clear(pongTimer); pingTimer = pongTimer = null;
-      ws = null;
-      if (!o || o.ended || o.leaving) return;
-      if (o.conn === 'reconnecting' && reconnectTimer !== null) return;     // already waiting to try again
-      if (o.phase === 'connecting') {                 // never got in: say why
-        S.online = null;
-        S.onlineError = `Could not reach ${o.server}. Check the address, that the server is running (node server.js), and that your firewall allows it.`;
-        render(true);
-        return;
-      }
-      o.conn = 'reconnecting';                        // in a game: keep trying, the server holds the seat for a while
-      reconnectTimer = timer.set(() => { reconnectTimer = null; if (S.online === o && !o.ended) netConnect(null); }, Math.min(5000, 1000 * ++tries));
-      startTick();
-      render(true);
-    }
-    function schedulePing() {
-      timer.clear(pingTimer);
-      pingTimer = timer.set(() => {
-        pingTimer = null;
-        if (!ws) return;
-        netSend({ t: 'ping', n: ++pingN });
-        pongTimer = timer.set(() => {                 // no answer: the connection is dead even though nothing said so
-          pongTimer = null;
-          wsId++; const w = ws; ws = null;
-          if (w) { try { w.close(); } catch (e) { /* ignore */ } }
-          netClosed();
-        }, 10000);
-        schedulePing();
-      }, 15000);
-    }
-    // a once-a-second redraw while a countdown is on screen
-    function startTick() {
-      if (tickTimer !== null) return;
-      tickTimer = timer.set(function tickFn() {
-        tickTimer = null;
-        const o = S.online;
-        if (!o || o.ended || (o.conn === 'open' && o.oppConnected !== false)) return;
-        render();
-        tickTimer = timer.set(tickFn, 1000);
-      }, 1000);
-    }
-
-    // The page draws whatever view it is given, so a view is checked before it is used: a broken or
-    // hostile server can make a game look wrong, but cannot make the page throw.
-    function validOnlineView(v) {
-      if (!v || typeof v !== 'object') return false;
-      const tileOk = x => Array.isArray(x) && x.length === 2 && x.every(n => typeof n === 'number');
-      const aw = v.awaiting;
-      if (aw !== null && aw !== undefined && !(typeof aw === 'object' && typeof aw.kind === 'string' && (aw.moves === undefined || (Array.isArray(aw.moves) && aw.moves.every(mv => mv && tileOk(mv.tile) && tileOk(mv.placed) && typeof mv.trainId === 'string'))))) return false;
-      const md = v.modal;
-      if (md !== null && md !== undefined) {
-        if (typeof md !== 'object' || typeof md.type !== 'string' || !md.totals) return false;
-        if (md.type === 'roundEnd' && !(Array.isArray(md.rows) && md.rows.every(r => r && Array.isArray(r.hand) && r.hand.every(tileOk)))) return false;
-      }
-      const g = v.game;
-      if (g === null || g === undefined) return true;
-      const trainOk = t => t && Array.isArray(t.tiles) && t.tiles.every(tileOk);
-      if (!Array.isArray(g.players) || (g.players.length !== 2 && g.players.length !== 3)) return false;
-      const ids = PLAYER_IDS.slice(0, g.players.length);                       // human, cpu and (with a computer as the third player) cpu2
-      return Number.isInteger(g.engine) && g.players.every((p, i) => p && p.id === ids[i] && Array.isArray(p.hand) && p.hand.every(tileOk))
-        && Array.isArray(g.boneyard) && !!g.trains && ids.concat(['mexican']).every(id => trainOk(g.trains[id]))
-        && (!g.opening || ids.every(id => g.opening[id])) && (!v.log || Array.isArray(v.log));
-    }
-
-    function netMessage(m) {
-      const o = S.online;
-      if (!o) return;
-      switch (m.t) {
-        case 'created':
-        case 'joined':
-        case 'resumed': {
-          o.code = String(m.code || o.code); o.display = clean(m.display || ''); o.seat = m.seat === 1 ? 1 : 0; o.host = o.seat === 0;
-          if (m.token) o.token = String(m.token);
-          if (m.settings) o.settings = { rounds: Number(m.settings.rounds) || 4, hand: Number(m.settings.hand) || 15, computer: LEVELS.includes(m.settings.computer) ? m.settings.computer : null };
-          if (Array.isArray(m.addresses)) o.addresses = m.addresses.map(String).slice(0, 8);
-          o.phase = m.t === 'resumed' && m.state === 'playing' ? 'playing' : 'lobby';
-          o.resuming = false; o.oppConnected = true; o.graceUntil = null;
-          S.overlay = null; S.onlineError = '';
-          saveSession();
-          render(true);
-          return;
-        }
-        case 'lobby': {
-          o.players = (Array.isArray(m.players) ? m.players : []).slice(0, 3).map(p => (p && typeof p === 'object'
-            ? { name: clean(p.name), connected: !!p.connected, computer: !!p.computer, level: LEVELS.includes(p.level) ? p.level : null } : null));
-          while (o.players.length < 2) o.players.push(null);
-          o.canStart = !!m.canStart;
-          if (m.settings) o.settings = { rounds: Number(m.settings.rounds) || 4, hand: Number(m.settings.hand) || 15, computer: LEVELS.includes(m.settings.computer) ? m.settings.computer : null };
-          if (Array.isArray(m.addresses)) o.addresses = m.addresses.map(String).slice(0, 8);
-          if (m.state === 'playing') o.phase = 'playing';
-          const other = o.players[1 - o.seat];
-          o.oppName = other ? other.name : '';
-          render();
-          return;
-        }
-        case 'state': applyOnlineState(m); return;
-        case 'presence':
-          o.oppConnected = !!m.oppConnected; o.graceUntil = typeof m.graceUntil === 'number' ? m.graceUntil : null;
-          if (!o.oppConnected) startTick();
-          render();
-          return;
-        case 'chat': if (typeof m.text === 'string') showChat(m.text.slice(0, 60)); return;
-        case 'ack':
-          if (o.pending && o.pending.id === m.id) { if (m.ok) o.pending.ackSeq = Number(m.seq); else o.pending = null; }
-          return;
-        case 'pong': timer.clear(pongTimer); pongTimer = null; return;
-        case 'ended':
-          o.ended = { reason: String(m.reason || 'closed'), message: clean(m.message || 'The game is over.') };
-          clearSession(); netClose(); render(true);
-          return;
-        case 'error':
-          if (o.phase === 'connecting') { onlineFailed(String(m.message || 'Could not start the game.')); netClose(); return; }
-          if (o.resuming && m.code === 'no_such_game') { clearSession(); netClose(); S.online = null; S.overlay = 'setup'; S.game = null; S.modal = null; S.awaiting = null; S.matchActive = false; render(true); return; }
-          o.pending = null;
-          S.banner = clean(m.message || 'That did not work.');
-          render();
-          return;
-        default: return;
-      }
-    }
-
-    // what the server sent about the game: tiles that moved, then the new state, then the flights
-    function applyOnlineState(m) {
-      const o = S.online;
-      if (!o || typeof m.seq !== 'number' || m.seq < lastSeq || !validOnlineView(m.view)) return;
-      lastSeq = m.seq;
-      if (o.pending && o.pending.ackSeq !== undefined && o.pending.ackSeq !== null && m.seq > o.pending.ackSeq) { o.pending = null; timer.clear(pendingTimer); pendingTimer = null; }
-      const v = m.view, evs = Array.isArray(m.events) ? m.events : [];
-      const prevKind = S.awaiting ? S.awaiting.kind : null;
-
-      // 1. where the tiles that are about to move are now, before the screen changes
-      const flights = [];
-      for (const ev of evs) {
-        if (!ev || typeof ev !== 'object') continue;
-        if (ev.e === 'play') {
-          const spec = { playerId: ev.who === 'me' ? 'human' : ev.who === 'opp2' ? 'cpu2' : 'cpu', trainId: ev.train, index: ev.index, key: ev.tile ? key(ev.tile) : null, placed: ev.placed, hidden: !!ev.hidden };
-          let tok = fx ? fx.capture(spec) : null;
-          if (fx && ev.who === 'me' && S.dropFrom && S.dropFrom.key === spec.key) tok = { from: S.dropFrom.rect };   // dragged: from where it was let go
-          if (ev.who === 'me') S.dropFrom = null;
-          flights.push({ spec, tok, fast: evs.length > 1, draw: false });
-        } else if (ev.e === 'draw') {
-          const spec = { playerId: ev.who === 'me' ? 'human' : ev.who === 'opp2' ? 'cpu2' : 'cpu', key: ev.tile ? key(ev.tile) : null };
-          flights.push({ spec, tok: fx ? fx.captureDraw(spec) : null, draw: true });
-        }
-      }
-      // 2. what each event means for the screen
-      for (const ev of evs) {
-        if (!ev || typeof ev !== 'object') continue;
-        if (ev.e === 'play') {
-          clack();
-          if (ev.who === 'me') { S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.hoverKey = null; }
-          S.lastPlay = { trainId: ev.train, index: ev.index };
-        } else if (ev.e === 'draw' && ev.who === 'me' && ev.tile) { S.drawnKey = key(ev.tile); S.freshKey = key(ev.tile); }
-        else if (ev.e === 'pass' && ev.who === 'me') { S.drawnKey = null; S.freshKey = null; }
-        else if (ev.e === 'reveal') S.revealed = ev.who === 'opp2' ? 'cpu2' : 'cpu';
-      }
-      // whose move came last, to tell a new turn from the rest of the same turn (covering your own double, playing a drawn tile)
-      const g0 = v.game;
-      const openingNow = !!(g0 && g0.opening && !g0.players.every(p => g0.opening[p.id].finished));
-      if (!openingNow) for (const ev of evs) if (ev && (ev.e === 'play' || ev.e === 'draw' || ev.e === 'pass') && (ev.who === 'me' || ev.who === 'opp')) o.lastActor = ev.who;
-      // 3. the new state
-      if (o.round !== v.round) { S.handOrder = null; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; o.round = v.round; o.lastActor = null; }
-      o.rounds = Number(v.rounds) || o.rounds;
-      o.phase = 'playing';
-      S.game = v.game || null;
-      // who the opponents are: one, or two when a computer is the third player (their names, and which one is the computer)
-      const opps = (Array.isArray(v.opps) ? v.opps : [v.opp]).slice(0, 2).map((x, i) => ({
-        id: i === 0 ? 'cpu' : 'cpu2', name: cleanPlayerName(x && x.name, 'Opponent'), computer: !!(x && x.computer), level: LEVELS.includes(x && x.level) ? x.level : 'normal',
-      }));
-      S.opps = opps;
-      S.cpuName = opps[0].name;
-      S.cpu2Name = opps[1] ? opps[1].name : null;
-      const T = v.totals || {};
-      S.totals = { human: Number(T.human) || 0, cpu: Number(T.cpu) || 0, cpu2: Number(T.cpu2) || 0 };
-      S.roundIndex = Number(v.round) || 0;
-      S.log = (v.log || []).map(clean);
-      S.banner = clean(v.banner || '');
-      S.modal = v.modal ? Object.assign({}, v.modal, v.modal.rows ? { rows: v.modal.rows.map(r => Object.assign({}, r, { name: clean(r.name) })) } : {}) : null;
-      S.awaiting = v.awaiting ? makeOnlineAwaiting(v.awaiting) : null;
-      S.notice = '';
-      S.matchActive = !!v.game && v.over !== 'finished';
-      const turnKind = k => k === 'move' || k === 'draw';
-      if (S.awaiting && turnKind(S.awaiting.kind) && !turnKind(prevKind) && o.lastActor !== 'me') turnCue();     // your turn begins
-      if (S.awaiting && S.awaiting.kind === 'move') {          // the same pre-selection rules as in a game against the computer
-        const moves = S.awaiting.moves;
-        const stillThere = S.selectedKey && moves.some(x => key(x.tile) === S.selectedKey);
-        if (!hintsOn(S)) { if (prevKind !== 'move') S.selectedKey = null; }          // no hints: nothing is picked for you, and your own pick stays
-        else if (prevKind !== 'move' || !stillThere) {
-          const sole = soleTile(moves), dk = S.drawnKey;
-          S.selectedKey = (sole && moves.length > 1) ? sole : ((dk && moves.filter(x => key(x.tile) === dk).length > 1) ? dk : null);
-        }
-      } else if (!S.awaiting || S.awaiting.kind !== 'build') S.selectedKey = null;
-      if (S.overlay === 'setup' || S.overlay === 'online-host' || S.overlay === 'online-join') S.overlay = null;
-      // 4. draw it, then fly the tiles from where they were to where they are now
-      render();
-      if (fx) for (const f of flights) { if (f.draw) fx.landDraw(f.tok, f.spec); else fx.land(f.tok, f.spec, { fast: f.fast }); }
-    }
-
-    // The prompt the server is waiting on, shaped like the ones the single-player game uses, so every
-    // tap and drag works unchanged: answering it sends an intent instead of resuming the game loop.
-    function makeOnlineAwaiting(av) {
-      const kind = av.kind;
-      return Object.assign({}, av, {
-        reject() {},
-        resolve: v => {
-          if (kind === 'build') {
-            if (v.type === 'play') onlineIntent({ a: 'play', tile: v.move.tile, train: v.move.trainId });
-            else if (v.type === 'undo') onlineIntent({ a: 'undo' });
-            else if (v.type === 'draw') onlineIntent({ a: 'draw' });
-            else if (v.type === 'done') onlineIntent({ a: 'done' });
-          } else if (kind === 'move') onlineIntent({ a: 'play', tile: v.tile, train: v.trainId });
-          else if (kind === 'draw') onlineIntent({ a: 'draw' });
-          else if (kind === 'modal') onlineIntent({ a: 'ok' });
-        },
-      });
-    }
-    // One intent at a time: until the server has answered, further taps are ignored (no double plays).
-    function onlineIntent(a) {
-      const o = S.online;
-      if (!o || o.pending || o.conn !== 'open') return false;
-      const id = ++intentId;
-      o.pending = { id, ackSeq: null };
-      timer.clear(pendingTimer);
-      pendingTimer = timer.set(() => { pendingTimer = null; if (o.pending && o.pending.id === id) { o.pending = null; render(); } }, 5000);
-      return netSend(Object.assign({ t: 'i', id }, a));
-    }
-
-    function showChat(text) {
-      const id = ++commentId;
-      const person = S.opps && S.opps.find(x => !x.computer);
-      S.comment = { id, kind: 'chat', text: String(text), from: person ? person.name : null };
-      render();
-      later(() => { if (S.comment && S.comment.id === id) { S.comment = null; render(); } }, CHAT.showMs);
-    }
-    function sendChat(i) {
-      const id = Number(i);
-      if (!S.online || !Number.isInteger(id) || id < 0 || id >= ONLINE_PHRASES.length) return;
-      if (!netSend({ t: 'chat', id })) return;
-      const mid = ++commentId;
-      S.mySay = { id: mid, text: ONLINE_PHRASES[id] }; S.sayOpen = false;
-      later(() => { if (S.mySay && S.mySay.id === mid) { S.mySay = null; render(); } }, 4000);
-      render();
-    }
-
-    function beginOnline(kind, a) {
-      if (S.online) leaveOnline(true);
-      abortMatch();
-      const hosting = kind === 'create';
-      const server = hosting ? (S.hostInfo && S.hostInfo.state === 'ready' ? parseServerAddress(S.hostInfo.address) : null) : parseServerAddress(a.server);
-      S.form = { server: hosting && server ? server : String(a.server || ''), name: String(a.name || ''), code: String(a.code || ''), rounds: a.rounds, hand: a.hand, computer: a.computer };
-      if (!server) { S.onlineError = hosting ? 'This computer\'s address is not known. Open this page from the game server: start it with node server.js and open the address it prints.' : 'Enter the server address, like 192.168.1.23:8080.'; render(true); return; }
-      if (kind === 'join' && !String(a.code || '').trim()) { S.onlineError = 'Enter the join code you were given.'; render(true); return; }
-      const name = cleanPlayerName(a.name, kind === 'create' ? 'Host' : 'Guest');
-      try { storage.set('mt-name', name); storage.set('mt-server', server); } catch (e) { /* ignore */ }
-      S.onlineError = '';
-      lastSeq = -1; tries = 0; S.qrIndex = 0; S.showHints = true;
-      S.online = { phase: 'connecting', kind, server, name, code: '', display: '', token: '', seat: kind === 'create' ? 0 : 1, host: kind === 'create', settings: { rounds: 4, hand: 15, computer: null }, players: [null, null], canStart: false, addresses: [], conn: 'connecting', oppConnected: true, graceUntil: null, ended: null, rounds: 4, pending: null, round: -1, oppName: '', lastActor: null };
-      const first = kind === 'create' ? { t: 'create', name, rounds: Number(a.rounds), hand: Number(a.hand), computer: LEVELS.includes(a.computer) ? a.computer : null } : { t: 'join', code: String(a.code), name };
-      netConnect(first);
-    }
-    function resumeOnline() {
-      const sv = loadSession();
-      if (!sv || !sv.server || !sv.code || !sv.token || !WebSocketImpl || S.online) return;
-      abortMatch();
-      lastSeq = -1; tries = 0;
-      S.online = { phase: 'resuming', kind: 'resume', resuming: true, server: String(sv.server), name: String(sv.name || 'Player'), code: String(sv.code), display: '', token: String(sv.token), seat: sv.seat === 1 ? 1 : 0, host: sv.seat !== 1, settings: { rounds: 4, hand: 15 }, players: [null, null], canStart: false, addresses: [], conn: 'connecting', oppConnected: true, graceUntil: null, ended: null, rounds: 4, pending: null, round: -1, oppName: '', lastActor: null };
-      S.overlay = null;
-      netConnect(null);
-    }
-    // quiet: do not tell the server (the game is already over, or we never got in)
-    function leaveOnline(quiet, keepSession) {
-      const o = S.online;
-      if (o) { o.leaving = true; if (!quiet && o.token) netSend({ t: 'leave' }); }
-      netClose(); if (!keepSession) clearSession();      // (the window that took over still needs the saved game)
-      S.online = null; S.game = null; S.modal = null; S.awaiting = null; S.matchActive = false;
-      S.comment = null; S.mySay = null; S.sayOpen = false; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0 }; S.opps = null; S.cpu2Name = null;
-      S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.handOrder = null; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
-      lastSeq = -1;
-      clearChatTimers();
-      if (fx) fx.cancelAll();
-    }
-    /* The host does not choose the address: the game server says what this computer's address on the network is
-     * (a 192.168..., 10... or 172.16... address, not "localhost"), and the page shows it and uses it. */
-    function loadHostInfo() {
-      const mine = ++infoToken;
-      S.hostInfo = { state: 'loading', address: '', addresses: [] };
-      const fail = () => { if (mine === infoToken) { S.hostInfo = { state: 'none', address: '', addresses: [] }; if (S.overlay === 'online-host') render(true); } };
-      if (!fetchImpl) { S.hostInfo.state = 'none'; return Promise.resolve(); }
-      return Promise.resolve().then(() => fetchImpl(env.infoUrl || '/info', { cache: 'no-store' })).then(r => (r && r.ok ? r.json() : Promise.reject(new Error('no'))))
-        .then(j => {
-          if (mine !== infoToken) return;
-          const list = (Array.isArray(j && j.addresses) ? j.addresses : []).map(parseServerAddress).filter(Boolean);
-          const best = parseServerAddress(j && j.preferred) || list[0] || null;
-          if (!best) return fail();
-          S.hostInfo = { state: 'ready', address: best, addresses: list.length ? list : [best] };
-          if (S.overlay === 'online-host') render(true);
-        }).catch(fail);
-    }
-    function openOnlineDialog(which, code) {
-      if (S.online && S.online.phase === 'connecting') leaveOnline(true);
-      S.overlay = which; S.onlineError = '';
-      if (which === 'online-host') loadHostInfo();
-      if (!S.form) {                                  // the address of the server this page came from, else the one used last time
-        let sv = '', nm = '';
-        try { sv = String(storage.get('mt-server') || ''); nm = String(storage.get('mt-name') || ''); } catch (e) { /* ignore */ }
-        S.form = { server: defaultServer || sv, name: nm, code: '', rounds: S.opts.rounds, hand: S.opts.hand, computer: 'none' };
-      }
-      if (code) {                                     // from a scanned link: the code is filled in, nothing else to type
-        const c = String(code).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
-        S.form.code = c.length === 6 ? c.slice(0, 3) + '-' + c.slice(3) : c;
-      }
-      render(true);
-    }
-
     const controllers = {
       human: {
         act: humanAct,
@@ -3502,7 +2194,7 @@ select option { color: #1b2523; background: #fff; }
           // pre-select a just-drawn tile only when it has a choice of trains; otherwise one click plays it.
           // The only tile you can play is always selected: there is nothing else to choose, and it cannot be de-selected.
           const sole = soleTile(moves);
-          S.selectedKey = !hintsOn(S) ? null : (sole && moves.length > 1) ? sole : ((dk && moves.filter(m => key(m.tile) === dk).length > 1) ? dk : null);
+          S.selectedKey = (sole && moves.length > 1) ? sole : ((dk && moves.filter(m => key(m.tile) === dk).length > 1) ? dk : null);
           const chosen = await awaitUser('move', { moves });
           try { S.pendingRating = S.opts.chat ? rateMove(game, player, moves, chosen) : null; }   // judged on the board as it was
           catch (e) { S.pendingRating = null; }                                                  // a comment must never be able to break the game
@@ -3565,10 +2257,8 @@ select option { color: #1b2523; background: #fff; }
 
     /* ---------- actions from the page ---------- */
     function startGame(a) {
-      if (S.online) leaveOnline(true);
       abortMatch();
-      S.opts = sanitize(Object.assign({}, a, { sound: S.opts.sound, chat: S.opts.chat, allowHints: a.allowHints === undefined ? S.opts.allowHints : a.allowHints }));   // the setup form has no sound field: keep the current setting
-      S.showHints = true; S.notice = '';
+      S.opts = sanitize(Object.assign({}, a, { sound: S.opts.sound, chat: S.opts.chat }));   // the setup form has no sound field: keep the current setting
       saveOpts();
       // a fresh random name for the computer: not one already at the table, and not last game's
       let previous = '';
@@ -3588,12 +2278,6 @@ select option { color: #1b2523; background: #fff; }
     function selectTile(k) {
       const a = S.awaiting;
       if (!a) return;
-      if (!hintsOn(S)) {                       // no hints: any tile can be picked up, whether or not it can be played; nothing is played for you
-        if (a.kind !== 'move' && a.kind !== 'build' && a.kind !== 'draw') return;
-        S.selectedKey = S.selectedKey === k ? null : k; S.hoverKey = null; S.notice = '';
-        render();
-        return;
-      }
       if (a.kind === 'build') {
         const mv = a.moves.find(m => key(m.tile) === k);
         if (mv) { S.hoverKey = null; a.resolve({ type: 'play', move: mv }); }
@@ -3613,14 +2297,6 @@ select option { color: #1b2523; background: #fff; }
 
     function playOn(trainId) {
       const a = S.awaiting;
-      if (!hintsOn(S)) {                       // no hints: the player chose the tile and now the train; a wrong guess is just told so
-        if (!a || !S.selectedKey || (a.kind !== 'move' && a.kind !== 'build' && a.kind !== 'draw')) return;
-        const mv = (a.moves || []).find(x => key(x.tile) === S.selectedKey && x.trainId === trainId);
-        if (!mv) { S.notice = 'That tile cannot be played on that train.'; render(); return; }
-        S.selectedKey = null; S.notice = '';
-        a.resolve(a.kind === 'build' ? { type: 'play', move: mv } : mv);
-        return;
-      }
       if (!a || a.kind !== 'move' || !S.selectedKey) return;
       const m = a.moves.find(x => key(x.tile) === S.selectedKey && x.trainId === trainId);
       if (!m) return;
@@ -3633,13 +2309,11 @@ select option { color: #1b2523; background: #fff; }
       if (!a) return;
       if (a.kind === 'draw') a.resolve();
       else if (a.kind === 'build' && a.canDraw) a.resolve({ type: 'draw' });
-      else if (!hintsOn(S) && (a.kind === 'move' || a.kind === 'build')) { S.notice = 'You cannot draw while you have a tile you can play.'; render(); }
     }
 
     function autoBuild() {
       const a = S.awaiting;
       if (!a || a.kind !== 'build' || !a.canBuild) return;
-      if (S.online) { S.selectedKey = null; onlineIntent({ a: 'autoBuild' }); return; }       // online, the server lays the train
       const steps = buildSteps(S.game, S.game.players[0]);
       if (!steps.length) return;
       const first = steps.shift();
@@ -3724,11 +2398,7 @@ select option { color: #1b2523; background: #fff; }
       if (S.prevHandOrder !== undefined) { S.handOrder = S.prevHandOrder; S.prevHandOrder = undefined; }
       const a = S.awaiting;
       const mv = a && (a.kind === 'move' || a.kind === 'build') && a.moves ? a.moves.find(m => key(m.tile) === k && m.trainId === trainId) : null;
-      if (!mv) {                                      // not a legal place for it: it simply goes back to the hand
-        if (!hintsOn(S) && a && (a.kind === 'move' || a.kind === 'build' || a.kind === 'draw')) S.notice = 'That tile cannot be played on that train.';
-        render(); return;
-      }
-      S.notice = '';
+      if (!mv) { render(); return; }                  // not a legal place for it: it simply goes back to the hand
       S.dropFrom = from ? { key: k, rect: from } : null;   // the tile flies from where it was let go
       S.selectedKey = null;
       a.resolve(a.kind === 'build' ? { type: 'play', move: mv } : mv);
@@ -3740,6 +2410,7 @@ select option { color: #1b2523; background: #fff; }
       S.handOrder = moveInOrder(order, k, i + delta);
       render();
     }
+    function sortHand() { S.handOrder = null; render(); }
 
     // after the window changes size, keep every train showing its newest domino
     function snapTrains() {
@@ -3767,7 +2438,7 @@ select option { color: #1b2523; background: #fff; }
 
     function dialogOk() {
       const a = S.awaiting;
-      if (a && a.kind === 'modal') { S.modal = null; a.resolve(); if (S.online) S.awaiting = null; }
+      if (a && a.kind === 'modal') { S.modal = null; a.resolve(); }
     }
 
     function dispatch(a) {
@@ -3782,27 +2453,7 @@ select option { color: #1b2523; background: #fff; }
         case 'dialogOk': return dialogOk();
         case 'openRules': S.overlay = 'rules'; return render(true);
         case 'newGame': S.overlay = 'setup'; return render(true);
-        case 'closeOverlay':
-          if (S.overlay === 'online-host' || S.overlay === 'online-join') { if (S.online && S.online.phase === 'connecting') leaveOnline(true); S.overlay = 'setup'; render(true); return; }
-          if (S.overlay === 'online-leave') { S.overlay = null; render(true); return; }
-          if (S.overlay && (S.matchActive || S.overlay === 'rules')) { S.overlay = null; render(true); }
-          return;
-        case 'openHost': return openOnlineDialog('online-host');
-        case 'openJoin': return openOnlineDialog('online-join', a.code);
-        case 'hostGame':                                     // (waits for the server's address if it has not arrived yet)
-          if (S.hostInfo && S.hostInfo.state === 'ready') return beginOnline('create', a);
-          return loadHostInfo().then(() => beginOnline('create', a));
-        case 'joinGame': return beginOnline('join', a);
-        case 'startOnline': if (S.online && S.online.host) netSend({ t: 'start' }); return;
-        case 'onlineSettings': if (S.online && S.online.host && S.online.phase === 'lobby') netSend({ t: 'settings', rounds: Number(a.rounds), hand: Number(a.hand), computer: LEVELS.includes(a.computer) ? a.computer : 'none' }); return;
-        case 'sendChat': return sendChat(a.key);
-        case 'toggleSay': S.sayOpen = !S.sayOpen; return render(true);
-        case 'askLeave': S.overlay = 'online-leave'; return render(true);
-        case 'confirmLeave': leaveOnline(false); S.overlay = 'setup'; return render(true);
-        case 'onlineBack': leaveOnline(true, !!(S.online && S.online.ended && S.online.ended.reason === 'replaced')); S.overlay = 'setup'; return render(true);
-        case 'resumeOnline': return resumeOnline();
-        case 'copied': S.copied = a.which === 'copyLink' ? 'link' : 'code'; later(() => { S.copied = false; render(); }, 2000); return render();
-        case 'selectQr': S.qrIndex = Math.max(0, Number(a.key) || 0); return render();
+        case 'closeOverlay': if (S.overlay && (S.matchActive || S.overlay === 'rules')) { S.overlay = null; render(true); } return;
         case 'hoverTile': return hoverTile(a.key);
         case 'dragStart': return dragStart(a.key);
         case 'dragMove': return dragMove(a.index);
@@ -3810,11 +2461,10 @@ select option { color: #1b2523; background: #fff; }
         case 'dragOver': return dragOver(a.train);
         case 'dropOnTrain': return dropOnTrain(a.key, a.train, a.from);
         case 'moveTile': return moveTile(a.key, a.delta);
+        case 'sortHand': return sortHand();
         case 'snapTrains': return snapTrains();
         case 'toggleSound': return toggleSound();
         case 'toggleChat': return toggleChat();
-        case 'toggleShowHints': S.showHints = S.showHints === false; S.hoverKey = null; S.notice = ''; return render(true);
-        case 'setAllowHints': S.opts.allowHints = !!a.value; saveOpts(); S.hoverKey = null; S.notice = ''; return render();
         case 'toggleStyle': S.opts.style = S.opts.style === 'numbers' ? 'pips' : 'numbers'; saveOpts(); return render(true);
         case 'boot': return render(true);
         default: return undefined;
@@ -3828,13 +2478,8 @@ select option { color: #1b2523; background: #fff; }
 
   function boot() {
     const root = document.getElementById('app');
-    let seed = null, joinCode = '';
+    let seed = null;
     try { seed = new URLSearchParams(location.search).get('seed'); } catch (e) { /* ignore */ }
-    try {                                              // a scanned QR code opens  http://host:port/?join=CODE
-      const u = new URL(location.href);
-      joinCode = u.searchParams.get('join') || '';
-      if (joinCode) { u.searchParams.delete('join'); history.replaceState(null, '', u.pathname + u.search + u.hash); }   // so a reload does not open it again
-    } catch (e) { /* ignore */ }
     const storage = {
       get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
       set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } },
@@ -3843,12 +2488,8 @@ select option { color: #1b2523; background: #fff; }
     const sound = createSound(global.AudioContext || global.webkitAudioContext);
     const canFly = typeof Element !== 'undefined' && Element.prototype && 'animate' in Element.prototype;
     const fx = canFly ? createFx(root, document) : null;
-    // Served by a game server (http://...)? Then that server is the default for hosting and joining.
-    let defaultServer = '';
-    try { if (location.protocol === 'http:' && location.host) defaultServer = location.host; } catch (e) { /* ignore */ }
     const app = createApp({
       root, storage, reducedMotion: reduced, sound, fx,
-      WebSocket: global.WebSocket, defaultServer, fetch: global.fetch ? global.fetch.bind(global) : null,
       rng: seed !== null && seed !== '' ? mulberry32(Number(seed)) : Math.random,
     });
 
@@ -3858,43 +2499,18 @@ select option { color: #1b2523; background: #fff; }
       const el = e.target.closest ? e.target.closest('[data-action]') : null;
       if (el) {
         const d = el.dataset;
-        if (d.action === 'toggleAllowHints') {            // the main-screen switch: it changes at once (and is remembered), without redrawing the dialog under the player's hands
-          const on = !(el.getAttribute && el.getAttribute('aria-pressed') === 'true');
-          if (el.setAttribute) { el.setAttribute('aria-pressed', String(on)); el.textContent = 'Allow hints: ' + (on ? 'on' : 'off'); }
-          app.dispatch({ type: 'setAllowHints', value: on });
-          return;
-        }
         if (d.action === 'startGame') {
           const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
           app.dispatch({ type: 'startGame', rounds: val('#opt-rounds'), hand: val('#opt-hand'), style: val('#opt-style'), level: val('#opt-level') });
-        } else if (d.action === 'hostGame' || d.action === 'joinGame') {
-          const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
-          app.dispatch({ type: d.action, server: val('#net-server'), name: val('#net-name'), code: val('#net-code'), rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer') });
-        } else if (d.action === 'copyCode' || d.action === 'copyLink') {
-          try { if (global.navigator && global.navigator.clipboard) global.navigator.clipboard.writeText(String(d.key || '')).then(() => app.dispatch({ type: 'copied', which: d.action }), () => {}); } catch (err) { /* the text is selectable on screen */ }
         } else {
           app.dispatch({ type: d.action, key: d.key, train: d.train });
         }
         return;
       }
-      // a tap on a train plays the picked-up tile there: on a glowing one with hints, on any train without
-      const track = e.target.closest ? (e.target.closest('.track.target') || e.target.closest('.track')) : null;
-      if (track && track.dataset) app.dispatch({ type: 'playOn', train: track.dataset.train });
+      const track = e.target.closest ? e.target.closest('.track.target') : null;
+      if (track) app.dispatch({ type: 'playOn', train: track.dataset.train });
     });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') app.dispatch({ type: 'closeOverlay' }); });
-    // the host changes the game length or hand size in the lobby: tell the server straight away
-    root.addEventListener('change', e => {
-      const id = e.target && e.target.id;
-      if (id !== 'net-rounds' && id !== 'net-hand' && id !== 'net-computer') return;
-      const val = i => { const n = root.querySelector(i); return n ? n.value : undefined; };
-      app.dispatch({ type: 'onlineSettings', rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer') });
-    });
-    // Enter in a text box of the host/join form presses its main button
-    root.addEventListener('keydown', e => {
-      if (e.key !== 'Enter' || !e.target || e.target.tagName !== 'INPUT' || !/^net-/.test(e.target.id || '')) return;
-      const b = root.querySelector('[data-primary]');
-      if (b && !b.disabled && b.click) { e.preventDefault(); b.click(); }
-    });
     if (global.addEventListener) global.addEventListener('resize', () => app.dispatch({ type: 'snapTrains' }));
 
     // Browsers only allow sound after a click, tap or key press: unlock it on the first one.
@@ -3919,8 +2535,6 @@ select option { color: #1b2523; background: #fff; }
     });
 
     app.dispatch({ type: 'boot' });
-    if (joinCode) app.dispatch({ type: 'openJoin', code: joinCode });   // from a scanned link: the Join screen with the code filled in
-    else app.dispatch({ type: 'resumeOnline' });                        // a page reload in the middle of an online game: go back to it
     global.MexicanTrainApp = app;
   }
 
@@ -3930,10 +2544,9 @@ select option { color: #1b2523; background: #fff; }
       cpuBuildAction, longestChain, longestFullChain, buildSteps, handPips, tilePips, mulberry32, shuffle, key, LEVELS, LEVEL_LABEL,
       moveValue, rateMove,
     },
-    tileSVG, tileBackSVG, pipPoints, viewApp, createApp, pickCpuName, PIP_COLORS, PACE, CPU_NAMES, renderClack, clackGapMs, renderTurn, createSound,
+    tileSVG, tileBackSVG, pipPoints, viewApp, createApp, pickCpuName, PIP_COLORS, PACE, CPU_NAMES, renderClack, createSound,
     flightGeometry, flightRotation, flightStart, moveInOrder, slotAt, dropIndexAt, createFx, createDrag, orderedHand,
     RATING, CHAT, LINES, commentKindFor, pickLine, fillLine, paceFor, soleTile, CPU_PLAYERS, levelOfName, NATIVE_LINES, NATIVE_LANG, nativeLangOf, FOOD, FOOD_ENGLISH, FOOD_NATIVE, foodComment,
-    PLAYER_IDS, toyTrainSVG, ONLINE_PHRASES, cleanPlayerName, parseServerAddress, qrEncode, qrSvg, qrCodewords, rsEncode, QR_BLOCKS_M, QR_TOTAL_CODEWORDS,
   };
 
   if (typeof document !== 'undefined') {
@@ -3941,7 +2554,3 @@ select option { color: #1b2523; background: #fff; }
     else boot();
   }
 })(typeof window !== 'undefined' ? window : globalThis);
-
-</script>
-</body>
-</html>
