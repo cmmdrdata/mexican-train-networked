@@ -1,0 +1,414 @@
+/* Mexican Train - felt table, bone tiles, brass highlights, a toy train marker for each player. */
+
+:root {
+  --display: "Rockwell", "Rockwell Nova", "Roboto Slab", "Bitter", "Cambria", Georgia, serif;
+  --ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --page: #0f3a33;
+  --felt: #1d5c52;
+  --felt-deep: #164a42;
+  --text: #f3eee0;
+  --muted: #bcd3cc;
+  --line: rgba(243, 238, 224, 0.2);
+  --brass: #d6a84f;
+  --brass-soft: rgba(214, 168, 79, 0.16);
+  --brass-ink: #34270a;
+  --signal: #ec4a3a;
+  --wood: #5a3f2a;
+  --wood-deep: #46301f;
+  --bone: #f6f0e0;
+  --focus: #fff3c4;
+
+  --dlg-bg: #f6f0e0;
+  --dlg-ink: #1b2523;
+  --dlg-muted: #55625f;
+  --dlg-line: rgba(27, 37, 35, 0.22);
+  --dlg-focus: #6b4e0f;
+
+  --s: 40px;       /* half-tile size on the board */
+  --hs: 46px;      /* half-tile size in your hand */
+
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0a2521;
+    --felt: #12423b;
+    --felt-deep: #0d342e;
+    --wood: #46301f;
+    --wood-deep: #35241a;
+    --dlg-bg: #1d2a28;
+    --dlg-ink: #f1ece0;
+    --dlg-muted: #a9bdb7;
+    --dlg-line: rgba(241, 236, 224, 0.22);
+    --dlg-focus: #fff3c4;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #0a2521;
+  --felt: #12423b;
+  --felt-deep: #0d342e;
+  --wood: #46301f;
+  --wood-deep: #35241a;
+  --dlg-bg: #1d2a28;
+  --dlg-ink: #f1ece0;
+  --dlg-muted: #a9bdb7;
+  --dlg-line: rgba(241, 236, 224, 0.22);
+  --dlg-focus: #fff3c4;
+}
+
+*, *::before, *::after { box-sizing: inherit; }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); -webkit-text-size-adjust: 100%; min-height: 100%; }
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--page);
+  color: var(--text);
+  font: 16px/1.4 var(--ui);
+}
+button { font: inherit; color: inherit; }
+button:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.shell { max-width: 1180px; margin: 0 auto; }
+
+/* ------------------------------------------------------------- header */
+.bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.6rem;
+  padding: 0.9rem max(1rem, env(safe-area-inset-left)) 0.8rem max(1rem, env(safe-area-inset-right));
+}
+.brand h1 { margin: 0; font: 700 1.7rem/1.1 var(--display); letter-spacing: 0.01em; }
+.brand .sub { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.9rem; }
+.round { display: grid; gap: 0.05rem; font-size: 0.92rem; color: var(--muted); }
+.round span:first-child { color: var(--text); font-weight: 600; }
+.totals { display: flex; align-items: baseline; gap: 1.1rem; margin-left: auto; }
+.totals .hint { margin: 0; font-size: 0.8rem; color: var(--muted); }
+.tot { display: grid; justify-items: center; line-height: 1.1; }
+.tot b { font: 700 1.9rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.tot span { font-size: 0.82rem; color: var(--muted); }
+.tools { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+.btn {
+  padding: 0.45rem 0.85rem; border-radius: 9px; border: 1px solid var(--line);
+  background: transparent; cursor: pointer;
+}
+.btn:hover { background: rgba(243, 238, 224, 0.1); }
+.btn.primary { background: var(--brass); color: var(--brass-ink); border-color: transparent; font-weight: 700; }
+.btn.primary:hover { background: #e2b85f; }
+
+/* -------------------------------------------------------------- table */
+.table {
+  background: radial-gradient(ellipse at 50% 30%, var(--felt) 0%, var(--felt-deep) 100%);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 0.7rem max(0.8rem, env(safe-area-inset-left)) 1rem max(0.8rem, env(safe-area-inset-right));
+}
+.empty { padding: 4rem 1rem; text-align: center; color: var(--muted); }
+
+/* The boneyard sits in its own cell at the top right and never moves: not when the computer's
+   tiles wrap, not when a comment appears, not when it starts to flash. */
+.opp {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "cpu yard" "bubble yard";
+  column-gap: 0.8rem; align-items: start; padding: 0.2rem 0 0.7rem;
+}
+.cpu-hand { grid-area: cpu; }
+.bubble-slot { grid-area: bubble; }
+.boneyard { grid-area: yard; justify-self: end; align-self: start; }
+.cpu-hand { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; min-width: 0; }
+.who { font-weight: 700; }
+.backs { display: inline-flex; flex-wrap: wrap; gap: 3px; max-width: 34rem; }
+.back {
+  display: inline-block; width: 15px; height: 26px; border-radius: 3px;
+  background: linear-gradient(#2f7468, #1e5149); border: 1px solid #0a2c27;
+}
+.count { color: var(--muted); font-size: 0.9rem; }
+.count b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.boneyard {
+  display: inline-flex; align-items: center; gap: 0.7rem; padding: 0.4rem 0.7rem; box-sizing: border-box;
+  width: 15.5rem; min-height: 3.9rem;                  /* a fixed size: it does not grow when "Draw a tile" appears */
+  background: transparent; border: 2px dashed var(--line); border-radius: 10px; cursor: default; text-align: left;
+}
+.yard-text { display: grid; gap: 0.1rem; align-content: center; min-width: 0; }
+.boneyard:disabled { opacity: 1; }
+.boneyard .stack { position: relative; width: 30px; height: 32px; }
+.boneyard .stack i {
+  position: absolute; width: 18px; height: 30px; border-radius: 3px;
+  background: linear-gradient(#2f7468, #1e5149); border: 1px solid #0a2c27;
+}
+.boneyard .stack i:nth-child(1) { left: 0; top: 2px; transform: rotate(-9deg); }
+.boneyard .stack i:nth-child(2) { left: 6px; top: 1px; transform: rotate(2deg); }
+.boneyard .stack i:nth-child(3) { left: 12px; top: 2px; transform: rotate(11deg); }
+.boneyard.ready {
+  cursor: pointer; border: 2px solid var(--brass); background: var(--brass-soft);
+  animation: drawFlash 1.1s ease-in-out infinite;   /* keep in step with FLASH_MS in the script */
+}
+@keyframes drawFlash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(214, 168, 79, 0);    background: rgba(214, 168, 79, 0.16); }
+  50%      { box-shadow: 0 0 0 7px rgba(214, 168, 79, 0.6), 0 0 16px 5px rgba(214, 168, 79, 0.45); background: rgba(214, 168, 79, 0.4); }
+}
+.boneyard .cta { font-weight: 700; color: var(--brass); }
+
+/* ------------------------------------------------------------- tracks */
+/* An open train wears a small, shiny toy train in its player's colour at the far left of the row. It sits in .rail, beside the
+ * scrolling row rather than in it, so it stays put (and does not fade) as a long train scrolls past underneath. */
+.rail { position: relative; min-width: 0; }
+.toy-train { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); z-index: 4; pointer-events: none; line-height: 0;
+  filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.5)); }
+.toy-train svg { display: block; height: calc(var(--s) * 0.84); width: calc(var(--s) * 1.3); }
+.toy-train.c0 { --tc: #d8372c; --tc-hi: #ff9a8f; --tc-lo: #8c1c14; --tc-dk: #5a0f0a; }
+.toy-train.c1 { --tc: #2e72d9; --tc-hi: #98c0ff; --tc-lo: #153d84; --tc-dk: #0a2557; }
+.toy-train.c2 { --tc: #f2b01a; --tc-hi: #ffe495; --tc-lo: #a56f00; --tc-dk: #6a4600; }
+.toy-train.c3 { --tc: #2fa84f; --tc-hi: #9be3ae; --tc-lo: #17692d; --tc-dk: #0b3d19; }          /* a fourth seat */
+.track.has-toy .track-tiles { padding-left: calc(var(--s) * 1.3 + 22px); }
+.tracks { border-top: 1px solid var(--line); }
+.track {
+  display: grid; grid-template-columns: 10.5rem minmax(0, 1fr); align-items: stretch;
+  border-bottom: 1px solid var(--line);
+}
+.track-label { padding: 0.6rem 0.7rem 0.6rem 0.2rem; display: grid; align-content: center; gap: 0.25rem; }
+.track-name { font: 700 1.05rem/1.2 var(--display); }
+.track-info { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
+.lamp { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--text); }
+.needs { display: inline-flex; align-items: center; gap: 0.4rem; }
+.num {
+  display: inline-grid; place-items: center; min-width: 1.7em; height: 1.7em; padding: 0 0.15em;
+  border-radius: 50%; background: var(--bone); color: var(--c, #222);
+  font: 700 0.95rem/1 var(--display);
+}
+.cover { color: var(--brass); font-weight: 700; font-size: 0.85rem; }
+.num.unknown { color: #5b6a67; }
+
+.scroller { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; }
+.scroller::-webkit-scrollbar { display: none; }
+/* no scroll bar: when the train is longer than the screen, its older end fades out instead */
+.scroller.more-left { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 36px); mask-image: linear-gradient(to right, transparent 0, #000 36px); }
+.track-tiles {
+  display: flex; align-items: center; gap: 4px; padding: 8px calc(var(--s) * 3.923 + 18px) 8px 10px;   /* always room for two more dominoes after the last one (2 x 1.9615 x --s, and the gaps) */
+  min-height: calc(var(--s) * 2 + 22px); width: max-content; min-width: 100%;
+}
+.track.target { background: var(--brass-soft); box-shadow: inset 0 0 0 2px var(--brass); cursor: pointer; }
+.track.must:not(.target) { box-shadow: inset 0 0 0 2px var(--signal); }
+/* hovering a hand tile: outline the trains it can go on and show an empty slot at the end */
+.track.preview:not(.target) { background: rgba(214, 168, 79, 0.1); box-shadow: inset 0 0 0 2px rgba(214, 168, 79, 0.7); }
+.track.preview:not(.target) .track-tiles::after {
+  content: ""; flex: none; margin-left: 4px; width: calc(var(--s) * 1.9615); height: var(--s);
+  border: 2px dashed var(--brass); border-radius: 9px; background: rgba(214, 168, 79, 0.2);
+}
+
+/* -------------------------------------------------------------- tiles */
+.tile { display: block; flex: none; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35)); transform-origin: center; }
+.tile.h { height: var(--s); width: calc(var(--s) * 1.9615); }
+.tile.v { width: var(--s); height: calc(var(--s) * 1.9615); }
+.tile.engine { margin-right: 6px; }
+.tile.pop { animation: pop 0.38s ease-out; }
+.tile.reveal { animation: reveal 0.6s ease-out; }
+@keyframes reveal {
+  0%   { transform: scale(0.8); opacity: 0.15; }
+  100% { transform: scale(1);   opacity: 1; }
+}
+@keyframes pop {
+  0%   { transform: scale(1.4); filter: drop-shadow(0 0 10px var(--brass)); }
+  100% { transform: scale(1);   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35)); }
+}
+
+.ghost {
+  flex: none; display: inline-flex; align-items: center; gap: 0.6rem; padding: 6px 12px 6px 8px;
+  border: 2px dashed var(--brass); border-radius: 12px; background: var(--brass-soft); cursor: pointer;
+  margin-left: 4px; color: var(--text); font-weight: 600;
+}
+.ghost .tile { opacity: 0.75; filter: none; }
+
+/* ------------------------------------------------------ status and tray */
+.status { padding: 0.8rem 0.2rem 0.4rem; min-height: 3.2rem; }
+.msg { margin: 0; font-size: 1.05rem; font-weight: 600; }
+.build { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.6rem; }
+
+.tray {
+  --s: var(--hs);
+  background: linear-gradient(var(--wood), var(--wood-deep));
+  border-radius: 14px; padding: 0.5rem 0.7rem 0.8rem;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.12), 0 6px 14px rgba(0, 0, 0, 0.35);
+}
+.tray-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 0.2rem 0.3rem; font-weight: 700; }
+/* a train that the tile being dragged can be played on, with the tile over it */
+.track.drop { outline: 3px solid var(--brass); outline-offset: -3px; background: rgba(214, 168, 79, 0.2); }
+
+/* tiles lie down, in rows: half the tiles per row, so two or more rows, and a spare spot for drawing */
+.hand { padding-top: 14px; }
+.hand.can-draw { cursor: pointer; }
+.hand-grid {
+  --cell: calc(var(--hs) * 1.9615 + 8px);              /* a lying tile plus the button's padding */
+  display: grid; grid-template-columns: repeat(auto-fill, var(--cell)); gap: 16px 6px; justify-content: center;
+  max-width: calc(var(--cols, 8) * (var(--cell) + 6px)); margin: 0 auto;
+}
+.slot-draw, .slot-empty { box-sizing: border-box; width: var(--cell); height: calc(var(--hs) + 8px); border-radius: 12px; }
+.slot-empty { border: 2px dashed rgba(255, 255, 255, 0.1); }
+.slot-draw {
+  appearance: none; cursor: pointer; border: 2px dashed var(--brass); background: var(--brass-soft); color: var(--text);
+  font: inherit; font-weight: 700; animation: drawFlash 1.1s ease-in-out infinite;   /* in step with the boneyard button */
+}
+.slot-draw.calm { animation: none; border-color: rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.06); }   /* hints off: there, but not highlighted */
+.slot-draw.calm:disabled { cursor: default; opacity: 0.4; }
+.tile-btn.selected, .tile-btn.playable:hover { position: relative; z-index: 1; }
+.tile-btn {
+  appearance: none; border: 0; background: transparent; padding: 4px; border-radius: 12px; cursor: default;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+}
+.tile-btn .tile { filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.4)); }
+.tile-btn.playable { cursor: pointer; transform: translateY(-8px); box-shadow: 0 0 0 3px var(--brass); background: var(--brass-soft); }
+.tile-btn.playable:hover { transform: translateY(-11px); }
+.tile-btn.selected { transform: translateY(-16px); box-shadow: 0 0 0 4px var(--focus), 0 10px 18px rgba(0, 0, 0, 0.5); background: rgba(255, 243, 196, 0.22); }
+.tile-btn.dim { opacity: 0.4; }                                   /* your turn, but this tile cannot be played */
+.tile-btn.idle { opacity: 0.4; }                                  /* not your turn: the whole hand is dimmed */
+.tile-btn.fresh:not(.selected) { box-shadow: 0 0 0 2px rgba(255, 243, 196, 0.6); }
+.tile-btn:disabled { color: inherit; }
+
+.log { padding: 0.7rem 0.2rem 0; min-height: 7.2rem; }
+.log ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.15rem; font-size: 0.9rem; color: var(--muted); }
+.log li.latest { color: var(--text); }
+
+/* dominoes flying onto the board (the copy lives on <body>, above everything) */
+.flying { position: fixed; z-index: 50; margin: 0; pointer-events: none; will-change: transform, filter; }
+.flying .tile { position: absolute; left: 0; top: 0; width: 100%; height: 100%; filter: none; }
+
+/* arranging your hand by dragging */
+.tile-btn { touch-action: none; -webkit-user-select: none; user-select: none; }
+.tile-btn:not(.playable) { cursor: grab; }
+.tile-btn.drag-src { opacity: 0.25; }
+.dragfloat { position: fixed; left: 0; top: 0; z-index: 60; margin: 0; pointer-events: none; will-change: transform;
+  filter: drop-shadow(0 12px 14px rgba(0, 0, 0, 0.5)); }
+.dragfloat .tile { display: block; width: 100%; height: 100%; filter: none; }
+body.dragging, body.dragging * { cursor: grabbing !important; }
+.tray-head { gap: 0.7rem; }
+.tray-head .tip { font-weight: 400; font-size: 0.85rem; color: rgba(255, 255, 255, 0.78); }
+.tray-head .count { margin-left: auto; }
+
+/* online play */
+.opp.three { grid-template-areas: "cpu yard" "cpu2 yard" "bubble yard"; }
+.cpu-hand.second { grid-area: cpu2; margin-top: 0.35rem; }
+.net-dot { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #8a8f8c; vertical-align: middle; flex: none; }
+.net-dot.up { background: #3ec27a; }
+.net-dot.down { background: #d8564b; }
+.codebox { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin: 0.1rem 0 0.9rem; }
+.code-big {
+  font: 700 2.1rem/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: 0.12em;
+  padding: 0.4rem 0.75rem; border: 2px dashed var(--dlg-focus); border-radius: 10px; user-select: all;
+}
+.addrs { margin: 0.2rem 0 0.9rem; padding-left: 1.2rem; }
+.addrs code, .dialog p code { font: 600 1rem ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: rgba(127, 127, 127, 0.15); padding: 0.05rem 0.35rem; border-radius: 5px; }
+.players { list-style: none; padding: 0; margin: 0.4rem 0 0.9rem; display: grid; gap: 0.35rem; }
+.players li { display: flex; align-items: center; gap: 0.55rem; }
+.players li.empty { opacity: 0.65; font-style: italic; }
+.field-row { display: flex; flex-wrap: wrap; gap: 1rem; }
+.form-error { margin: 0.2rem 0 0.8rem; padding: 0.5rem 0.7rem; border-radius: 8px; background: rgba(216, 86, 75, 0.14); border: 1px solid rgba(216, 86, 75, 0.6); }
+.qrbox { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin: 0.2rem 0 0.9rem; }
+.qr { width: 11rem; height: 11rem; flex: none; background: #fff; border-radius: 6px; }
+.qrtext { display: grid; gap: 0.3rem; justify-items: start; max-width: 22rem; }
+.qrtext p { margin: 0; overflow-wrap: anywhere; }
+.btn.small { padding: 0.1rem 0.55rem; font-size: 0.8rem; margin-left: 0.4rem; }
+.hints-toggle { padding: 0.15rem 0.6rem; font-size: 0.85rem; }
+.hints-toggle[aria-pressed="false"] { opacity: 0.75; }
+.btn.toggle[aria-pressed="true"] { background: var(--brass-soft); box-shadow: inset 0 0 0 2px var(--brass); }
+.say-panel { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.4rem; }
+.say-panel .say { padding: 0.2rem 0.65rem; font-size: 0.85rem; }
+.you-said { margin-top: 0.3rem; font-size: 0.85rem; opacity: 0.8; font-style: italic; }
+
+/* the computer's level, shown beside its name */
+.tag { display: inline-block; padding: 0.05rem 0.55rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.tag-easy { background: #2f7d4f; color: #fff; }
+.tag-normal { background: #e0a83a; color: #2b1d03; }
+.tag-hard { background: #a23b3b; color: #fff; }
+
+/* a comment in the computer player's own language, with its translation underneath */
+.bubble [lang]:not([lang="en"]) { font-size: 1.08rem; font-family: "Segoe UI", "Noto Sans", "Noto Sans CJK SC", "Hiragino Sans", "Yu Gothic", "Microsoft YaHei", "Malgun Gothic", "Nirmala UI", Arial, sans-serif; }
+.bubble span[dir="rtl"] { display: inline-block; }
+.bubble small.trans { display: block; margin-top: 0.15rem; font-size: 0.78rem; opacity: 0.72; font-style: italic; }
+
+/* the computer's comments */
+.bubble-slot { flex: 1 1 100%; min-height: 2.9rem; display: flex; align-items: center; }
+.bubble {
+  max-width: 46rem; padding: 0.45rem 0.85rem; border-radius: 15px 15px 15px 4px;
+  background: var(--bone); color: #1b2523; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35); font-size: 0.95rem;
+}
+.bubble.in { animation: bubbleIn 0.22s ease-out; }      /* only the first time it is shown (the script adds .in once): see popBubble */
+.bubble b { margin-right: 0.45rem; font-family: var(--display); }
+@keyframes bubbleIn { from { transform: translateY(6px) scale(0.96); opacity: 0; } to { transform: none; opacity: 1; } }
+.chat-toggle { padding: 0.08rem 0.6rem; font-size: 0.8rem; color: var(--muted); }
+
+/* ------------------------------------------------------------- dialogs */
+.overlay {
+  position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; overflow: auto;
+  background: rgba(5, 22, 19, 0.74);
+  padding: calc(1rem + env(safe-area-inset-top, 0px)) max(1rem, env(safe-area-inset-right))
+           calc(1rem + env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left));
+}
+.dialog {
+  width: min(34rem, 100%); max-height: calc(100vh - 2.5rem); max-height: calc(100dvh - 2.5rem); overflow: auto;
+  background: var(--dlg-bg); color: var(--dlg-ink); border-radius: 14px; padding: 1.4rem 1.5rem 1.3rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+.dialog.wide { width: min(46rem, 100%); }
+.dialog :focus-visible { outline-color: var(--dlg-focus); }
+.dialog h2 { margin: 0 0 0.6rem; font: 700 1.7rem/1.15 var(--display); }
+.dialog p { margin: 0 0 0.9rem; }
+.dialog .btn { border-color: var(--dlg-line); }
+.dialog .btn:hover { background: rgba(127, 127, 127, 0.14); }
+.dialog .btn.primary { border-color: transparent; }
+.field { display: grid; gap: 0.25rem; margin-bottom: 0.8rem; }
+.field label { font-weight: 600; }
+.field[hidden] { display: none; }          /* (a .field's own display would otherwise override the hidden attribute) */
+.field input[type="text"].fixed { cursor: not-allowed; background: rgba(127, 127, 127, 0.18); border-style: dashed; color: var(--dlg-muted); font-weight: 600; }   /* looks locked: shaded, dashed, greyed */
+.field-note { margin: 0.1rem 0 0; font-size: 0.85rem; color: var(--dlg-muted); max-width: 46ch; }
+select, .field input[type="text"] {
+  font: inherit; padding: 0.45rem 0.6rem; border-radius: 8px; border: 1px solid var(--dlg-line);
+  background: transparent; color: var(--dlg-ink);
+}
+select option { color: #1b2523; background: #fff; }
+.how { margin: 0.4rem 0 1rem; color: var(--dlg-ink); }
+.how summary { cursor: pointer; font-weight: 600; }
+.rules { margin: 0.6rem 0 0; padding-left: 1.2rem; display: grid; gap: 0.5rem; max-width: 62ch; }
+.dialog > .rules { margin-bottom: 1rem; }
+.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.6rem; margin-top: 0.4rem; }
+
+.rows { display: grid; gap: 0.8rem; margin-bottom: 1rem; }
+.row {
+  display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto auto; gap: 0.6rem 0.9rem; align-items: center;
+  padding-bottom: 0.8rem; border-bottom: 1px solid var(--dlg-line);
+}
+.row .who { font-family: var(--display); font-size: 1.1rem; }
+.mini { display: flex; flex-wrap: wrap; gap: 3px; --s: 20px; min-height: 22px; }
+.mini .tile { filter: none; }
+.mini .none { color: var(--dlg-muted); font-size: 0.9rem; }
+.pts { display: grid; justify-items: end; line-height: 1.1; }
+.pts b { font: 700 1.35rem/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.pts span { font-size: 0.78rem; color: var(--dlg-muted); }
+.final { display: flex; gap: 2rem; margin: 0.4rem 0 0.8rem; }
+.final .tot b { font-size: 2.6rem; }
+.final .tot span { color: var(--dlg-muted); }
+
+/* ------------------------------------------------------------ small screens */
+@media (max-width: 640px) {
+  :root { --s: 27px; --hs: 36px; }
+  .brand h1 { font-size: 1.45rem; }
+  .totals { margin-left: 0; }
+  .track { grid-template-columns: 1fr; }
+  .boneyard { width: 11.5rem; padding: 0.35rem 0.55rem; }
+  .track-label { grid-auto-flow: column; justify-content: space-between; align-items: center; padding: 0.45rem 0.3rem 0; }
+  .track-info { grid-auto-flow: column; gap: 0.8rem; align-items: center; }
+  .cover { display: none; }
+  .track-tiles { min-height: calc(var(--s) * 2 + 18px); }
+  .row { grid-template-columns: 2.6rem minmax(0, 1fr); }
+  .row .pts { grid-column: 2; justify-items: start; grid-auto-flow: column; gap: 0.5rem; display: flex; align-items: baseline; }
+  .dialog { padding: 1.1rem 1.1rem 1rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .boneyard.ready { box-shadow: 0 0 0 5px rgba(214, 168, 79, 0.6); }   /* no flashing: a steady strong ring instead */
+}
+
+/* The Lord of the Rings theme: the open-train marker is a golden ring with a soft glow. */
+.toy-train.ring svg { filter: drop-shadow(0 0 3px rgba(255, 200, 70, 0.75)) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35)); }
