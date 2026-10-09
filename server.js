@@ -72,7 +72,7 @@ function createGameServer(options) {
     localOnly: false,
     log: () => {},
     rng: null,                           // (room) => random source for the deal; tests use it to rig deals
-    stepDelay: 90,
+    stepDelay: [500, 3000],              // the pause between the tiles of "Build my longest train": random, between these (milliseconds)
     maxMessage: 8192,
     maxWrongCodes: 8,                    // wrong join codes from one address before it must wait a minute
     ratePerSecond: 30, burst: 60,        // messages a connection may send: far more than a person can click

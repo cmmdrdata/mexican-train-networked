@@ -129,13 +129,20 @@ Open **New game** to choose these. They are saved between visits.
 | Rounds | 1, 4, or 13 | 4 |
 | Tiles per hand | 8, 12, or 15 | 15 |
 | Tile style | **Colored pips** or **Large numbers** | Colored pips |
+| Computer players | **One** or **two** computer players (so two or three at the table) | One |
 | Computer level | **Easy**, **Medium**, **Hard** | Medium |
+| Second computer's level | **Easy**, **Medium**, **Hard** (only with two computers; each has its own) | Medium |
+| Hints | **Allow hints** on / off (see Hints under Look, feel and sound) | on |
 | Sound | on / off (also the Mute button) | on |
 | Computer comments | on / off (the Comments button) | on |
 
 ---
 
 ## The computer opponent
+
+### One computer, or two
+
+Choose **Two computer players** and you play against two computers at once, three at the table, each with **its own skill**: an Easy and a Hard one, say, or two of the same. They get different names from the lists for their own skill, play at their own skill (an Easy computer builds short trains, a Hard one long ones), and the header says which is which ("Computers: Easy and Hard"). The turns go round the table and who plays first rotates every round; a marker on a train lets *both* of the others play there; and the usual tie rules apply (two players who go out together tie, a blocked round goes to the lowest hand, and the final can be "A tie between ..."). Their comments are spoken by one computer at a time, in its own voice: during one long wait the same computer does all the "you are taking too long" jabs, getting ruder.
 
 ### Three skill levels
 
@@ -225,7 +232,7 @@ On the same network (home Wi-Fi, an office) it just works. Over the internet the
 
 ### During a game
 
-- Everything works as in the game against the computer: tapping, dragging, **Build my longest train**, taking tiles back, the flying tiles and the click sounds. Your opponent's tiles click too.
+- Everything works as in the game against the computer: tapping, dragging, **Build my longest train**, taking tiles back, the flying tiles and the click sounds. Your opponent's tiles click too. **Build my longest train** lays the tiles down one at a time with a random pause of 0.5 to 3 seconds between them, so the others see the train go down at a person's pace instead of all at once.
 - **A low, short tone says it is your move.** It sounds when a new turn of yours begins, not for the rest of the same turn (covering your own double, or playing a tile you just drew), not while you build your opening train, and not when the dialogs appear. It is much lower and softer than the high click of a domino, and **Mute** silences it. It plays in online games only.
 - The computer's comments are replaced by **Say something**: twelve quick phrases ("Nice play!", "Hurry up!"...). Nothing anyone types can reach the other screen.
 - **If someone's connection drops**, the game pauses for both players and the other screen shows a 3-minute countdown. The dropped player's page reconnects by itself (and a reloaded page rejoins from a remembered code), landing back in the same game with the same hand. If they do not return in time, the game ends and the other player is told why.
@@ -235,6 +242,7 @@ On the same network (home Wi-Fi, an office) it just works. Over the internet the
 ### Fair play and safety
 
 - **The server runs the rules**, using the same engine as the game against the computer. Every move is checked there; an illegal or out-of-turn move changes nothing.
+- **Nobody is told what is in your hand before you act.** When you have nothing to play, the others see the same "X is choosing a tile." as for any turn; they learn you drew only when you actually draw (and that you passed, when you pass). The computer's own situation is still announced.
 - **Neither browser is ever sent a tile it should not see**, the host's included. Your opponent's hand and the boneyard arrive as counts only. While your opponent is still building their opening train it arrives as face-down placeholders: only which of them are doubles shows, as in the game against the computer.
 - Join codes are six random characters from an alphabet without look-alikes (no 0/O, 1/I/L), and a client that guesses wrong codes is made to wait. Anyone who has the address **and** the code can take the second seat of an open game, so give them only to the person you mean to play.
 - Names are cleaned (letters, digits, spaces and `. _ - '`, 20 characters) on the server and again on the page, and everything that arrives from the network is escaped before it is drawn. The server serves only the game page (no other files), limits message size and rate, caps connections and games, and drops connections that stop answering.
@@ -267,7 +275,7 @@ The server (`server.js`) serves the page at `/` and a WebSocket at `/ws`. A smal
 
 ## Look, feel and sound
 
-**Markers are toy trains.** When a player passes, a small toy locomotive appears at the far left of their train to show it is open, as the colored train pieces do in the physical game. It is glossy and 3D-looking but a single color per player (you red, the first opponent blue, the second yellow): lighter on top, darker underneath, with a white shine, all shades of that one color. It is about 52 x 34 pixels, with two wheels whose upper halves are hidden behind the body. It stays at the left edge as a long train scrolls past underneath it, never catches a click, and the "Open: ... can play here" note says the same in words. The Mexican train, which is always open, has none.
+**Markers are toy trains.** When a player passes, a small toy locomotive appears at the far left of their train to show it is open, as the colored train pieces do in the physical game. It is glossy and 3D-looking but a single color per player. The color belongs to the **seat**, so every screen shows the same colors: online, the host is red, the second person blue and the computer yellow (a fourth seat is green); against the computer, you are red and it is blue. Each train is lighter on top, darker underneath, with a white shine, all shades of that one color. It is about 52 x 34 pixels, with two wheels whose upper halves are hidden behind the body. It stays at the left edge as a long train scrolls past underneath it, never catches a click, and the "Open: ... can play here" note says the same in words. The Mexican train, which is always open, has none.
 
 **Hints.** The main screen has an **Allow hints** switch (on by default). With it off, nothing highlights the tiles you can play or the trains they can go on, nothing is picked or played for you, and "Build my longest train" is hidden: you pick a tile and then a train, and a wrong guess is refused with a message. With it on, your hand has a **Show hints** button to switch the highlights off and on during a game. The train with an open double to cover is always outlined, and the hand always has its Draw button.
 
@@ -380,19 +388,21 @@ for f in test_*.js; do node "$f" || echo "FAILED: $f"; done    # each suite exit
 | `test_food` | Every player's home country, dishes and hunger remarks | ~200 |
 | `test_spelling` | Everything a player can read uses American spelling | 6 |
 | `test_ws` | The WebSocket layer over real sockets: handshake, every frame size, fragmentation, every protocol violation and its close code, 600 connections of garbage | 74 |
-| `test_online_match` | Whole two-human matches: no hidden tile is ever sent (checked on every message of 36 matches, and shown to catch three injected leaks), both views agree, no tile is lost, every bad intent is refused, rigged first-train wins | 66 |
-| `test_server` | The server over real sockets: the page and path tricks, which network address is shown (ranking, `/info`, never localhost), codes and the lobby (including the computer player option), hostile clients, flooding, 12 simultaneous games, whole games with a computer, dropping and returning, the time limit, chat, the heartbeat, the command line | 151 |
+| `test_online_match` | Whole two-human matches: no hidden tile is ever sent (checked on every message of 36 matches, and shown to catch three injected leaks), both views agree, no tile is lost, every bad intent is refused, rigged first-train wins | 83 |
+| `test_server` | The server over real sockets: the page and path tricks, which network address is shown (ranking, `/info`, never localhost), codes and the lobby (including the computer player option), hostile clients, flooding, 12 simultaneous games, whole games with a computer, dropping and returning, the time limit, chat, the heartbeat, the command line | 153 |
 | `test_online_client` | The real page logic against the real server, played through the same actions a person triggers: Host and Join screens, lobby, whole games, a rigged first-turn win, chat, reconnecting, the paused screen, reload and resume, a hostile server trying to inject markup, and the turn sound checked against the engine's own record of turns | 133 |
 | `test_three_players` | The rules with three players: the deal, who may play where, a marker, an open double travelling past a player who cannot cover it, ties and blocked rounds among three, the three-way opening, and 1,500 simulated rounds with all invariants checked at every play | 37 |
-| `test_online_three` | A server-side match with two people and a computer: nothing hidden is ever sent to either person (checked on every message of 30 matches, and shown to catch leaks of the second opponent), both views agree under their different labels, the computer builds and plays by itself, pausing, a rigged win | 33 |
-| `test_three_client` | The real page against the real server with a computer player, through the screens: the Computer player option, the lobby, two opponent rows, whole games, each opponent's animations, the turn sound against the engine's record, chat attribution, a dropped connection, a rigged win, a hostile server describing three players | 51 |
+| `test_online_three` | A server-side match with two people and a computer: nothing hidden is ever sent to either person (checked on every message of 30 matches, and shown to catch leaks of the second opponent), both views agree under their different labels, the computer builds and plays by itself, pausing, a rigged win | 37 |
+| `test_three_client` | The real page against the real server with a computer player, through the screens: the Computer player option, the lobby, two opponent rows, whole games, each opponent's animations, the turn sound against the engine's record, chat attribution, a dropped connection, a rigged win, a hostile server describing three players | 54 |
 | `test_hints` | Allow hints and Show hints: no hint of any kind on any screen of whole games with hints off (played by guessing tile and train), wrong guesses change nothing, nothing is picked for you, the toggles and their saving, the opening, dragging, online, the always-on double outline and Draw button | 52 |
-| `test_toy_train` | The toy train marker: its drawing (shades of one color, two wheels half covered by the body, same height), the three colors and its size, when it appears (every screen of six whole games), the wording with no lanterns left, three players online | 34 |
+| `test_toy_train` | The toy train marker: its drawing (shades of one color, two wheels half covered by the body, same height), the three colors and its size, when it appears (every screen of six whole games), the wording with no lanterns left, three players online | 38 |
+| `test_two_computers` | One person against two computers: the setup form (and the real page's form), names and skills, whole games of up to 13 rounds with every screen inspected, that each computer really plays at its own skill in either seat (Easy and Hard build very different opening trains), the narration naming the right computer, the commentary speakers, the toy train colors | 43 |
+| `test_bubble_flash` | A speech bubble fades in once, when it first appears, and not again each time the page is redrawn for a move (the computer's comments and online chat); not at all behind an open dialog; the stylesheet and the real browser's measured opacity and running animations | 22 |
 | `test_dim_spacing` | The hand is dimmed on every screen where it is not your turn (against the computer and online) and not on your turn; the end-of-train padding is two dominoes | 12 |
-| `test_browser.py` | The real page in real Chromium (Playwright) against the real server: measured opacity of the hand, measured empty space after each train's last tile (wide and phone-sized screens), the host address field (an IP, read-only, cannot be edited), the QR code as the browser really draws it decoded by OpenCV, layout of the three-player table, and whole games between two and three real browser pages with no JavaScript errors. Skipped if Playwright is not installed; saves screenshots | 44 |
+| `test_browser.py` | The real page in real Chromium (Playwright) against the real server: measured opacity of the hand, measured empty space after each train's last tile (wide and phone-sized screens), the host address field (an IP, read-only, cannot be edited), the QR code as the browser really draws it decoded by OpenCV, layout of the three-player table, and whole games between two and three real browser pages with no JavaScript errors. Skipped if Playwright is not installed; saves screenshots | 95 |
 | `test_qr` | The QR generator: a published Reed-Solomon example, the standard's block tables and format and version strings, and 52 codes across all ten versions read back by an independent decoder (OpenCV, skipped if python3 with OpenCV is not installed) | 35 |
 | `test_join_link` | The real built page opened from a scanned link (`?join=`), the Host screen's address, the lobby's QR code and Copy link button, several network addresses, and the lobby's QR decoded back to its link | 33 |
-| `test_turn_sound` | The turn sound as numbers (pitch, length, no clicks, unlike the domino click), its audio plumbing, and when it plays: once per turn, not once per prompt | 49 |
+| `test_turn_sound` | The turn sound as numbers (pitch, length, no clicks, unlike the domino click), its audio plumbing, and when it plays: once per turn, not once per prompt | 50 |
 
 A few techniques worth knowing about:
 
@@ -422,7 +432,7 @@ It is simpler than the browser game: normal turns only (no simultaneous opening)
 ## Known limitations
 
 - **Only lightly tested in real browsers.** Most testing is in Node with fake DOMs. `test_browser.py` runs the page in one real browser, Chromium, and checks the hand dimming, the train spacing, the host address field, the QR code and whole online games between real pages, and the three-player layout was inspected in a screenshot. Safari, Firefox and phones were not tried, nor was touch dragging, audio unlocking on mobile, or the non-Latin fonts. Nothing has been tried between separate computers.
-- **Two or three players.** The rules engine seats two players (you and the computer, or two people online) or three (two people and a computer, online only). There is no hot-seat second human on one screen, no game against two computers, and no more than three at the table.
+- **Two or three players.** The rules engine seats two players (you and the computer, or two people online) or three (two people and a computer, online only). There is no hot-seat second human on one screen, and no more than three at the table. (Against the computer you can play one or two computers; online it is two people with an optional computer.)
 - **Online play is untested on real networks.** It is tested with real local sockets, with the real page logic against the real server, but not in real browsers, between separate computers, or through a router and firewall. Connections are not encrypted.
 - **Native-language lines were written without a native-speaker review.** They are checked for the right script and clean translations, but may contain awkward phrasing. The grammar avoids guessing anyone's gender where it could.
 - **The computer's face-down doubles show that a tile is a double** (though not its numbers).
@@ -437,7 +447,7 @@ It is simpler than the browser game: normal turns only (no simultaneous opening)
 These are discussed, **not implemented**:
 
 - **Encrypted connections** (HTTPS and `wss://`) for playing over the open internet, which would need a certificate or a tunnel in front of the server.
-- **More than three players**, or a second computer, or two people sharing a screen. (Three at the table is done, as two people and a computer, online.)
+- **More than three players**, or two people sharing a screen. (Three at the table is done, as two people and a computer, online.)
 - **Online play over the internet without port forwarding.** (The server does not look up its public address.)
 - **The computer commenting online**, as it does in the game against the computer.
 

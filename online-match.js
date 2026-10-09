@@ -40,7 +40,9 @@ const CHAT_PHRASES = G.ONLINE_PHRASES;
 
 class OnlineMatch {
   /* opts: rounds, hand, names (two or three; with three, the third seat is the computer when `computer` is
-   * given), computer: { level } | undefined, rng, push(seat, message), sleep(ms), stepDelay, paceRng. */
+   * given), computer: { level } | undefined, rng, push(seat, message), sleep(ms), paceRng, and stepDelay: the pause between
+   * the tiles of "Build my longest train", either a number of milliseconds or a [min, max] range to pick from at random
+   * (default 0.5 to 3 seconds, so the others see the train go down at a person's pace). */
   constructor(opts) {
     this.rounds = [1, 4, 13].includes(Number(opts.rounds)) ? Number(opts.rounds) : 4;
     this.hand = [8, 12, 15].includes(Number(opts.hand)) ? Number(opts.hand) : 15;
@@ -54,7 +56,7 @@ class OnlineMatch {
     this.paceRng = opts.paceRng || Math.random;            // kept apart from the deal, as in the game against the computer
     this.push = opts.push || (() => {});
     this.sleep = opts.sleep || (ms => new Promise(r => setTimeout(r, ms)));
-    this.stepDelay = opts.stepDelay === undefined ? 90 : opts.stepDelay;   // between the plays of "Build my longest train"
+    this.stepDelay = opts.stepDelay === undefined ? [500, 3000] : opts.stepDelay;   // between the plays of "Build my longest train"
     this.seq = 0;
     this.totals = {};
     SEATS.slice(0, this.n).forEach(id => { this.totals[id] = 0; });
@@ -154,11 +156,14 @@ class OnlineMatch {
   }
 
   /* The computer thinks for as long as a person would. While the game is paused (a player dropped) it waits. */
-  async _think(kind) {
-    await this.sleep(Math.round(G.paceFor(kind, this.paceRng())));
+  async _pauseFor(ms) {
+    await this.sleep(Math.round(ms));
     while (this.paused && !this.over) await new Promise(r => setTimeout(r, 40));
     if (this.over) throw ABORT;
   }
+  _think(kind) { return this._pauseFor(G.paceFor(kind, this.paceRng())); }
+  /* How long to wait before the next tile of "Build my longest train": random, like a person laying them down. */
+  _stepMs() { const d = this.stepDelay; return Array.isArray(d) ? d[0] + this.paceRng() * (d[1] - d[0]) : Number(d) || 0; }
 
   /* ------------------------------ the players, as the engine sees them ------------------------------ */
   _controller(seat) {
@@ -192,10 +197,10 @@ class OnlineMatch {
     while (this.plans[seat] && this.plans[seat].length) {
       const step = this.plans[seat].shift();
       if (step.type === 'undo') {
-        if (info.canUndo) { await this.sleep(this.stepDelay); return { type: 'undo' }; }
+        if (info.canUndo) { await this._pauseFor(this._stepMs()); return { type: 'undo' }; }
       } else {
         const mv = info.moves.find(m => key(m.tile) === step.key);
-        if (mv) { await this.sleep(this.stepDelay); return { type: 'play', move: mv }; }
+        if (mv) { await this._pauseFor(this._stepMs()); return { type: 'play', move: mv }; }
       }
       this.plans[seat] = null;              // something unexpected: hand control back to the player
     }
@@ -226,9 +231,12 @@ class OnlineMatch {
       // --- normal turns ---
       async onNeedDraw(game, player) {
         const seat = m._seat(player);
+        // A person who has nothing to play is not announced to the others (it would tell them what is in that hand before the
+        // person has even drawn): they see the same line as for any other turn. The draw itself, once it happens, is public.
+        // (A double played as the last tile is different: everybody can see the hand is empty. And the computer is just told.)
         const text = player.hand.length === 0
           ? `${m.names[seat]} played a double as their last tile. It cannot go out, so they draw to cover it.`
-          : `${m.names[seat]} has nothing to play and draws.`;
+          : m.computers[seat] ? `${m.names[seat]} has nothing to play and draws.` : `${m.names[seat]} is choosing a tile.`;
         for (const s of m.humans) if (s !== seat) m.banners[s] = text;
         if (m.computers[seat]) { m._broadcast(m.noEvents()); await m._think('draw'); }
         else await m._wait(seat, 'draw');
@@ -370,10 +378,10 @@ class OnlineMatch {
         };
       }
     }
-    const opps = this.others(seat).map((sx, i) => ({ id: i === 0 ? 'cpu' : 'cpu2', name: this.names[sx], computer: !!this.computers[sx], level: this.computers[sx] ? this.computers[sx].level : null }));
+    const opps = this.others(seat).map((sx, i) => ({ id: i === 0 ? 'cpu' : 'cpu2', name: this.names[sx], seat: sx, computer: !!this.computers[sx], level: this.computers[sx] ? this.computers[sx].level : null }));
     const view = {
       seq: this.seq, round: this.roundIndex, rounds: this.rounds,
-      me: { name: this.names[seat] }, opp: { name: opps[0].name }, opps,
+      me: { name: this.names[seat], seat }, opp: { name: opps[0].name }, opps,
       totals: flipTotals(this.totals), paused: this.paused, over: this.over,
       log: this.logs[seat].slice(-8), banner: this.banners[seat], modal, awaiting, game: null,
     };

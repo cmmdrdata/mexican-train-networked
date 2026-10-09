@@ -1525,6 +1525,12 @@
   /* Who is at the table, in the order the screen shows them: you, then the opponent(s). Two players is the
    * usual game; three is an online game with a computer as the third player. */
   const tableIds = S => (S.game && Array.isArray(S.game.players) && S.game.players.length === 3 ? ['human', 'cpu', 'cpu2'] : ['human', 'cpu']);
+  /* A player's train colour is the colour of their SEAT, so everybody sees the same colours: online, the host is always red,
+   * the second person blue and the third seat yellow, on every screen (each screen only labels the players differently:
+   * "you" is always at the bottom). Against the computer, you are red and it is blue. */
+  const trainColor = (S, id) => { const n = S.seats && S.seats[id]; return Number.isInteger(n) && n >= 0 && n <= 3 ? n : (id === 'cpu2' ? 2 : id === 'cpu' ? 1 : 0); };
+  /* The skill of each computer player: the first uses the "Computer skill" setting, the second (if there is one) its own. */
+  const levelFor = (S, id) => (id === 'cpu2' ? S.opts.level2 : S.opts.level);
   const nameOf = (S, id) => (id === 'human' ? 'You' : id === 'cpu2' ? (S.cpu2Name || 'Computer') : cpuName(S));
 
   function trainName(S, id) {
@@ -1534,7 +1540,7 @@
   function trainRef(S, id, actor) {
     if (id === 'mexican') return 'the Mexican train';
     if (id === actor) return actor === 'human' ? 'your train' : 'their own train';
-    return actor === 'human' ? `${cpuName(S)}'s train` : 'your train';
+    return actor === 'human' || id !== 'human' ? `${nameOf(S, id)}'s train` : 'your train';        // (one computer playing on the other's train: "Zed's train")
   }
 
   function bannerText(S) {
@@ -1578,10 +1584,10 @@
   function viewBar(S) {
     const g = S.game, on = S.online;
     const round = g
-      ? `<div class="round"><span>Round ${S.roundIndex + 1} of ${on ? on.rounds : S.opts.rounds}</span><span>Engine double-${g.engine}</span>${on ? `<span>Online game ${on.display}</span>` : `<span>Computer: ${LEVEL_LABEL[S.opts.level]}</span>`}</div>`
+      ? `<div class="round"><span>Round ${S.roundIndex + 1} of ${on ? on.rounds : S.opts.rounds}</span><span>Engine double-${g.engine}</span>${on ? `<span>Online game ${on.display}</span>` : tableIds(S).length === 3 ? `<span>Computers: ${LEVEL_LABEL[S.opts.level]} and ${LEVEL_LABEL[S.opts.level2]}</span>` : `<span>Computer: ${LEVEL_LABEL[S.opts.level]}</span>`}</div>`
       : '';
     return `<header class="bar">
-      <div class="brand"><h1>Mexican Train</h1><p class="sub">${on ? 'Double-12 online' : 'Double-12 against the computer'}</p></div>
+      <div class="brand"><h1>Mexican Train</h1><p class="sub">${on ? 'Double-12 online' : tableIds(S).length === 3 ? 'Double-12 against two computers' : 'Double-12 against the computer'}</p></div>
       ${round}
       <div class="totals" role="group" aria-label="Scores, lowest wins">
         ${tableIds(S).map(id => `<div class="tot"><b>${S.totals[id] || 0}</b><span>${nameOf(S, id)}</span></div>`).join('\n        ')}
@@ -1611,7 +1617,7 @@
         ? (info && info.computer
           ? `<span class="tag tag-${info.level}" title="${LEVEL_LABEL[info.level]} computer player">${LEVEL_LABEL[info.level]}</span>`
           : `<span class="net-dot ${on.oppConnected !== false ? 'up' : 'down'}" title="${on.oppConnected !== false ? 'connected' : 'disconnected'}"></span>`)
-        : `<span class="tag tag-${S.opts.level}" title="${LEVEL_LABEL[S.opts.level]} computer player">${LEVEL_LABEL[S.opts.level]}</span>`;
+        : `<span class="tag tag-${levelFor(S, id)}" title="${LEVEL_LABEL[levelFor(S, id)]} computer player">${LEVEL_LABEL[levelFor(S, id)]}</span>`;
       const toggle = i > 0 ? '' : (on
         ? `<button class="btn chat-toggle" data-action="toggleSay" aria-expanded="${S.sayOpen ? 'true' : 'false'}" data-focus-id="say">Say something</button>`
         : `<button class="btn chat-toggle" data-action="toggleChat" aria-pressed="${S.opts.chat ? 'true' : 'false'}" data-focus-id="chat">Comments: ${S.opts.chat ? 'on' : 'off'}</button>`);
@@ -1677,12 +1683,12 @@
    * left of their train. (The physical game has a coloured train piece for each player to show their train is open.)
    * It is one colour: every shade in it (the lighter top, the darker underside, the wheels, the window) comes from the
    * player's colour, and the only other thing is the white shine. The body comes down to the middle of the wheels, so
-   * only the lower half of each shows. Pure SVG; the colours come from CSS (.p-human, .p-cpu, .p-cpu2) and every gradient
-   * has an id of its own. */
-  function toyTrainSVG(id) {
-    const g = n => `${n}-${id}`;
+   * only the lower half of each shows. Pure SVG; the colours come from CSS (.c0 to .c3) and every gradient
+   * has an id of its own. `color` is 0 to 3: the colour of a seat at the table (see trainColor). */
+  function toyTrainSVG(color) {
+    const g = n => `${n}-c${color}`;
     const edge = 'stroke="var(--tc-lo)" stroke-width="0.9" stroke-linejoin="round"';
-    return `<span class="toy-train p-${id}" aria-hidden="true"><svg viewBox="0 0 62 40" focusable="false">
+    return `<span class="toy-train c${color}" aria-hidden="true"><svg viewBox="0 0 62 40" focusable="false">
       <defs>
         <linearGradient id="${g('tb')}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--tc-hi)"/><stop offset="0.4" style="stop-color:var(--tc)"/><stop offset="1" style="stop-color:var(--tc-lo)"/></linearGradient>
         <linearGradient id="${g('tr')}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--tc-hi)"/><stop offset="1" style="stop-color:var(--tc)"/></linearGradient>
@@ -1748,7 +1754,7 @@
     const toy = id !== 'mexican' && !hidden && !!tr.marker;           // an open train wears its player's toy train
     return `<div class="track${target ? ' target' : ''}${must ? ' must' : ''}${preview ? ' preview' : ''}${drop ? ' drop' : ''}${toy ? ' has-toy' : ''}" data-train="${id}">
       ${label}
-      <div class="rail">${toy ? toyTrainSVG(id) : ''}<div class="scroller" data-train="${id}"><div class="track-tiles">${engineTile}${tiles}${ghost}</div></div></div>
+      <div class="rail">${toy ? toyTrainSVG(trainColor(S, id)) : ''}<div class="scroller" data-train="${id}"><div class="track-tiles">${engineTile}${tiles}${ghost}</div></div></div>
     </div>`;
   }
 
@@ -1856,9 +1862,14 @@
         <select id="opt-rounds">${optionList([1, 4, 13], o.rounds, v => v === 1 ? 'One round' : v === 4 ? 'Short game, 4 rounds' : 'Full game, 13 rounds')}</select></div>
       <div class="field"><label for="opt-hand">Tiles dealt to each player</label>
         <select id="opt-hand">${optionList([8, 12, 15], o.hand, v => v === 15 ? '15 (standard)' : String(v))}</select></div>
+      <div class="field"><label for="opt-cpus">Computer players</label>
+        <select id="opt-cpus">${optionList([1, 2], o.cpus === 2 ? 2 : 1, v => v === 1 ? 'One computer player' : 'Two computer players')}</select></div>
       <div class="field"><label for="opt-level">Computer skill</label>
         <select id="opt-level">${optionList(LEVELS, o.level, v => LEVEL_TEXT[v])}</select>
         <p class="field-note">Easy often plays at random and builds short trains. Hard plans ahead and keeps long chains available so it can go out sooner. Each level has its own computer players, who talk differently too.</p></div>
+      <div class="field" id="field-level2"${o.cpus === 2 ? '' : ' hidden'}><label for="opt-level2">Second computer's skill</label>
+        <select id="opt-level2">${optionList(LEVELS, o.level2, v => LEVEL_TEXT[v])}</select>
+        <p class="field-note">Each computer player has its own skill, so you can mix them: an easy one and a hard one, say.</p></div>
       <div class="field"><label for="opt-hints">Hints</label>
         <button type="button" id="opt-hints" class="btn toggle" data-action="toggleAllowHints" aria-pressed="${o.allowHints !== false ? 'true' : 'false'}">Allow hints: ${o.allowHints !== false ? 'on' : 'off'}</button>
         <p class="field-note">On: the tiles you can play and the trains they can go on are highlighted, and your hand gets a Show hints button to switch that off or on. Off: nothing is highlighted and nothing is played for you: you pick the tile and then the train.</p></div>
@@ -1916,7 +1927,7 @@
     return `<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
       <h2 id="dlg-title">${title}</h2>
       <div class="final">${ids.map(id => `<div class="tot"><b>${score(id)}</b><span>${nameOf(S, id)}</span></div>`).join('')}</div>
-      <p>Lowest score wins. ${S.online ? `You played ${rivals} online.` : `You played ${cpuName(S)} on ${LEVEL_LABEL[S.opts.level]}.`}</p>
+      <p>Lowest score wins. ${S.online ? `You played ${rivals} online.` : tableIds(S).length === 3 ? `You played ${cpuName(S)} (${LEVEL_LABEL[S.opts.level]}) and ${nameOf(S, 'cpu2')} (${LEVEL_LABEL[S.opts.level2]}).` : `You played ${cpuName(S)} on ${LEVEL_LABEL[S.opts.level]}.`}</p>
       <div class="actions">${S.online ? '<button class="btn primary" data-action="onlineBack" data-primary="1">Back to the menu</button>' : '<button class="btn primary" data-action="newGame" data-primary="1">Play again</button>'}</div>
     </div></div>`;
   }
@@ -2289,7 +2300,7 @@
 
   /* ================================= APP ================================== */
 
-  const DEFAULT_OPTS = { rounds: 4, hand: 15, style: 'pips', sound: true, level: 'normal', chat: true, allowHints: true };
+  const DEFAULT_OPTS = { rounds: 4, hand: 15, style: 'pips', sound: true, level: 'normal', chat: true, allowHints: true, cpus: 1, level2: 'normal' };
   const FLASH_MS = 1100;   // length of the draw-button flash; must match the CSS animation
 
   // Names the computer player can pick from (none ends in "s", so "Name's train" reads well).
@@ -2354,7 +2365,9 @@
       const level = LEVELS.includes(o.level) ? o.level : DEFAULT_OPTS.level;
       const chat = !(o.chat === false || o.chat === 'false');
       const allowHints = !(o.allowHints === false || o.allowHints === 'false');
-      return { rounds, hand, style, sound: snd, level, chat, allowHints };
+      const cpus = o.cpus === 2 || o.cpus === '2' ? 2 : 1;                   // one computer player, or two
+      const level2 = LEVELS.includes(o.level2) ? o.level2 : 'normal';          // the second computer's skill
+      return { rounds, hand, style, sound: snd, level, chat, allowHints, cpus, level2 };
     }
     function loadOpts() {
       try { return sanitize(Object.assign({}, DEFAULT_OPTS, JSON.parse(storage.get('mt-opts') || '{}'))); }
@@ -2369,7 +2382,7 @@
       hoverKey: null, flashPhase: 0, handOrder: null, dragKey: null,
       dropTrain: null, dropFrom: null, comment: null, pendingRating: null, lastCommentAt: -Infinity, lastLine: null,
       banner: '', log: [], lastCounts: {}, lastDialog: null,
-      opps: null, cpu2Name: null, hostInfo: null, showHints: true, notice: '',
+      opps: null, cpu2Name: null, seats: null, hostInfo: null, showHints: true, notice: '',
       online: null, onlineError: '', form: null, sayOpen: false, mySay: null, copied: false, qrIndex: 0,
     };
     S.opts = loadOpts();
@@ -2378,8 +2391,8 @@
     // While a settings/rules dialog is open, the match keeps running behind it. Re-drawing
     // the page then would wipe whatever the player is choosing, so background updates
     // are skipped; the actions that open/close dialogs pass force=true and redraw.
-    function render(force) {
-      if (!force && S.overlay && S.lastDialog === S.overlay) return;
+    function render(force) {                           // returns whether the page was redrawn
+      if (!force && S.overlay && S.lastDialog === S.overlay) return false;
       S.flashPhase = Math.floor(now() % FLASH_MS);   // re-drawing restarts CSS animations; this keeps the flash in step
       S.nowMs = now();                               // for the countdown shown while waiting for a dropped player
       const saved = {};
@@ -2414,15 +2427,25 @@
       if (fx) fx.reapply();
       S.lastPlay = null;
       S.revealed = null;
+      return true;
     }
 
+    /* A new comment fades in ONCE. The class is added to the bubble that was just drawn: the stylesheet cannot do it, because
+     * every redraw makes new elements and an animation written there would play again after every move (the bubble would
+     * flash each time a line is added to the log). */
+    function popBubble() {
+      const el = root.querySelector && root.querySelector('.bubble');
+      if (el && el.classList && el.classList.add) el.classList.add('in');
+    }
     function clack() { if (S.opts.sound) sound.clack(); }
     function turnCue() { if (S.opts.sound && sound.turn) sound.turn(); }
     function say(text) { S.banner = text; S.log.push(text); }
     function setBanner(text) { S.banner = text; }
 
     /* ---------- the computer's comments ---------- */
-    let commentTimers = [], commentId = 0, slowTimer = null, slowCount = 0, slowDish = null;
+    let commentTimers = [], commentId = 0, slowTimer = null, slowCount = 0, slowDish = null, slowSpeaker = 'cpu';
+    // With two computers, either may say something; with one it is always that one (and no random number is used)
+    function pickSpeaker() { return S.cpu2Name && S.game && S.game.players.length === 3 ? (chatRng() < 0.5 ? 'cpu' : 'cpu2') : 'cpu'; }
     function later(fn, ms) {
       const id = timer.set(() => { commentTimers = commentTimers.filter(x => x !== id); fn(); }, ms);
       commentTimers.push(id);
@@ -2437,10 +2460,12 @@
     // put a speech bubble up (after `delay` ms) and take it down again a few seconds later
     function showComment(kind, vars, delay) {
       let text, extra = {};
-      const lang = nativeLangOf(S.cpuName), pool = lang && NATIVE_LINES[lang][kind.indexOf('slow') === 0 ? 'slow' : kind];
+      const spk = kind.indexOf('slow') === 0 ? slowSpeaker : pickSpeaker();        // who is talking: during one wait it stays the same computer
+      const spkName = nameOf(S, spk), spkLevel = levelFor(S, spk);
+      const lang = nativeLangOf(spkName), pool = lang && NATIVE_LINES[lang][kind.indexOf('slow') === 0 ? 'slow' : kind];
       const tier = kind.indexOf('slow') === 0 ? Number(kind.slice(4)) : 0;
-      const hungry = tier && FOOD[S.cpuName] && foodChance > 0 && chatRng() < foodChance
-        ? foodComment(S.cpuName, tier, chatRng, nativeChance, S.lastLine, slowDish) : null;
+      const hungry = tier && FOOD[spkName] && foodChance > 0 && chatRng() < foodChance
+        ? foodComment(spkName, tier, chatRng, nativeChance, S.lastLine, slowDish) : null;
       if (hungry) {                                                                       // hungry, and off for something from home
         text = hungry.text;
         slowDish = hungry.dish;
@@ -2449,13 +2474,13 @@
         const choices = pool.length > 1 ? pool.filter(p => p[0] !== S.lastLine) : pool;
         const pair = choices[Math.min(choices.length - 1, Math.floor(chatRng() * choices.length))];
         text = pair[0]; extra = { lang, trans: pair[1] };
-      } else text = fillLine(pickLine(kind, chatRng, S.lastLine, S.opts.level), vars);
+      } else text = fillLine(pickLine(kind, chatRng, S.lastLine, spkLevel), vars);
       S.lastLine = text;
       const put = () => {
         if (!S.opts.chat || !S.game) return;
         const id = ++commentId;
-        S.comment = Object.assign({ id, kind, text }, extra);
-        render();
+        S.comment = Object.assign({ id, kind, text }, extra, S.cpu2Name && S.game && S.game.players.length === 3 ? { from: spkName } : {});
+        if (render()) popBubble();
         later(() => { if (S.comment && S.comment.id === id) { S.comment = null; render(); } }, CHAT.showMs);
       };
       if (delay > 0) later(put, delay); else put();
@@ -2474,7 +2499,7 @@
     function armSlow() {
       cancelSlow();
       if (!S.opts.chat) return;
-      slowCount = 0; slowDish = null;                    // a new wait: a new dish, if it gets hungry
+      slowCount = 0; slowDish = null; slowSpeaker = pickSpeaker();      // a new wait: a new dish, if it gets hungry (and one computer does the talking)
       const fire = () => {
         slowTimer = null;
         if (!S.awaiting || !S.opts.chat) return;
@@ -2527,14 +2552,14 @@
         if (player.id === 'human') await awaitUser('draw');
         else {
           setBanner(player.hand.length === 0
-            ? `${cpuName(S)} played a double as their last tile. It cannot go out, so they draw to cover it.`
-            : `${cpuName(S)} has nothing to play and draws.`);
+            ? `${nameOf(S, player.id)} played a double as their last tile. It cannot go out, so they draw to cover it.`
+            : `${nameOf(S, player.id)} has nothing to play and draws.`);
           render(); await pause(humanPace('draw'));
         }
       },
       async onDraw(game, player, tile) {
         if (player.id === 'human') { say(`You drew ${fmt(tile)}.`); S.drawnKey = key(tile); }
-        else say(`${cpuName(S)} draws a tile.`);
+        else say(`${nameOf(S, player.id)} draws a tile.`);
         if (player.id === 'human') maybeComment('draw');
         const spec = { playerId: player.id, key: key(tile) };
         const tok = fx ? fx.captureDraw(spec) : null;
@@ -2553,8 +2578,8 @@
               : 'That tile does not fit. You pass and a marker goes on your train.');
         } else {
           say(player.hand.length === 0
-            ? `${cpuName(S)} cannot draw to cover their double and passes. Once it is covered, they have gone out.`
-            : `${cpuName(S)} cannot play and passes. A marker goes on their train: you can play there.`);
+            ? `${nameOf(S, player.id)} cannot draw to cover their double and passes. Once it is covered, they have gone out.`
+            : `${nameOf(S, player.id)} cannot play and passes. A marker goes on their train: you can play there.`);
         }
         render();
         await pause(1200);
@@ -2564,13 +2589,13 @@
         S.lastPlay = { trainId: move.trainId, index: game.trains[move.trainId].tiles.length - 1 };
         S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.hoverKey = null;
         clack();
-        say(`${you ? 'You played' : `${cpuName(S)} played`} ${fmt(move.tile)} on ${trainRef(S, move.trainId, player.id)}.`);
+        say(`${you ? 'You played' : `${nameOf(S, player.id)} played`} ${fmt(move.tile)} on ${trainRef(S, move.trainId, player.id)}.`);
         if (info.lastTileDouble) S.log.push(you
           ? 'That was your last tile, but a double cannot go out. Draw a tile to try to cover it.'
-          : `That was ${cpuName(S)}'s last tile, but a double cannot go out. They must draw a tile to try to cover it.`);
-        else if (info.doubleOpened) S.log.push(you ? 'A double: you must play another tile onto it.' : `A double: ${cpuName(S)} must play another tile onto it.`);
+          : `That was ${nameOf(S, player.id)}'s last tile, but a double cannot go out. They must draw a tile to try to cover it.`);
+        else if (info.doubleOpened) S.log.push(you ? 'A double: you must play another tile onto it.' : `A double: ${nameOf(S, player.id)} must play another tile onto it.`);
         if (info.doubleSatisfied) S.log.push('The double is covered.');
-        if (player.hand.length === 1) S.log.push(you ? 'You have one tile left.' : `${cpuName(S)} has one tile left.`);
+        if (player.hand.length === 1) S.log.push(you ? 'You have one tile left.' : `${nameOf(S, player.id)} has one tile left.`);
         if (you && S.pendingRating) {                   // the computer has an opinion of that move
           const kind = commentKindFor(S.pendingRating);
           S.pendingRating = null;
@@ -2592,7 +2617,7 @@
         S.lastPlay = { trainId: player.id, index: game.trains[player.id].tiles.length - 1 };
         S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.hoverKey = null;
         clack();   // the computer's face-down tiles click too; that gives nothing away
-        const spec = { playerId: player.id, trainId: player.id, index: S.lastPlay.index, key: key(move.tile), placed: move.placed, hidden: player.id === 'cpu' };
+        const spec = { playerId: player.id, trainId: player.id, index: S.lastPlay.index, key: key(move.tile), placed: move.placed, hidden: player.id !== 'human' };
         let tok = fx ? fx.capture(spec) : null;
         if (fx && S.dropFrom && S.dropFrom.key === spec.key) tok = { from: S.dropFrom.rect };
         S.dropFrom = null;
@@ -2606,7 +2631,7 @@
       },
       async onBuildDraw(game, player, tile) {
         if (player.id === 'human') { say(`You drew ${fmt(tile)}.`); S.drawnKey = key(tile); S.freshKey = key(tile); }
-        else S.log.push(`${cpuName(S)} draws a tile.`);
+        else S.log.push(`${nameOf(S, player.id)} draws a tile.`);
         if (player.id === 'human') maybeComment('draw');
         const spec = { playerId: player.id, key: key(tile) };
         const tok = fx ? fx.captureDraw(spec) : null;
@@ -2622,8 +2647,8 @@
             ? 'The boneyard is empty and nothing fits the engine. You pass and a marker goes on your train.'
             : 'Nothing fits the engine. You pass and a marker goes on your train.');
         } else {
-          S.revealed = 'cpu';
-          S.log.push(`${cpuName(S)} cannot start a train and passes. A marker goes on their train: you can play there.`);
+          S.revealed = player.id;
+          S.log.push(`${nameOf(S, player.id)} cannot start a train and passes. A marker goes on their train: you can play there.`);
         }
         render();
         await pause(700);
@@ -2631,9 +2656,9 @@
       async onBuildDone(game, player, count) {
         const you = player.id === 'human';
         if (you) { S.plan = null; }
-        else S.revealed = 'cpu';
+        else S.revealed = player.id;
         S.selectedKey = null; S.drawnKey = null; S.freshKey = null;
-        S.log.push(`${you ? 'You' : cpuName(S)} finished a train of ${count} ${count === 1 ? 'tile' : 'tiles'}.`);
+        S.log.push(`${you ? 'You' : nameOf(S, player.id)} finished a train of ${count} ${count === 1 ? 'tile' : 'tiles'}.`);
         if (you) {                                       // was that the longest train you could have built?
           const best = longestFullChain(game, player).length;
           if (count === 0 && best > 0) maybeComment('openNone');
@@ -2644,7 +2669,7 @@
         await pause(300);
       },
       async onOpeningDone() {
-        const first = S.startIndex === 0 ? 'You play' : `${cpuName(S)} plays`;
+        const first = S.startIndex === 0 ? 'You play' : `${nameOf(S, S.game.players[S.startIndex].id)} plays`;
         say(`All trains are built. ${first} first.`);
         render();
         await pause(1000);
@@ -2673,7 +2698,7 @@
     }
 
     async function cpuAct(game, player, info) {
-      const action = cpuBuildAction(game, player, info, S.opts.level);
+      const action = cpuBuildAction(game, player, info, levelFor(S, player.id));
       const kind = action.type === 'done' ? 'finish' : action.type === 'draw' ? 'draw' : 'place';
       await pause(humanPace(kind));
       return action;
@@ -2880,7 +2905,12 @@
     // what the server sent about the game: tiles that moved, then the new state, then the flights
     function applyOnlineState(m) {
       const o = S.online;
-      if (!o || typeof m.seq !== 'number' || m.seq < lastSeq || !validOnlineView(m.view)) return;
+      if (o && (typeof m.seq !== 'number' || m.seq < lastSeq || !validOnlineView(m.view))) {       // a message the page will not use: counted, so it can be noticed
+        o.skipped = (o.skipped || 0) + 1; o.skipWhy = typeof m.seq !== 'number' ? 'no sequence number' : m.seq < lastSeq ? 'older than one already shown' : 'view not valid';
+        return;
+      }
+      if (!o) return;
+      o.applied = (o.applied || 0) + 1;
       lastSeq = m.seq;
       if (o.pending && o.pending.ackSeq !== undefined && o.pending.ackSeq !== null && m.seq > o.pending.ackSeq) { o.pending = null; timer.clear(pendingTimer); pendingTimer = null; }
       const v = m.view, evs = Array.isArray(m.events) ? m.events : [];
@@ -2915,7 +2945,7 @@
       // whose move came last, to tell a new turn from the rest of the same turn (covering your own double, playing a drawn tile)
       const g0 = v.game;
       const openingNow = !!(g0 && g0.opening && !g0.players.every(p => g0.opening[p.id].finished));
-      if (!openingNow) for (const ev of evs) if (ev && (ev.e === 'play' || ev.e === 'draw' || ev.e === 'pass') && (ev.who === 'me' || ev.who === 'opp')) o.lastActor = ev.who;
+      if (!openingNow) for (const ev of evs) if (ev && (ev.e === 'play' || ev.e === 'draw' || ev.e === 'pass') && (ev.who === 'me' || ev.who === 'opp' || ev.who === 'opp2')) o.lastActor = ev.who;
       // 3. the new state
       if (o.round !== v.round) { S.handOrder = null; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; o.round = v.round; o.lastActor = null; }
       o.rounds = Number(v.rounds) || o.rounds;
@@ -2924,7 +2954,13 @@
       // who the opponents are: one, or two when a computer is the third player (their names, and which one is the computer)
       const opps = (Array.isArray(v.opps) ? v.opps : [v.opp]).slice(0, 2).map((x, i) => ({
         id: i === 0 ? 'cpu' : 'cpu2', name: cleanPlayerName(x && x.name, 'Opponent'), computer: !!(x && x.computer), level: LEVELS.includes(x && x.level) ? x.level : 'normal',
+        seat: x && Number.isInteger(x.seat) && x.seat >= 0 && x.seat <= 3 ? x.seat : undefined,
       }));
+      // which seat each player has: their colour follows the seat (anything missing or clashing falls back to the usual colours)
+      const mySeat = v.me && Number.isInteger(v.me.seat) && v.me.seat >= 0 && v.me.seat <= 3 ? v.me.seat : undefined;
+      const seats = { human: mySeat, cpu: opps[0].seat, cpu2: opps[1] ? opps[1].seat : undefined };
+      const given = Object.values(seats).filter(n => n !== undefined);
+      S.seats = given.length === (opps.length + 1) && new Set(given).size === given.length ? seats : null;
       S.opps = opps;
       S.cpuName = opps[0].name;
       S.cpu2Name = opps[1] ? opps[1].name : null;
@@ -2987,7 +3023,7 @@
       const id = ++commentId;
       const person = S.opps && S.opps.find(x => !x.computer);
       S.comment = { id, kind: 'chat', text: String(text), from: person ? person.name : null };
-      render();
+      if (render()) popBubble();
       later(() => { if (S.comment && S.comment.id === id) { S.comment = null; render(); } }, CHAT.showMs);
     }
     function sendChat(i) {
@@ -3031,7 +3067,7 @@
       if (o) { o.leaving = true; if (!quiet && o.token) netSend({ t: 'leave' }); }
       netClose(); if (!keepSession) clearSession();      // (the window that took over still needs the saved game)
       S.online = null; S.game = null; S.modal = null; S.awaiting = null; S.matchActive = false;
-      S.comment = null; S.mySay = null; S.sayOpen = false; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0 }; S.opps = null; S.cpu2Name = null;
+      S.comment = null; S.mySay = null; S.sayOpen = false; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0 }; S.opps = null; S.cpu2Name = null; S.seats = null;
       S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.handOrder = null; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
       lastSeq = -1;
       clearChatTimers();
@@ -3070,6 +3106,18 @@
       render(true);
     }
 
+    // a computer player: it plays at its own skill; a cover for an open double is played at once, with no thinking time
+    const cpuController = id => ({
+      act: cpuAct,
+      async choose(game, player, moves) {
+        const level = levelFor(S, id);
+        if (game.openDouble) return cpuChoose(game, player, moves, level);
+        setBanner(`${nameOf(S, id)} is thinking...`);
+        render();
+        await pause(humanPace('place'));
+        return cpuChoose(game, player, moves, level);
+      },
+    });
     const controllers = {
       human: {
         act: humanAct,
@@ -3085,18 +3133,8 @@
           return chosen;
         },
       },
-      cpu: {
-        act: cpuAct,
-        async choose(game, player, moves) {
-          // A double is open and the computer holds a tile that covers it (every legal move is a
-          // cover): it just plays it, with no thinking time.
-          if (game.openDouble) return cpuChoose(game, player, moves, S.opts.level);
-          setBanner(`${cpuName(S)} is thinking...`);
-          render();
-          await pause(humanPace('place'));
-          return cpuChoose(game, player, moves, S.opts.level);
-        },
-      },
+      cpu: cpuController('cpu'),
+      cpu2: cpuController('cpu2'),                              // (only used when there are two computers)
     };
 
     /* ---------- the match ---------- */
@@ -3107,23 +3145,24 @@
 
     async function runMatch() {
       S.matchActive = true;
-      let startIndex = rng() < 0.5 ? 0 : 1;
+      const n = S.opts.cpus === 2 ? 3 : 2;                              // players at the table
+      let startIndex = n === 2 ? (rng() < 0.5 ? 0 : 1) : Math.floor(rng() * n);
       for (let r = 0; r < S.opts.rounds; r++) {
         S.roundIndex = r;
         S.startIndex = startIndex;
         const engine = MAX_PIP - r;
-        S.game = newRound({ engine, handSize: S.opts.hand, rng, simultaneousOpening: true });
-        S.game.players[1].name = cpuName(S);
+        S.game = newRound({ engine, handSize: S.opts.hand, rng, simultaneousOpening: true, players: n });
+        S.game.players.forEach(p => { if (p.id !== 'human') p.name = nameOf(S, p.id); });
         S.log = []; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.lastPlay = null; S.plan = null; S.handOrder = null; S.dragKey = null;
         say(`Round ${r + 1}: the engine is double-${engine}. Everyone builds their train at the same time.`);
-        S.log.push(`${startIndex === 0 ? 'You play' : `${cpuName(S)} plays`} first once the trains are built.`);
+        S.log.push(`${startIndex === 0 ? 'You play' : `${nameOf(S, S.game.players[startIndex].id)} plays`} first once the trains are built.`);
         render();
         await pause(800);
 
         const result = await playRound(S.game, startIndex, controllers, ui);
         setBanner(result.blocked ? 'The round is blocked.'
-          : result.tie ? 'You both played every tile.'
-          : `${result.winner.id === 'human' ? 'You' : cpuName(S)} played the last tile.`);
+          : result.tie ? (n === 2 ? 'You both played every tile.' : 'More than one of you played every tile.')
+          : `${nameOf(S, result.winner.id)} played the last tile.`);
         render();
         await pause(1100);
 
@@ -3131,19 +3170,19 @@
         rows.forEach(row => { S.totals[row.id] += row.pips; });
         await showModal({
           type: 'roundEnd', blocked: result.blocked, tie: !!result.tie, winnerId: result.winner ? result.winner.id : null,
-          rows, totals: { human: S.totals.human, cpu: S.totals.cpu }, last: r === S.opts.rounds - 1,
+          rows, totals: Object.assign({}, S.totals), last: r === S.opts.rounds - 1,
         }, true);
-        startIndex = 1 - startIndex;
+        startIndex = (startIndex + 1) % n;
       }
       S.matchActive = false;
-      await showModal({ type: 'final', totals: { human: S.totals.human, cpu: S.totals.cpu } }, false);
+      await showModal({ type: 'final', totals: Object.assign({}, S.totals) }, false);
     }
 
     /* ---------- actions from the page ---------- */
     function startGame(a) {
       if (S.online) leaveOnline(true);
       abortMatch();
-      S.opts = sanitize(Object.assign({}, a, { sound: S.opts.sound, chat: S.opts.chat, allowHints: a.allowHints === undefined ? S.opts.allowHints : a.allowHints }));   // the setup form has no sound field: keep the current setting
+      S.opts = sanitize(Object.assign({}, a, { sound: S.opts.sound, chat: S.opts.chat, allowHints: a.allowHints === undefined ? S.opts.allowHints : a.allowHints, cpus: a.cpus === undefined ? S.opts.cpus : a.cpus, level2: a.level2 === undefined ? S.opts.level2 : a.level2 }));   // the setup form has no sound field: keep the current setting
       S.showHints = true; S.notice = '';
       saveOpts();
       // a fresh random name for the computer: not one already at the table, and not last game's
@@ -3151,8 +3190,10 @@
       try { previous = String(storage.get('mt-last-cpu') || ''); } catch (e) { /* ignore */ }
       S.cpuName = pickCpuName(S.opts.level, rng, new Set(['you', previous.toLowerCase()]));
       try { storage.set('mt-last-cpu', S.cpuName); } catch (e) { /* ignore */ }
+      // a second computer, if asked for: a name of its own skill, different from the first (no random numbers are used for it otherwise)
+      S.cpu2Name = S.opts.cpus === 2 ? pickCpuName(S.opts.level2, rng, new Set(['you', previous.toLowerCase(), S.cpuName.toLowerCase()])) : null;
       S.overlay = null; S.modal = null; S.game = null;
-      S.totals = { human: 0, cpu: 0 }; S.roundIndex = 0; S.log = []; S.banner = '';
+      S.totals = S.opts.cpus === 2 ? { human: 0, cpu: 0, cpu2: 0 } : { human: 0, cpu: 0 }; S.roundIndex = 0; S.log = []; S.banner = '';
       runMatch().catch(err => {
         if (err === ABORT) return;
         S.banner = 'Something went wrong: ' + (err && err.message ? err.message : err);
@@ -3442,7 +3483,7 @@
         }
         if (d.action === 'startGame') {
           const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
-          app.dispatch({ type: 'startGame', rounds: val('#opt-rounds'), hand: val('#opt-hand'), style: val('#opt-style'), level: val('#opt-level') });
+          app.dispatch({ type: 'startGame', rounds: val('#opt-rounds'), hand: val('#opt-hand'), style: val('#opt-style'), level: val('#opt-level'), cpus: val('#opt-cpus'), level2: val('#opt-level2') });
         } else if (d.action === 'hostGame' || d.action === 'joinGame') {
           const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
           app.dispatch({ type: d.action, server: val('#net-server'), name: val('#net-name'), code: val('#net-code'), rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer') });
@@ -3461,6 +3502,11 @@
     // the host changes the game length or hand size in the lobby: tell the server straight away
     root.addEventListener('change', e => {
       const id = e.target && e.target.id;
+      if (id === 'opt-cpus') {                           // the second computer's skill only matters with two computers
+        const f = root.querySelector('#field-level2');
+        if (f) f.hidden = String(e.target.value) !== '2';
+        return;
+      }
       if (id !== 'net-rounds' && id !== 'net-hand' && id !== 'net-computer') return;
       const val = i => { const n = root.querySelector(i); return n ? n.value : undefined; };
       app.dispatch({ type: 'onlineSettings', rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer') });
@@ -3509,7 +3555,7 @@
     tileSVG, tileBackSVG, pipPoints, viewApp, createApp, pickCpuName, PIP_COLORS, PACE, CPU_NAMES, renderClack, clackGapMs, renderTurn, createSound,
     flightGeometry, flightRotation, flightStart, moveInOrder, slotAt, dropIndexAt, createFx, createDrag, orderedHand,
     RATING, CHAT, LINES, commentKindFor, pickLine, fillLine, paceFor, soleTile, CPU_PLAYERS, levelOfName, NATIVE_LINES, NATIVE_LANG, nativeLangOf, FOOD, FOOD_ENGLISH, FOOD_NATIVE, foodComment,
-    PLAYER_IDS, toyTrainSVG, ONLINE_PHRASES, cleanPlayerName, parseServerAddress, qrEncode, qrSvg, qrCodewords, rsEncode, QR_BLOCKS_M, QR_TOTAL_CODEWORDS,
+    PLAYER_IDS, toyTrainSVG, trainColor, ONLINE_PHRASES, cleanPlayerName, parseServerAddress, qrEncode, qrSvg, qrCodewords, rsEncode, QR_BLOCKS_M, QR_TOTAL_CODEWORDS,
   };
 
   if (typeof document !== 'undefined') {
