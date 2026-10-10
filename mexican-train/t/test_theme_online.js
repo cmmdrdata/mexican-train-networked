@@ -28,7 +28,7 @@ OM.prototype._controller = function (seat) {
 const turnsOf = (srv, code, seat) => { const seq = log.get(srv.rooms.get(code).match) || []; let n = 0; seq.forEach((e, i) => { if (e.prompt && e.seat === seat && !(i > 0 && seq[i - 1].seat === seat)) n++; }); return n; };
 
 async function startServer(opts) {
-  const srv = createGameServer(Object.assign({ pagePath: PAGE, stepDelay: 0, sleep: async () => {}, log: () => {}, heartbeatMs: 60000, ratePerSecond: 5000, burst: 10000 }, opts));
+  const srv = createGameServer(Object.assign({ pagePath: PAGE, stepDelay: 0, sleep: async () => {}, log: () => {}, heartbeatMs: 60000, softGraceMs: 0, ratePerSecond: 5000, burst: 10000 }, opts));
   return { srv, port: await srv.listen(0, '127.0.0.1') };
 }
 function makeClient(port, opts) {
@@ -201,7 +201,7 @@ const ringsAndTrains = c => { let rings = 0, trains = 0; c.screens.forEach(h => 
     if (k === 0) {
       const gh = guest.html();
       ok(/theme: The Lord of the Rings/.test(gh), 'the guest\'s lobby says which theme the host chose');
-      ok(/<select id="net-theme">[^]*<option value="lotr" selected>/.test(host.html()), 'the host\'s lobby can still change it');
+      ok(!/<select|<option/.test(host.html()) && /theme: The Lord of the Rings/.test(host.html()), 'the host\'s lobby has no inputs, and just says the theme');
     }
     host.dispatch({ type: 'startOnline' });
     const done = await playBoth([host, guest], [mulberry32(k + 5), mulberry32(k + 50)], 60000);
@@ -211,16 +211,6 @@ const ringsAndTrains = c => { let rings = 0, trains = 0; c.screens.forEach(h => 
     host.dispatch({ type: 'onlineBack' }); guest.dispatch({ type: 'onlineBack' });
   }
   ok(rings > 0 && trains === 0, `open trains wore the golden ring on both players' screens (${rings} screens), never a toy train`);
-
-  console.log('4. the host changes the theme in the lobby');
-  {
-    const { host, guest } = await lobby(A.port, { rounds: 1, hand: 8 }, 'hard');
-    ok(G.CPU_PLAYERS.hard.includes(host.S.online.players[2].name), 'a classic Hard player to begin with');
-    host.dispatch({ type: 'onlineSettings', rounds: 1, hand: 8, computer: 'hard', theme: 'lotr' });
-    await until(() => guest.S.online.settings.theme === 'lotr' && T.players.hard.includes((guest.S.online.players[2] || {}).name));
-    ok(guest.S.online.settings.theme === 'lotr' && T.players.hard.includes(guest.S.online.players[2].name), `the guest sees the switch at once: ${guest.S.online.players[2].name}`);
-    host.dispatch({ type: 'confirmLeave' }); guest.dispatch({ type: 'confirmLeave' });
-  }
 
   console.log('5. Classic online games are unchanged');
   {

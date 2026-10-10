@@ -39,8 +39,14 @@ class WsConnection extends EventEmitter {
     this.closeSent = false;
     this.finished = false;
     this.alive = true;               // cleared by the owner's heartbeat, set again by every pong
+    this.connectedAt = Date.now();
+    this.lastSeen = this.connectedAt;                  // when ANYTHING last arrived from the peer (a message, a ping reply, even part of one): proof the connection is alive
+    this.closeInfo = null;                             // how it ended: { by: 'client' | 'server' | 'network', code, reason }
+    this.rtt = { last: null, min: Infinity, max: 0, sum: 0, n: 0 };    // ping round-trip times, in ms
+    this.pingAt = 0;                                   // when the oldest unanswered ping was sent
     this.decoder = new TextDecoder('utf-8', { fatal: true });
     socket.setNoDelay(true);
+    try { socket.setKeepAlive(true, 10000); } catch (e) { /* the operating system also notices a peer that has vanished */ }
     socket.on('data', d => this._onData(d));
     socket.on('close', () => this._finish());
     socket.on('error', () => { /* a 'close' follows */ });
@@ -67,12 +73,14 @@ class WsConnection extends EventEmitter {
   }
   ping(data) {
     if (!this.open) return false;
+    if (!this.pingAt) this.pingAt = Date.now();
     try { this.socket.write(this._frame(OP.PING, Buffer.from(data || '', 'utf8').subarray(0, 125))); return true; }
     catch (e) { return false; }
   }
   close(code, reason) {
     if (this.closeSent || this.finished) return;
     this.closeSent = true;
+    if (!this.closeInfo) this.closeInfo = { by: 'server', code: code || 1000, reason: String(reason || '') };
     const r = Buffer.from(String(reason || '').slice(0, 100), 'utf8');
     const body = Buffer.alloc(2 + r.length);
     body.writeUInt16BE(code || 1000, 0);
@@ -81,7 +89,10 @@ class WsConnection extends EventEmitter {
     const t = setTimeout(() => { try { this.socket.destroy(); } catch (e) { /* ignore */ } }, 2000);   // do not wait forever for the peer
     if (t.unref) t.unref();
   }
-  terminate() { try { this.socket.destroy(); } catch (e) { /* ignore */ } }
+  terminate(reason) {
+    if (!this.closeInfo) this.closeInfo = { by: 'server', code: 'terminated', reason: String(reason || 'terminated') };
+    try { this.socket.destroy(); } catch (e) { /* ignore */ }
+  }
 
   /* ----------------------------- receiving ----------------------------- */
   _fail(code, message) {
@@ -92,6 +103,7 @@ class WsConnection extends EventEmitter {
   }
   _onData(chunk) {
     if (this.buffer === null || this.finished) return;
+    this.lastSeen = Date.now();
     this.buffer = this.buffer.length ? Buffer.concat([this.buffer, chunk]) : chunk;
     for (;;) {
       const b = this.buffer;
@@ -134,13 +146,14 @@ class WsConnection extends EventEmitter {
         this.partsOpcode = opcode; this.parts = [payload]; this.partsBytes = payload.length;
         return;
       case OP.CLOSE: {
-        let code = 1005;
+        let code = 1005, reason = '';
         if (payload.length === 1) return this._fail(1002, 'bad close frame');
         if (payload.length >= 2) {
           code = payload.readUInt16BE(0);
           if (!validCloseCode(code)) return this._fail(1002, 'bad close code');
-          try { this.decoder.decode(payload.subarray(2)); } catch (e) { return this._fail(1007, 'bad close reason'); }
+          try { reason = this.decoder.decode(payload.subarray(2)); } catch (e) { return this._fail(1007, 'bad close reason'); }
         }
+        if (!this.closeInfo) this.closeInfo = { by: 'client', code, reason: reason.slice(0, 100) };
         this.emit('closing', code);
         this.close(code === 1005 ? 1000 : code);              // echo it back and hang up
         return;
@@ -148,9 +161,15 @@ class WsConnection extends EventEmitter {
       case OP.PING:
         try { this.socket.write(this._frame(OP.PONG, payload)); } catch (e) { /* ignore */ }
         return;
-      case OP.PONG:
-        this.alive = true; this.emit('pong');
+      case OP.PONG: {
+        this.alive = true;
+        if (this.pingAt) {                                        // how long the oldest unanswered ping took
+          const r = Date.now() - this.pingAt; this.pingAt = 0;
+          this.rtt.last = r; this.rtt.n++; this.rtt.sum += r; if (r > this.rtt.max) this.rtt.max = r; if (r < this.rtt.min) this.rtt.min = r;
+        }
+        this.emit('pong');
         return;
+      }
       default:
         return this._fail(1002, 'unknown opcode');
     }
@@ -163,6 +182,7 @@ class WsConnection extends EventEmitter {
   _finish() {
     if (this.finished) return;
     this.finished = true;
+    if (!this.closeInfo) this.closeInfo = { by: 'network', code: 'no close frame', reason: '' };   // it vanished without a goodbye
     this.emit('close');
   }
 }

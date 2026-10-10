@@ -49,7 +49,7 @@ const bad = (label, s) => { const m = String(s).match(BRITISH); if (m) { ok(fals
     const st2 = {};
     const fresh = G.createApp({ root: r2, rng: mulberry32(1), sleep: async () => {}, reducedMotion: true, now: () => 1, timer: { set() { return 0; }, clear() {} }, storage: { get: k => (k in st2 ? st2[k] : null), set: (k, v) => { st2[k] = v; } } });
     fresh.dispatch({ type: 'newGame' });
-    ok(/<option[^>]*>Colored pips<\/option>/.test(r2.innerHTML) && /<option[^>]*>Large numbers<\/option>/.test(r2.innerHTML) && !/Coloured/i.test(r2.innerHTML), 'the tile-style choice in the setup dialog reads "Colored pips"');
+    ok(!/Tile faces|opt-style|<option[^>]*>(Colored|Coloured) pips/.test(r2.innerHTML) && !/Coloured/i.test(r2.innerHTML) && /How to play/.test(r2.innerHTML), 'the setup dialog has no tile-style choice any more (it is the Show numbers button in the game), and nothing in it is spelled the British way');
   }
   // 5. and the built page as a whole (the text a person could ever see, not the code comments)
   const page = require('fs').readFileSync('../mexican-train.html', 'utf8');

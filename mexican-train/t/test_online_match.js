@@ -398,7 +398,10 @@ const EVENS = [[0, 2], [0, 4], [0, 6], [0, 8], [0, 10], [2, 4], [2, 6], [2, 8], 
       let steady = true;
       for (let k = 1; k <= 14; k++) { const before = tiles(); gates.shift()(); await settle(); if (tiles() !== before + 1) steady = false; }
       ok(steady && tiles() === 15, 'each tile goes down only when its wait is over, one at a time, until all 15 are down');
-      ok(delays.length === 14, 'so there are 14 waits for 15 tiles: between the tiles, not before the first or after the last');
+      ok(delays.length === 15, 'so there are 14 waits between the 15 tiles (none before the first), and one more before the opening is finished for her');
+      ok(!!h.match.awaiting[0] === false && h.match.game.opening.human.finished === false, '(the train is down, and she is not being asked for anything: the match is about to finish her opening itself)');
+      gates.shift()(); await settle();
+      ok(h.match.game.opening.human.finished === true && !h.match.awaiting[0] && h.match.game.trains.human.tiles.length === 15, 'and then it does: her opening is finished without her pressing Done, with all 15 tiles on the train');
       ok(delays.every(d => d >= 500 && d <= 3000), `every wait is between 0.5 and 3 seconds (${Math.min(...delays)} to ${Math.max(...delays)} ms)`);
       const mean = delays.reduce((a, b) => a + b, 0) / delays.length;
       ok(new Set(delays).size >= 12 && Math.max(...delays) - Math.min(...delays) > 1000 && mean > 1100 && mean < 2400, `and they differ from one to the next, averaging about ${(mean / 1000).toFixed(1)} s`);
@@ -428,6 +431,74 @@ const EVENS = [[0, 2], [0, 4], [0, 6], [0, 8], [0, 10], [2, 4], [2, 6], [2, 8], 
       ok(fixed.length >= 10 && fixed.every(ms => ms === 250), 'a plain number still means a fixed wait (how the tests run the game instantly with 0)');
       h.match.abort(); await h.match.done;
     }
+  }
+
+  console.log('12. hints off (the host\'s choice) and the automatic finish');
+  {
+    const settle = async () => { for (let i = 0; i < 10; i++) await tick(); };
+    const on = harness({ rng: dealRng({ seat0: CHAIN_A, seat1: EVENS, hand: 15 }), hand: 15, rounds: 1, noWatch: true });
+    on.match.start(); await settle();
+    ok(on.match.awaiting[0].canBuild === true && on.match.awaiting[0].buildCount === 15 && on.match.viewFor(0).awaiting.canBuild === true, 'hints allowed: the prompt offers "Build my longest train" (15 tiles)');
+    on.match.abort(); await on.match.done;
+    const off = harness({ rng: dealRng({ seat0: CHAIN_A, seat1: EVENS, hand: 15 }), hand: 15, rounds: 1, noWatch: true, allowHints: false });
+    off.match.start(); await settle();
+    const v = off.match.viewFor(0).awaiting;
+    ok(off.match.awaiting[0].canBuild === false && off.match.awaiting[0].buildCount === 0 && v.canBuild === false && v.buildCount === 0, 'hints off: the prompt neither offers it nor says how long a train could be built (not even in what is sent to the page)');
+    const r = off.match.intent(0, { a: 'autoBuild' });
+    ok(r.ok === false && r.code === 'illegal' && /hints off/.test(r.message) && off.match.game.trains.human.tiles.length === 0, 'asking for it anyway is refused, and nothing is played: "' + r.message + '"');
+    const mv = v.moves[0], r2 = off.match.intent(0, { a: 'play', tile: mv.tile, train: 'human' });
+    await settle();
+    ok(r2.ok === true && off.match.game.trains.human.tiles.length === 1, 'tiles can still be laid by hand, and Done pressed by hand');
+    ok(off.match.intent(0, { a: 'done' }).ok === true, '(and Done)');
+    off.match.abort(); await off.match.done;
+    // a plan that goes wrong: the match hands control back and does NOT finish the opening for the person
+    const gates = [];
+    const bad = harness({ rng: dealRng({ seat0: CHAIN_A, seat1: EVENS, hand: 15 }), hand: 15, rounds: 1, noWatch: true, stepDelay: 0 });
+    bad.match.start(); await settle();
+    bad.match.intent(0, { a: 'autoBuild' });
+    bad.match.plans[0].unshift({ type: 'play', key: '99-99' });                      // something unexpected
+    await settle();
+    ok(bad.match.awaiting[0] && bad.match.awaiting[0].kind === 'build' && bad.match.game.opening.human.finished === false, 'a plan that meets something unexpected hands control back to the person (they are asked again), and the opening is not finished for them');
+    bad.match.abort(); await bad.match.done;
+  }
+
+  console.log('13. the final score is not held up by the other person (but the next round still is)');
+  {
+    const settle = async () => { for (let i = 0; i < 10; i++) await tick(); };
+    // Ann is dealt a complete train and goes out in the opening; Ben, with no tile for the engine, draws and passes
+    const toModal = async h => {
+      h.match.start(); await settle();
+      h.match.intent(0, { a: 'autoBuild' }); await settle();
+      for (let i = 0; i < 400 && !h.match.modal; i++) {
+        const aw = h.match.awaiting[1];
+        if (aw && aw.kind === 'build') h.match.intent(1, { a: aw.info.canDraw ? 'draw' : aw.info.canDone ? 'done' : 'undo' });
+        else if (aw && aw.kind === 'draw') h.match.intent(1, { a: 'draw' });
+        await settle();
+      }
+    };
+    const last = harness({ rng: dealRng({ seat0: CHAIN_A, seat1: EVENS, hand: 15 }), hand: 15, rounds: 1, noWatch: true, stepDelay: 0 });
+    await toModal(last);
+    ok(last.match.modal && last.match.modal.type === 'roundEnd' && last.match.modal.last === true, 'a one-round game reaches its round-end dialog (the last one)');
+    ok(last.match.viewFor(0).modal.type === 'roundEnd' && last.match.viewFor(1).modal.type === 'roundEnd', 'both people have it');
+    last.match.intent(0, { a: 'ok' }); await settle();
+    const va = last.match.viewFor(0), vb = last.match.viewFor(1);
+    ok(va.modal && va.modal.type === 'final' && va.over === 'finished' && va.awaiting === null, 'Ann presses it and has the final score straight away');
+    ok(JSON.stringify(va.modal.totals) === JSON.stringify(last.match.viewFor(0).totals) && va.modal.totals.human === 0 && va.modal.totals.cpu > 0, 'with the real totals, from her side (she scored 0; Ben has points)');
+    ok(vb.modal.type === 'roundEnd' && vb.over === null && !last.match.over, 'Ben, who has not pressed it, still has the round-end dialog, and the game is not over');
+    ok(!/Waiting/.test(JSON.stringify(va.log) + va.banner), 'and Ann is not told to wait for anything');
+    last.match.seatLeft(0); await settle();
+    ok(/has gone/.test(JSON.stringify(last.match.viewFor(1).log)) && last.match.viewFor(1).modal.type === 'roundEnd', 'if she leaves, Ben is told, and still has his dialog');
+    last.match.intent(1, { a: 'ok' }); await settle(); await last.match.done;
+    ok(last.match.over === 'finished' && last.match.viewFor(1).modal.type === 'final' && last.match.viewFor(1).modal.totals.cpu === last.match.viewFor(0).modal.totals.human, 'Ben presses it: his final score, and the game is over');
+
+    const four = harness({ rng: dealRng({ seat0: CHAIN_A, seat1: EVENS, hand: 15 }), hand: 15, rounds: 4, noWatch: true, stepDelay: 0 });
+    await toModal(four);
+    ok(four.match.modal.type === 'roundEnd' && four.match.modal.last === false, 'a four-round game: the first round\'s dialog is not the last');
+    four.match.intent(0, { a: 'ok' }); await settle();
+    const fa = four.match.viewFor(0);
+    ok(fa.modal === null && /Waiting for Ben to be ready for the next round/.test(JSON.stringify(fa.log)) && four.match.viewFor(1).modal.type === 'roundEnd', 'between rounds Ann DOES wait for Ben (the next round needs both of them), and is told so');
+    four.match.abort(); await four.match.done;
+    last.match.abort && last.match.abort();
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

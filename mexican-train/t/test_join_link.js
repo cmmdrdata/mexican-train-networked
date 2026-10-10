@@ -10,7 +10,7 @@ let pass = 0, fail = 0, skipped = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL:', m); } };
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
-function boot(href, store) {
+function boot(href, store, extra) {
   const u = new URL(href);
   const handlers = {}, sockets = [], replaced = [], clipboard = [];
   class FakeWS {
@@ -26,10 +26,10 @@ function boot(href, store) {
     querySelector(sel) { return sel in form ? { value: form[sel] } : { focus() {}, disabled: false }; }, ownerDocument: { activeElement: null },
   };
   const sandbox = {
-    document: { readyState: 'complete', getElementById: () => rootEl, addEventListener() {} },
+    document: Object.assign({ readyState: 'complete', getElementById: () => rootEl, addEventListener() {} }, (extra && extra.document) || {}),
     location: { href: u.href, search: u.search, host: u.host, protocol: u.protocol, pathname: u.pathname, hash: u.hash },
     history: { replaceState: (a, b, url) => replaced.push(url) },
-    navigator: { clipboard: { writeText: t => { clipboard.push(t); return Promise.resolve(); } } },
+    navigator: extra && 'navigator' in extra ? extra.navigator : { clipboard: { writeText: t => { clipboard.push(t); return Promise.resolve(); } } },
     localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } },
     matchMedia: () => ({ matches: true }), WebSocket: FakeWS,
     fetch: async url => { sandbox.fetched.push(url); return { ok: true, json: async () => ({ addresses: ['192.168.1.23:8080', '10.0.0.7:8080'], preferred: '192.168.1.23:8080' }) }; },
@@ -102,14 +102,70 @@ function boot(href, store) {
   ok(h.includes(`<code>${LINK}</code>`), 'with the link it contains printed underneath, to read or type');
   ok(/Scan with a phone on the same network/.test(h), 'and a line saying what it is for');
   ok(!/data-action="selectQr"/.test(h), 'with one network address there is nothing to choose between');
-  ok(new RegExp(`data-action="copyLink" data-key="${LINK.replace(/[.?]/g, '\\$&')}">Copy link`).test(h) && /data-action="copyCode"[^>]*>Copy code/.test(h), 'a Copy link button and the Copy code button');
+  ok(new RegExp(`data-action="copyLink" data-key="${LINK.replace(/[.?]/g, '\\$&')}">Copy link`).test(h) && !/copyCode|Copy code/.test(h), 'a Copy link button, and no Copy code button');
+  ok(/<span class="code-big"[^>]*>K7Q-F2M<\/span>/.test(h), '(the join code itself is still shown, large)');
   p.click({ action: 'copyLink', key: LINK });
   await wait(20);
   ok(p.clipboard[0] === LINK, 'Copy link puts the full link on the clipboard');
-  ok(/data-action="copyLink"[^>]*>Copied/.test(p.html()) && /data-action="copyCode"[^>]*>Copy code/.test(p.html()), 'and that button (only) says "Copied" for a moment');
-  p.click({ action: 'copyCode', key: 'K7Q-F2M' });
-  await wait(20);
-  ok(p.clipboard[1] === 'K7Q-F2M' && /data-action="copyCode"[^>]*>Copied/.test(p.html()), 'Copy code copies the code and says so');
+  ok(/data-action="copyLink"[^>]*>Copied/.test(p.html()), 'and the button says "Copied" for a moment');
+
+  console.log('2b. Copy link on a page where navigator.clipboard does not exist (the game is served over plain http on the network)');
+  const hostLobby = async extra => {
+    const q = boot('http://192.168.1.23:8080/', {}, extra);
+    q.setForm({ '#net-server': '192.168.1.23:8080', '#net-name': 'Ann', '#net-rounds': '4', '#net-hand': '15' });
+    q.click({ action: 'openHost' }); await wait(20); q.click({ action: 'hostGame' }); await wait(20);
+    q.sockets[0].say({ t: 'created', code: 'K7QF2M', display: 'K7Q-F2M', token: 'tok', seat: 0, settings: { rounds: 4, hand: 15 }, addresses: ['192.168.1.23:8080'] });
+    q.sockets[0].say({ t: 'lobby', code: 'K7QF2M', seat: 0, settings: { rounds: 4, hand: 15 }, players: [{ name: 'Ann', connected: true }, null], canStart: false, addresses: ['192.168.1.23:8080'], state: 'lobby' });
+    return q;
+  };
+  // a document that records what is done to it: a hidden box is added, selected and copied, then removed
+  const spyDoc = execResult => {
+    const log = { boxes: [], selected: null, range: null, copies: 0, removed: 0, refocused: 0, order: [] };
+    const active = { focus() { log.refocused++; log.order.push('refocus'); } };
+    const doc = { activeElement: active,
+      body: { appendChild: b => { if (b.tag !== 'textarea') return; log.boxes.push(b); b.parentNode = { removeChild: () => { log.removed++; log.order.push('remove'); } }; log.order.push('add'); } },
+      createElement: tag => ({ tag, value: '', style: {}, attrs: {}, parentNode: null, setAttribute(k, v) { this.attrs[k] = v; }, focus() { log.order.push('focus-box'); }, select() { log.selected = this.value; log.order.push('select'); }, setSelectionRange(a, b) { log.range = [a, b]; } }),
+      execCommand: cmd => { log.copies++; log.cmd = cmd; log.copiedText = log.selected; log.order.push('copy'); if (execResult instanceof Error) throw execResult; return execResult; } };
+    return { doc, log };
+  };
+  {
+    const { doc, log } = spyDoc(true);
+    const q = await hostLobby({ navigator: {}, document: doc });                    // no clipboard API at all
+    q.click({ action: 'copyLink', key: LINK }); await wait(30);
+    ok(log.cmd === 'copy' && log.copies === 1 && log.copiedText === LINK && log.range[0] === 0 && log.range[1] === LINK.length, 'the link is selected in a hidden box and copied with the older method, which works on any page: "' + log.copiedText + '"');
+    ok(log.boxes[0].attrs.readonly === '' && log.boxes[0].tag === 'textarea', '(a read-only text box, so a phone does not open its keyboard)');
+    ok(log.order.join() === 'add,focus-box,select,copy,remove,refocus', 'the box is removed afterwards and keyboard focus goes back to where it was: ' + log.order.join(' > '));
+    ok(/data-action="copyLink"[^>]*>Copied/.test(q.html()), 'and the button says "Copied"');
+  }
+  {
+    const { doc, log } = spyDoc(false);
+    const q = await hostLobby({ navigator: {}, document: doc });                    // nothing can copy
+    q.click({ action: 'copyLink', key: LINK }); await wait(30);
+    ok(/data-action="copyLink"[^>]*>Not copied: select the link above and copy it/.test(q.html()) && q.html().includes(`<code>${LINK}</code>`), 'if nothing works, the button says so (instead of silently doing nothing), and the link is still on the screen to copy by hand');
+    ok(log.removed === 1 && log.refocused === 1, '(and the box was still removed and focus restored)');
+  }
+  {
+    const { doc, log } = spyDoc(new Error('not allowed'));
+    const q = await hostLobby({ document: doc });                                   // the old method throws; the clipboard API is there
+    q.click({ action: 'copyLink', key: LINK }); await wait(30);
+    ok(q.clipboard[0] === LINK && /data-action="copyLink"[^>]*>Copied/.test(q.html()) && log.removed === 1, 'if the old method throws, the clipboard API is the second chance (and the box is still removed)');
+  }
+  {
+    const q = await hostLobby({ document: spyDoc(false).doc, navigator: { clipboard: { writeText: () => Promise.reject(new Error('denied')) } } });
+    q.click({ action: 'copyLink', key: LINK }); await wait(30);
+    ok(/>Not copied: select the link above and copy it/.test(q.html()), 'if the clipboard API refuses too, it says it did not copy');
+  }
+  {
+    const q = await hostLobby({ document: spyDoc(false).doc, navigator: { clipboard: { writeText: () => { throw new Error('boom'); } } } });
+    q.click({ action: 'copyLink', key: LINK }); await wait(30);
+    ok(/>Not copied/.test(q.html()), '...or throws');
+  }
+  {
+    const copyText = p.sandbox.MexicanTrainGame.copyText;
+    ok(typeof copyText === 'function' && await copyText('x', { document: spyDoc(true).doc, navigator: {} }) === true, 'copyText: copies with the old method');
+    ok(await copyText('x', { document: {}, navigator: {} }) === false && await copyText('x', {}) === false && await copyText('x') === false, '...and a page with neither way, or no page at all, just says false');
+    ok(await copyText('x', { document: spyDoc(false).doc, navigator: { clipboard: { writeText: () => Promise.resolve() } } }) === true, '...and uses the clipboard API when the old method does not work');
+  }
 
   // the QR in the real page, read by an independent decoder
   const svg = (p.html().match(/<svg class="qr"[\s\S]*?<\/svg>/) || [''])[0];

@@ -207,19 +207,20 @@ const handKeys = S => S.game.players[0].hand.map(key).sort().join();
     } else ok(false, 'no tile fitting the engine in this deal');
   }
 
-  console.log('7. online, with hints off');
+  console.log('7. online, with hints off (the host\'s choice)');
   {
     class FakeWS { constructor() { this.readyState = 0; this.sent = []; FakeWS.last = this; setTimeout(() => { this.readyState = 1; this.onopen && this.onopen(); }, 1); } send(d) { this.sent.push(JSON.parse(d)); } close() {} say(o) { this.onmessage && this.onmessage({ data: JSON.stringify(o) }); } }
-    const c = makeApp({ store: { 'mt-opts': JSON.stringify({ allowHints: false }) }, env: { WebSocket: FakeWS, fetch: async () => ({ ok: true, json: async () => ({ addresses: ['fake:1'], preferred: 'fake:1' }) }) } });
+    const c = makeApp({ env: { WebSocket: FakeWS, fetch: async () => ({ ok: true, json: async () => ({ addresses: ['fake:1'], preferred: 'fake:1' }) }) } });
     c.d({ type: 'openHost' }); await wait(5); c.d({ type: 'hostGame', server: 'x', name: 'Me', rounds: 4, hand: 15 }); await wait(10);
     const ws = FakeWS.last;
-    ws.say({ t: 'created', code: 'ABCDEF', display: 'ABC-DEF', token: 't', seat: 0, settings: { rounds: 4, hand: 15 }, addresses: [] });
+    ws.say({ t: 'created', code: 'ABCDEF', display: 'ABC-DEF', token: 't', seat: 0, settings: { rounds: 4, hand: 15, allowHints: false }, addresses: [] });
     const T = (a, b) => [a, b], tr = id => ({ id, marker: false, tiles: [], end: 12 });
     let seq = 0;
     const view = aw => ({ seq: ++seq, round: 0, rounds: 4, me: { name: 'Me' }, opp: { name: 'Zed' }, totals: { human: 0, cpu: 0 }, paused: false, over: null, log: [], banner: '', modal: null, awaiting: aw,
       game: { engine: 12, players: [{ id: 'human', name: 'You', hand: [T(12, 1), T(3, 4), T(5, 6)] }, { id: 'cpu', name: 'Zed', hand: [T(-1, -1)] }], boneyard: [T(-1, -1)], trains: { human: tr('human'), cpu: tr('cpu'), mexican: tr('mexican') }, openDouble: null, opening: { human: { finished: true }, cpu: { finished: true } } } });
     const move = { kind: 'move', moves: [{ tile: T(12, 1), trainId: 'human', placed: T(12, 1), newEnd: 1 }, { tile: T(12, 1), trainId: 'mexican', placed: T(12, 1), newEnd: 1 }] };
     ws.say({ t: 'state', seq: 1, view: view(move), events: [] });
+    ok(c.S.opts.allowHints === true, '(the player\'s own setting is on: it is the host that has turned hints off)');
     ok(hintsIn(c.html).length === 0 && !/Show hints/.test(c.html), 'online with hints not allowed: the same hint-free screen, no Show hints button' + (hintsIn(c.html)[0] ? ' (' + hintsIn(c.html).join(', ') + ')' : ''));
     ok(c.S.selectedKey === null, 'and no tile is picked for you');
     c.d({ type: 'selectTile', key: '3-4' });
@@ -240,6 +241,77 @@ const handKeys = S => S.game.players[0].hand.map(key).sort().join();
     ok(!ws.sent.some(m => m.a === 'draw'), 'asking to draw while a move exists is refused on the page: nothing is sent to the server');
   }
   function eq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+  console.log('8. the host\'s choice about hints rules a hosted game, from every side');
+  {
+    class FakeWS { constructor() { this.readyState = 0; this.sent = []; FakeWS.last = this; FakeWS.all.push(this); setTimeout(() => { this.readyState = 1; this.onopen && this.onopen(); }, 1); } send(d) { this.sent.push(JSON.parse(d)); } close() {} say(o) { this.onmessage && this.onmessage({ data: JSON.stringify(o) }); } }
+    FakeWS.all = [];
+    const T = (a, b) => [a, b], tr = id => ({ id, marker: false, tiles: [], end: 12 });
+    const move = { kind: 'move', moves: [{ tile: T(12, 1), trainId: 'human', placed: T(12, 1), newEnd: 1 }, { tile: T(12, 1), trainId: 'mexican', placed: T(12, 1), newEnd: 1 }] };
+    let seq = 0;
+    const view = aw => ({ seq: ++seq, round: 0, rounds: 4, me: { name: 'Me' }, opp: { name: 'Zed' }, totals: { human: 0, cpu: 0 }, paused: false, over: null, log: [], banner: '', modal: null, awaiting: aw,
+      game: { engine: 12, players: [{ id: 'human', name: 'You', hand: [T(12, 1), T(3, 4), T(5, 6)] }, { id: 'cpu', name: 'Zed', hand: [T(-1, -1)] }], boneyard: [T(-1, -1)], trains: { human: tr('human'), cpu: tr('cpu'), mexican: tr('mexican') }, openDouble: null, opening: null } });
+    const fakeEnv = { WebSocket: FakeWS, fetch: async () => ({ ok: true, json: async () => ({ addresses: ['fake:1'], preferred: 'fake:1' }) }) };
+    const startAs = async (store, host, hostSettings) => {
+      const c = makeApp({ store, env: fakeEnv });
+      if (host) { c.d({ type: 'openHost' }); await wait(5); c.d({ type: 'hostGame', server: 'x', name: 'Me', rounds: 4, hand: 15, allowHints: hostSettings.allowHints }); }
+      else { c.d({ type: 'openJoin' }); c.d({ type: 'joinGame', server: 'x', name: 'Me', code: 'ABCDEF' }); }
+      await wait(10);
+      const ws = FakeWS.last;
+      ws.say(host ? { t: 'created', code: 'ABCDEF', display: 'ABC-DEF', token: 't', seat: 0, settings: Object.assign({ rounds: 4, hand: 15 }, hostSettings), addresses: [] }
+                  : { t: 'joined', code: 'ABCDEF', display: 'ABC-DEF', token: 't', seat: 1, settings: Object.assign({ rounds: 4, hand: 15 }, hostSettings), addresses: [] });
+      ws.say({ t: 'state', seq: 1, view: view(move), events: [] });
+      return { c, ws };
+    };
+    {
+      const { c } = await startAs({ 'mt-opts': JSON.stringify({ allowHints: false }) }, false, { allowHints: true });
+      ok(c.S.opts.allowHints === false && hintsIn(c.html).length > 0 && /Show hints/.test(c.html), 'a guest whose OWN setting is off still gets hints when the host allows them (the host\'s setting applies): ' + hintsIn(c.html).join(', '));
+      c.d({ type: 'toggleShowHints' });
+      ok(hintsIn(c.html).length === 0 && /Show hints: off/.test(c.html), 'and can switch them off for themselves (the Show hints button)');
+      c.d({ type: 'toggleShowHints' });
+      ok(hintsIn(c.html).length > 0 && /Show hints: on/.test(c.html), '...and on again');
+      ok(c.S.opts.allowHints === false, '(without touching their own saved setting)');
+    }
+    {
+      const { c } = await startAs({}, false, { allowHints: false });
+      ok(c.S.opts.allowHints === true && hintsIn(c.html).length === 0 && !/Show hints/.test(c.html), 'a guest whose own setting is ON gets no hints, and no Show hints button, when the host has turned hints off');
+      c.d({ type: 'toggleShowHints' });
+      ok(hintsIn(c.html).length === 0, '(and the button, if it were pressed, cannot bring them back)');
+    }
+    {
+      const { c, ws } = await startAs({ 'mt-opts': JSON.stringify({ allowHints: false }) }, true, { allowHints: true });
+      ok(hintsIn(c.html).length > 0 && /Show hints/.test(c.html), 'the same for the host: the room\'s setting, not the main-screen one, decides hints in this game');
+      ws.say({ t: 'lobby', code: 'ABCDEF', seat: 0, settings: { rounds: 4, hand: 15, allowHints: false }, players: [{ name: 'Me', connected: true }, { name: 'Zed', connected: true }], canStart: true, addresses: [], state: 'playing' });
+      ok(hintsIn(c.html).length === 0 && !/Show hints/.test(c.html), 'and a change of the room\'s setting takes effect at once');
+    }
+    {
+      const c = makeApp({ store: { 'mt-opts': JSON.stringify({ allowHints: false }) }, env: fakeEnv });
+      c.d({ type: 'openHost' }); await wait(5);
+      ok(/id="net-hints"[^>]*aria-pressed="false">Allow hints: off/.test(c.html), 'the Host screen starts with the host\'s own main-screen setting (here: off)');
+      c.d({ type: 'setNetHintsForm', value: true });
+      c.d({ type: 'hostGame', server: 'x', name: 'Me', rounds: 4, hand: 15, allowHints: true }); await wait(10);
+      ok(FakeWS.last.sent[0].t === 'create' && FakeWS.last.sent[0].allowHints === true, 'and what is on the switch when Create game is pressed is what the server is told: ' + JSON.stringify(FakeWS.last.sent[0]));
+      FakeWS.last.say({ t: 'created', code: 'ABCDEF', display: 'ABC-DEF', token: 't', seat: 0, settings: { rounds: 4, hand: 15, allowHints: true }, addresses: [] });
+      FakeWS.last.say({ t: 'lobby', code: 'ABCDEF', seat: 0, settings: { rounds: 4, hand: 15, allowHints: true }, players: [{ name: 'Me', connected: true }, null], canStart: false, addresses: ['a:1'], state: 'lobby' });
+      ok(!/<select|<input|<option|toggleNetHints/.test(c.html) && /Hints are allowed\./.test(c.html), 'in the lobby the host has no switch (the game was set up on the Host screen): it just says hints are allowed');
+      c.d({ type: 'toggleNetHints' });
+      ok(!FakeWS.last.sent.some(m => m.t === 'settings'), '(and the page never sends settings)');
+    }
+    {
+      const c = makeApp({ env: fakeEnv });
+      c.d({ type: 'openJoin' }); c.d({ type: 'joinGame', server: 'x', name: 'Ben', code: 'ABCDEF' }); await wait(10);
+      FakeWS.last.say({ t: 'joined', code: 'ABCDEF', display: 'ABC-DEF', token: 't', seat: 1, settings: { rounds: 4, hand: 15, allowHints: false }, addresses: [] });
+      FakeWS.last.say({ t: 'lobby', code: 'ABCDEF', seat: 1, settings: { rounds: 4, hand: 15, allowHints: false }, players: [{ name: 'Ann', connected: true }, { name: 'Ben', connected: true }], canStart: true, addresses: [], state: 'lobby' });
+      ok(/Hints are off \(the host's choice\)/.test(c.html.replace(/&#39;/g, "'")) && !/data-action="toggleNetHints"/.test(c.html), 'a guest\'s lobby says hints are off, the host\'s choice, and has no switch');
+      FakeWS.last.say({ t: 'lobby', code: 'ABCDEF', seat: 1, settings: { rounds: 4, hand: 15, allowHints: true }, players: [{ name: 'Ann', connected: true }, { name: 'Ben', connected: true }], canStart: true, addresses: [], state: 'lobby' });
+      ok(/Hints are allowed: you can switch them off for yourself/.test(c.html), '...and when the host turns them on, that is what it says');
+      c.d({ type: 'toggleNetHints' });
+      ok(!FakeWS.last.sent.some(m => m.t === 'settings'), 'a guest cannot change it');
+    }
+    {
+      const c = makeApp({ store: { 'mt-opts': JSON.stringify({ allowHints: false }) } });         // after a hosted game, the player\'s own setting is theirs again
+      ok(c.S.opts.allowHints === false, '(and against the computer, the player\'s own setting is still what counts)');
+    }
+  }
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

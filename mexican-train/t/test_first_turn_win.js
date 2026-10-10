@@ -121,9 +121,9 @@ const roundEnd = a => until(() => a.S.modal && a.S.modal.type === 'roundEnd' && 
   {
     const a = await newGame({ hand: 15, human: CHAIN_A, cpu: EVENS });
     a.app.dispatch({ type: 'autoBuild' });
-    const A = await until(() => a.S.awaiting && a.S.awaiting.kind === 'build' && a.S.awaiting.placed === 15 && !a.S.plan && a.S.awaiting);
-    ok(!!A && a.S.game.players[0].hand.length === 0 && validChain(12, a.S.game.trains.human.tiles), 'one press lays all 15 tiles, in order');
-    a.app.dispatch({ type: 'endBuild' });
+    const A = await until(() => a.S.game.players[0].hand.length === 0 && a.S.game.trains.human.tiles.length === 15 && !a.S.plan);
+    ok(!!A && a.S.game.players[0].hand.length === 0 && validChain(12, a.S.game.trains.human.tiles), 'one press lays all 15 tiles, in order, and nobody presses Done');
+    // (no Done: with the whole train down, the opening is finished for the player)
     const R = await roundEnd(a);
     ok(R && R.winnerId === 'human' && /You went out first/.test(a.root.innerHTML) && R.totals.human === 0, 'then Done: you win with 0 points');
     ok(a.counts.turnPlays === 0 && a.counts.buildPlays.human === 15, 'on your first turn, without a normal turn being played');
@@ -135,9 +135,9 @@ const roundEnd = a => until(() => a.S.modal && a.S.modal.type === 'roundEnd' && 
     const cpu8 = EVENS.slice(0, 8);
     const a = await newGame({ hand: 8, human: eight, cpu: cpu8 });
     a.app.dispatch({ type: 'autoBuild' });
-    const A = await until(() => a.S.awaiting && a.S.awaiting.kind === 'build' && a.S.awaiting.placed === 8 && !a.S.plan && a.S.awaiting);
-    ok(!!A && a.S.game.players[0].hand.length === 0, 'all 8 are down');
-    a.app.dispatch({ type: 'endBuild' });
+    const A = await until(() => a.S.game.players[0].hand.length === 0 && a.S.game.trains.human.tiles.length === 8 && !a.S.plan);
+    ok(!!A && a.S.game.players[0].hand.length === 0, 'all 8 are down, with no Done pressed');
+    // (no Done: with the whole train down, the opening is finished for the player)
     const R = await roundEnd(a);
     ok(R && R.winnerId === 'human' && R.totals.human === 0 && /You went out first/.test(a.root.innerHTML), 'you win');
   }

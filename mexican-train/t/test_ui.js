@@ -333,10 +333,10 @@ async function waitFor(pred, label) {
     const S = gx.app.state;
     ok(S.game.opening.cpu.finished === false && S.game.trains.cpu.tiles.length === 0, 'computer has not placed anything yet (it is "thinking")');
     gx.app.dispatch({ type: 'autoBuild' });
-    await waitFor(() => S.awaiting && S.awaiting.kind === 'build' && S.plan === null, 'auto build done');
+    await waitFor(() => S.game.opening.human.finished, 'auto build done, and the opening finished by itself');
     const want = longestFullChain(S.game, S.game.players[0]).length;
     ok(S.game.trains.human.tiles.length === want, 'human built their longest train while the computer was still thinking');
-    gx.app.dispatch({ type: 'endBuild' });
+    ok(!S.awaiting || S.awaiting.kind !== 'build', 'and was not asked to press Done: when the train is down, the opening is finished for them');
     await tick();
     ok(/Your train is set\. Waiting for/.test(gx.root.innerHTML) && gx.root.innerHTML.includes(S.cpuName), 'banner: waiting for the computer by name');
     ok(!S.awaiting && S.game.opening.human.finished && !S.game.opening.cpu.finished, 'human finished, computer not yet');
@@ -395,11 +395,11 @@ async function waitFor(pred, label) {
     // rebuild the true longest train, whatever was down
     if (S.awaiting.canBuild) {
       g.app.dispatch({ type: 'autoBuild' });
-      await waitFor(() => S.awaiting && S.awaiting.kind === 'build' && S.plan === null, 'rebuilt');
+      await waitFor(() => S.game.opening.human.finished, 'rebuilt, and the opening finished by itself');
     }
     ok(S.game.trains.human.tiles.length === chainLen, 'Build my longest train replaces a worse train with the longest one');
-    ok(!g.root.innerHTML.includes('data-action="autoBuild"'), 'no Build button once the train is already the longest');
-    g.app.dispatch({ type: 'endBuild' });
+    ok(!g.root.innerHTML.includes('data-action="autoBuild"') && !g.root.innerHTML.includes('data-action="endBuild"'), 'and there is no Build button and no Done button: the longest train is down, so the opening is finished for the player');
+    if (!S.game.opening.human.finished) g.app.dispatch({ type: 'endBuild' });
     await waitFor(() => S.game.opening.human.finished, 'done');
     ok(S.game.opening.human.finished, 'Done finishes your opening');
     g.app.dispatch({ type: 'undoTile' }); g.app.dispatch({ type: 'autoBuild' }); g.app.dispatch({ type: 'endBuild' });

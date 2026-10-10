@@ -191,7 +191,7 @@ const inVoice = (name, kind, text) => {
   {
     const PAGE = require('path').join(__dirname, '..', 'mexican-train.html');
     const srv = createGameServer({ pagePath: PAGE, stepDelay: 0, sleep: ms => wait(Math.min(ms, 60)),          // a little thinking time, so the game lasts long enough for comments
-      log: () => {}, heartbeatMs: 60000, ratePerSecond: 5000, burst: 10000 });
+      log: () => {}, heartbeatMs: 60000, softGraceMs: 0, ratePerSecond: 5000, burst: 10000 });
     const port = await srv.listen(0, '127.0.0.1');
     const mk = () => {
       const c = { screens: [], store: {} };

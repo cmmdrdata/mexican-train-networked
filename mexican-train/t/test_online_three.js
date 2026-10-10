@@ -231,7 +231,7 @@ async function playOut(h, pols, budget, hook) {
     ok(r0.rows.every(r => Array.isArray(r.hand)) && r0.rows[2].hand.length > 0, 'everyone\'s remaining tiles are shown at the end of the round, the computer\'s too');
     ok(m.viewFor(2) && m.modalOk[2] === true, 'the computer is always ready for the next round');
     m.intent(0, { a: 'ok' }); await tick();
-    ok(/Waiting for the final score|Waiting for the others/.test(m.viewFor(0).banner), 'Ann presses OK and waits for the others (one person, who also must press OK, and the computer which does not)');
+    ok(m.viewFor(0).modal && m.viewFor(0).modal.type === 'final' && eq(Object.keys(m.viewFor(0).modal.totals), ['human', 'cpu', 'cpu2']) && m.viewFor(1).modal.type === 'roundEnd' && m.over !== 'finished', 'after the last round Ann presses OK and has the three final scores at once, without waiting for Ben, who still has his dialog (the computer needs no button)');
     m.intent(1, { a: 'ok' });
     for (let i = 0; i < 30 && m.over !== 'finished'; i++) await tick();
     ok(m.over === 'finished' && m.viewFor(0).modal.type === 'final' && eq(Object.keys(m.viewFor(0).modal.totals), ['human', 'cpu', 'cpu2']), 'once both people have pressed OK the match is over, with three final scores');

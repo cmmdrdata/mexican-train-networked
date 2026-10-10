@@ -179,13 +179,17 @@ with sync_playwright() as pw:
         played = False
     ok(played, 'a real click on the right train plays it (the tile lands on the train)')
     # dragging with the real mouse onto the right train
-    t0 = time.time(); mv2 = None
-    while time.time() - t0 < 10 and mv2 is None:
+    # (the move is read from the game, then the tile and the train are looked up on screen: if the page is redrawn in between, ask again)
+    t0 = time.time(); mv2 = None; tb = trk = None
+    while time.time() - t0 < 10 and (mv2 is None or tb is None or trk is None):
         mv2 = page.evaluate("() => { const a = window.MexicanTrainApp.state.awaiting; if (!a || !a.moves || !a.moves.length) return null; const m = a.moves[0]; return { key: window.MexicanTrainGame.Engine.key(m.tile), train: m.trainId }; }")
-        time.sleep(0.2)
-    if mv2:
+        tb = trk = None
+        if mv2:
+            e1 = page.query_selector(f'.tile-btn[data-key="{mv2["key"]}"]'); e2 = page.query_selector(f'.track[data-train="{mv2["train"]}"]')
+            tb = e1.bounding_box() if e1 else None; trk = e2.bounding_box() if e2 else None
+        if tb is None or trk is None: time.sleep(0.2)
+    if mv2 and tb and trk:
         n0 = page.evaluate("() => window.MexicanTrainApp.state.game.trains.human.tiles.length")
-        tb = page.query_selector(f'.tile-btn[data-key="{mv2["key"]}"]').bounding_box(); trk = page.query_selector(f'.track[data-train="{mv2["train"]}"]').bounding_box()
         page.mouse.move(tb['x'] + tb['width'] / 2, tb['y'] + tb['height'] / 2); page.mouse.down()
         page.mouse.move(trk['x'] + 200, trk['y'] + trk['height'] / 2, steps=8)
         lit = page.evaluate(f"() => document.querySelectorAll('{HINTSEL}').length")
@@ -324,7 +328,8 @@ with sync_playwright() as pw:
       const el = document.querySelector('.bubble');                          // and a NEW comment: the script gives the bubble its fade-in once
       el.classList.add('in');
       out.fadeIn = { animations: el.getAnimations().length, name: el.getAnimations()[0] && el.getAnimations()[0].animationName, opacityAtStart: getComputedStyle(el).opacity };
-      await new Promise(r => setTimeout(r, 450));
+      await Promise.race([Promise.all(el.getAnimations().map(a => a.finished.catch(() => null))), new Promise(r => setTimeout(r, 3000))]);      // (until it has finished: not a guess at how long that takes on this machine)
+      await new Promise(r => setTimeout(r, 60));
       out.after = { animations: el.getAnimations().length, opacity: getComputedStyle(el).opacity };
       return out; }""")
     ok(all(r['opacity'] == '1' and r['animations'] == 0 for r in res['redraws']), f'a bubble that is up while the page is redrawn six times stays fully visible at every redraw, with no animation restarting ({res["redraws"][0]})')

@@ -28,7 +28,7 @@ OM.prototype._controller = function (seat) {
 const turnsOf = (srv, code, seat) => { const seq = log.get(srv.rooms.get(code).match) || []; let n = 0; seq.forEach((e, i) => { if (e.prompt && e.seat === seat && !(i > 0 && seq[i - 1].seat === seat)) n++; }); return n; };
 
 async function startServer(opts) {
-  const srv = createGameServer(Object.assign({ pagePath: PAGE, stepDelay: 0, sleep: async () => {}, log: () => {}, heartbeatMs: 60000, ratePerSecond: 5000, burst: 10000 }, opts));
+  const srv = createGameServer(Object.assign({ pagePath: PAGE, stepDelay: 0, sleep: async () => {}, log: () => {}, heartbeatMs: 60000, softGraceMs: 0, ratePerSecond: 5000, burst: 10000 }, opts));
   return { srv, port: await srv.listen(0, '127.0.0.1') };
 }
 function makeClient(port, opts) {
@@ -116,14 +116,14 @@ async function lobby(port, settings, level) {
     const c = makeClient(A.port);
     c.dispatch({ type: 'openHost' });
     const h = c.html();
-    ok(/id="net-computer"/.test(h) && /<option value="none" selected>None: two players/.test(h) && /Add a Hard computer as a third player/.test(h) && /all three are at the table from the start/.test(h), 'the Host screen offers a Computer player: none (the default), Easy, Medium or Hard');
+    ok(/id="net-computer"/.test(h) && /<option value="none" selected>None<\/option>/.test(h) && /Add a Hard computer as a third player/.test(h) && /all three are at the table from the start/.test(h), 'the Host screen offers a Computer player: none (the default), Easy, Medium or Hard');
     c.dispatch({ type: 'closeOverlay' });
     host = makeClient(A.port); guest = makeClient(A.port);
     host.dispatch({ type: 'openHost' });
     await hostInfoReady(host); host.dispatch({ type: 'hostGame', server: `127.0.0.1:${A.port}`, name: 'Ann', rounds: 1, hand: 8, computer: 'normal' });
     await until(() => host.S.online.phase === 'lobby' && host.S.online.players[0]);
     let lh = host.html();
-    ok(host.S.online.settings.computer === 'normal' && /<option value="normal" selected>Medium<\/option>/.test(lh), 'the host\'s choice is shown as selected in the lobby');
+    ok(host.S.online.settings.computer === 'normal' && /with a Medium computer player/.test(lh) && !/<select|<option|<input/.test(lh), 'the lobby has no inputs, and says the host\'s choice: a Medium computer player');
     const comp = host.S.online.players[2];
     ok(comp && comp.computer === true && comp.level === 'normal' && G.levelOfName(comp.name.replace(/&#39;/g, "'")) === 'normal', 'the lobby lists a third player: the computer, with a name from the Medium computer players (' + (comp && comp.name) + ')');
     ok(new RegExp(`${comp.name}, computer, Medium`).test(lh) && /Waiting for a player/.test(lh), 'shown as "Name, computer, Medium", next to "Waiting for a player..." for the empty human seat');
@@ -134,15 +134,6 @@ async function lobby(port, settings, level) {
     await until(() => host.S.online.canStart);
     const gh = guest.html();
     ok(/with a Medium computer player/.test(gh) && new RegExp(`${comp.name}, computer, Medium`).test(gh) && /Ben \(you\)/.test(gh), 'the guest\'s lobby says there is a Medium computer player, and lists it');
-    host.dispatch({ type: 'onlineSettings', rounds: 1, hand: 8, computer: 'hard' });
-    await until(() => guest.S.online.settings.computer === 'hard');
-    ok(/with a Hard computer player/.test(guest.html()) && host.S.online.players[2].level === 'hard' && G.levelOfName(host.S.online.players[2].name.replace(/&#39;/g, "'")) === 'hard', 'the host changes it to Hard: both lobbies update, and it gets a Hard player\'s name');
-    host.dispatch({ type: 'onlineSettings', rounds: 1, hand: 8, computer: 'none' });
-    await until(() => !guest.S.online.settings.computer);
-    ok(!/computer player/.test(guest.html()) && host.S.online.players.filter(Boolean).length === 2, '"None" removes it');
-    host.dispatch({ type: 'onlineSettings', rounds: 1, hand: 8, computer: 'normal' });
-    await until(() => guest.S.online.settings.computer === 'normal');
-    ok(host.S.online.settings.computer === 'normal', 'and it can be added again');
   }
 
   console.log('2. three at the table');
@@ -265,9 +256,10 @@ async function lobby(port, settings, level) {
     await until(() => inGame(a) && inGame(b) && a.S.awaiting && a.S.awaiting.kind === 'build');
     ok(/Build my longest train \(15 tiles\)/.test(a.html()), 'Ann is dealt a complete train: the button offers all 15');
     a.dispatch({ type: 'autoBuild' });
-    await until(() => a.S.awaiting && a.S.awaiting.kind === 'build' && a.S.awaiting.placed === 15 && !a.S.online.pending, 8000);
-    ok(/Building, tiles face down/.test(b.html()) && b.S.game.trains.cpu2.tiles.length === 15 && b.S.game.trains.cpu2.tiles.every(t => t[0] < 0), 'Ben watches Ann\'s 15 tiles go down face down (she is his "cpu2")');
-    a.dispatch({ type: 'endBuild' });
+    await until(() => a.S.game.players[0].hand.length === 0 && a.S.game.trains.human.tiles.length === 15 && !a.S.online.pending, 8000);
+    ok(b.screens.some(h => /Building, tiles face down/.test(h)), 'Ben watched Ann\'s 15 tiles go down face down (she is his "cpu2")');
+    await until(() => a.S.game.opening && a.S.game.opening.human.finished, 4000);
+    ok(a.S.game.opening.human.finished && !a.S.awaiting, 'and nobody pressed Done: the game finished Ann\'s opening when her train was down');
     for (let i = 0; i < 60 && !(a.S.modal && b.S.modal); i++) { if (b.S.awaiting && !b.S.online.pending) { const q = b.S.awaiting; if (q.kind === 'build') b.dispatch({ type: q.canDraw ? 'draw' : q.canDone ? 'endBuild' : 'undoTile' }); else if (q.kind === 'draw') b.dispatch({ type: 'draw' }); } await wait(15); }
     await until(() => a.S.modal && b.S.modal, 5000);
     const ma = a.S.modal;

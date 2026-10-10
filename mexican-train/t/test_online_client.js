@@ -5,20 +5,21 @@ const E = G.Engine;
 const { mulberry32, key } = E;
 const { createGameServer } = require('../server.js');
 // the engine's own record of turns: every time it asks a seat to move or draw, and every pass. Consecutive entries
-// for the same seat are one turn (covering your own double, playing the tile you drew).
+// for the same seat are one turn (covering your own double, playing the tile you drew), but never across two rounds: the first turn
+// of a new round is a new turn even for the player who made the last move of the one before.
 const OM = require('../online-match.js').OnlineMatch;
 const prompts = new Map();
 const realWait = OM.prototype._wait;
-OM.prototype._wait = function (seat, kind, extra) { if (kind === 'move' || kind === 'draw') { if (!prompts.has(this)) prompts.set(this, []); prompts.get(this).push({ seat, prompt: true }); } return realWait.call(this, seat, kind, extra); };
+OM.prototype._wait = function (seat, kind, extra) { if (kind === 'move' || kind === 'draw') { if (!prompts.has(this)) prompts.set(this, []); prompts.get(this).push({ seat, prompt: true, round: this.roundIndex }); } return realWait.call(this, seat, kind, extra); };
 // a player with nothing to play and an empty boneyard is passed without being asked anything: that is a turn too
 const realHooks = OM.prototype._makeHooks;
 OM.prototype._makeHooks = function () {
   const hooks = realHooks.call(this), onPass = hooks.onPass;
-  hooks.onPass = async (game, player) => { if (!prompts.has(this)) prompts.set(this, []); prompts.get(this).push({ seat: this._seat(player), prompt: false }); return onPass(game, player); };
+  hooks.onPass = async (game, player) => { if (!prompts.has(this)) prompts.set(this, []); prompts.get(this).push({ seat: this._seat(player), prompt: false, round: this.roundIndex }); return onPass(game, player); };
   return hooks;
 };
 // a sound is due for a prompt to this seat when the action before it (a prompt or a pass, by either player) was the other player's
-const turnsOf = (srv, code, seat) => { const seq = prompts.get(srv.rooms.get(code).match) || []; let n = 0; seq.forEach((e, i) => { if (e.prompt && e.seat === seat && !(i > 0 && seq[i - 1].seat === seat)) n++; }); return n; };
+const turnsOf = (srv, code, seat) => { const seq = prompts.get(srv.rooms.get(code).match) || []; let n = 0; seq.forEach((e, i) => { if (e.prompt && e.seat === seat && !(i > 0 && seq[i - 1].seat === seat && seq[i - 1].round === e.round)) n++; }); return n; };
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL:', m); } };
@@ -28,7 +29,8 @@ const canon = t => [Math.min(t[0], t[1]), Math.max(t[0], t[1])];
 const PAGE = require('path').join(__dirname, '..', 'mexican-train.html');
 
 async function startServer(opts) {
-  const srv = createGameServer(Object.assign({ pagePath: PAGE, stepDelay: 0, sleep: async () => {}, log: () => {}, heartbeatMs: 60000, ratePerSecond: 5000, burst: 10000 }, opts));
+  const srv = createGameServer(Object.assign({ pagePath: PAGE, stepDelay: 0, sleep: async () => {}, log: () => {}, heartbeatMs: 60000, softGraceMs: 0, ratePerSecond: 5000, burst: 10000,
+    rng: () => mulberry32(2024) }, opts));                 // (the deal is fixed: a random one sometimes ends in the opening, with no turns for these checks to count)
   const port = await srv.listen(0, '127.0.0.1');
   return { srv, port };
 }
@@ -194,16 +196,17 @@ const hostile = /<(script|img|svg|iframe|b|i)\b[^>]*>/i;
     host = makeClient(A.port); guest = makeClient(A.port);
     host.dispatch({ type: 'openHost' });
     await hostInfoReady(host);
-    await hostInfoReady(host); host.dispatch({ type: 'hostGame', server: `127.0.0.1:${A.port}`, name: 'Ann', rounds: 4, hand: 12 });
+    await hostInfoReady(host); host.dispatch({ type: 'hostGame', server: `127.0.0.1:${A.port}`, name: 'Ann', rounds: 1, hand: 8 });
     ok(host.S.online && host.S.online.phase === 'connecting', 'the host starts connecting');
     await until(() => host.S.online.phase === 'lobby' && host.S.online.players[0]);
     const lh = host.html();
     ok(/Online game/.test(lh) && new RegExp(host.S.online.display).test(lh) && /[A-Z0-9]{3}-[A-Z0-9]{3}/.test(lh), 'the host sees the join code, big');
     ok(/Waiting for a player/.test(lh) && /Ann \(you\), host/.test(lh), 'with the player list: themselves, and an empty seat');
-    ok(/Copy code/.test(lh) && /data-action="copyCode"/.test(lh), 'and a Copy button');
+    ok(!/Copy code/.test(lh) && !/copyCode/.test(lh) && /class=\"code-big\"/.test(lh), 'the code is shown, large, with no Copy code button (the link is the thing to send)');
     ok(/node|address/.test(lh) && host.S.online.addresses.length > 0 && host.S.online.addresses.every(a => /:\d+$/.test(a)) && lh.includes(host.S.online.addresses[0]), 'and the addresses the other player can use: ' + host.S.online.addresses.join(', '));
     ok(/data-action="startOnline"[^>]*disabled/.test(lh), 'Start is disabled until someone joins');
-    ok(/id="net-rounds"/.test(lh) && /<option value="4" selected>/.test(lh) && /<option value="12" selected>/.test(lh), 'the host\'s game length and hand size are shown as selected');
+    ok(!/<select|<input|<textarea|<option/.test(lh) && !/toggleNetHints|onlineSettings/.test(lh), 'the lobby has no inputs: the game was set up on the Host screen, and now the host is only waiting for players');
+    ok(/One round, 8 tiles each\. Hints are allowed\./.test(lh), '...it just says how the game was set up');
     ok(!/Start game<\/button>/.test(lh) || /Waiting for a player/.test(lh), '(the button reads "Waiting for a player...")');
     const code = host.S.online.code;
     guest.dispatch({ type: 'openJoin' });
@@ -212,15 +215,11 @@ const hostile = /<(script|img|svg|iframe|b|i)\b[^>]*>/i;
     await until(() => host.S.online.canStart);
     const gh = guest.html();
     ok(/Ben \(you\)/.test(gh) && /Ann, host/.test(gh) && !/data-action="startOnline"/.test(gh), 'the guest sees both players, and has no Start button');
-    ok(/Ann will start the game/.test(gh) && /4 rounds, 12 tiles each/.test(gh), 'and who will start it, and the settings');
+    ok(/Ann will start the game/.test(gh) && /One round, 8 tiles each/.test(gh) && !/<select|<input/.test(gh), 'and who will start it, and how the game was set up (and nothing to change)');
     ok(/data-action="startOnline" data-primary="1">Start game/.test(host.html()) && !/startOnline[^>]*disabled/.test(host.html()), 'the host\'s Start button is now live');
     ok(!host.S.overlay && !guest.S.overlay, '(the Host and Join screens closed by themselves)');
-    // the host changes the settings: the guest sees it
-    host.dispatch({ type: 'onlineSettings', rounds: 1, hand: 8 });
-    await until(() => guest.S.online.settings.rounds === 1);
-    ok(/One round, 8 tiles each/.test(guest.html()), 'the host changes the length and hand: the guest\'s screen updates');
     guest.dispatch({ type: 'onlineSettings', rounds: 13, hand: 15 }); await wait(80);
-    ok(guest.S.online.settings.rounds === 1 && !guest.sent.some(m => m.t === 'settings'), 'a guest cannot change them (the page does not even send it)');
+    ok(guest.S.online.settings.rounds === 1 && !guest.sent.some(m => m.t === 'settings'), 'there is nothing a guest can change (and the page does not send settings)');
     // the session is saved for coming back
     const sv = JSON.parse(host.store['mt-online']);
     ok(sv.code === code && /^[0-9a-f]{32}$/.test(sv.token) && sv.seat === 0 && sv.server === `127.0.0.1:${A.port}` && sv.name === 'Ann', 'the host\'s seat is remembered in the browser (code, token, seat, address), so a reload can rejoin');
@@ -234,7 +233,7 @@ const hostile = /<(script|img|svg|iframe|b|i)\b[^>]*>/i;
     await until(() => inGame(host) && inGame(guest));
     ok(inGame(host) && inGame(guest), 'the host presses Start: both are in the game');
     const hh = host.html(), gh = guest.html();
-    ok(/Online game [A-Z0-9]{3}-[A-Z0-9]{3}/.test(hh) && /Double-12 online/.test(hh) && !/Computer:/.test(hh) && !/against the computer/.test(hh), 'the header says it is an online game with its code, and not "against the computer"');
+    ok(/Online game/.test(hh) && !/Online game [A-Z0-9]{3}-[A-Z0-9]{3}/.test(hh) && /Double-12 online/.test(hh) && !/Computer:/.test(hh) && !/against the computer/.test(hh), 'the header says it is an online game, without the join code, and not "against the computer"');
     ok(/Leave game/.test(hh) && !/data-action="newGame"/.test(hh), 'there is a Leave game button instead of New game');
     ok(/Say something/.test(hh) && !/Comments: /.test(hh) && !/class="tag tag-/.test(hh), 'quick phrases replace the computer\'s Comments toggle, and there is no skill-level tag');
     ok(/<span class="who">Ben<\/span>/.test(hh) && /<span class="who">Ann<\/span>/.test(gh), 'each sees the other\'s name where the computer\'s used to be');
@@ -308,11 +307,13 @@ const hostile = /<(script|img|svg|iframe|b|i)\b[^>]*>/i;
     ok(a.S.online.pending !== null && a.sent.filter(m => m.a === 'autoBuild').length === 1, 'one tap sends one request');
     a.dispatch({ type: 'autoBuild' }); a.dispatch({ type: 'autoBuild' });
     ok(a.sent.filter(m => m.a === 'autoBuild').length === 1, 'tapping it again while waiting for the server sends nothing more (no double plays)');
-    await until(() => a.S.awaiting && a.S.awaiting.kind === 'build' && a.S.awaiting.placed === 15 && !a.S.online.pending, 6000);
+    await until(() => a.S.game.players[0].hand.length === 0 && a.S.game.trains.human.tiles.length === 15 && !a.S.online.pending, 6000);
     ok(a.S.game.players[0].hand.length === 0 && a.S.game.trains.human.tiles.length === 15, 'all 15 tiles are on her train');
-    ok(b.S.game.trains.cpu.tiles.length === 15 && b.S.game.trains.cpu.tiles.every(t => t[0] < 0) && /Building, tiles face down/.test(b.html()), 'Ben watches 15 face-down tiles go down, and cannot see which');
-    ok(b.S.game.trains.cpu.tiles.map(t => t[0] === t[1]).filter(Boolean).length === 2 && /tile v back/.test(b.html()), 'only that two of them are doubles, standing across the train');
-    a.dispatch({ type: 'endBuild' });
+    ok(allScreens([b]).some(h => /Building, tiles face down/.test(h)), 'Ben watched her train go down face down (he could not see which tiles)');
+    ok(allScreens([b]).some(h => /tile v back/.test(h)), '...with the doubles standing across the train');
+    ok(!a.sent.some(m => m.a === 'done'), 'Ann never pressed Done: when the longest train was down, the game finished her opening for her');
+    await until(() => !a.S.awaiting || a.S.awaiting.kind !== 'build', 4000);
+    ok(!/Building, tiles face down/.test(b.html()) && b.S.game.trains.cpu.tiles.length === 15 && b.S.game.trains.cpu.tiles.every(t => t[0] >= 0), 'and then Ben sees her 15 tiles turned face up');
     await until(() => a.S.awaiting && a.S.awaiting.kind === 'build' || b.S.awaiting, 3000);
     for (let i = 0; i < 40 && !(a.S.modal && b.S.modal); i++) { if (b.S.awaiting && !b.S.online.pending) { const q = b.S.awaiting; if (q.kind === 'build') b.dispatch({ type: q.canDraw ? 'draw' : q.canDone ? 'endBuild' : 'undoTile' }); else if (q.kind === 'draw') b.dispatch({ type: 'draw' }); } await wait(15); }
     await until(() => a.S.modal && b.S.modal, 4000);
@@ -321,12 +322,12 @@ const hostile = /<(script|img|svg|iframe|b|i)\b[^>]*>/i;
     ok(a.S.modal.rows[0].pips === 0 && a.S.totals.human === 0 && a.S.totals.cpu === b.S.totals.human && b.S.totals.human > 0, 'Ann scores 0; Ben is left with his points, the same number on both screens (' + b.S.totals.human + ')');
     ok(/See final score/.test(a.html()), 'a one-round game: the button says "See final score"');
     a.dispatch({ type: 'dialogOk' });
-    ok(a.S.modal === null && a.S.awaiting === null, 'Ann presses OK: her dialog goes at once');
-    await until(() => /Waiting for Ben/.test(a.html()));
-    ok(/Waiting for the final score|Waiting for Ben/.test(a.html()) && b.S.modal && b.S.modal.type === 'roundEnd', 'she waits for Ben, whose dialog is still up');
+    await until(() => a.S.modal && a.S.modal.type === 'final');
+    ok(a.S.modal && a.S.modal.type === 'final' && /You win/.test(a.html()) && !/Waiting for/.test(a.html()), 'Ann presses the button and gets the final score at once: she does not wait for Ben');
+    ok(b.S.modal && b.S.modal.type === 'roundEnd' && /Ann went out first/.test(b.html()), '...while Ben, who has not pressed it yet, still has the round-end dialog');
     b.dispatch({ type: 'dialogOk' });
-    await until(() => a.S.modal && a.S.modal.type === 'final' && b.S.modal && b.S.modal.type === 'final');
-    ok(/You win/.test(a.html()) && /Ann wins/.test(b.html()), 'then the final score: "You win" and "Ann wins"');
+    await until(() => b.S.modal && b.S.modal.type === 'final');
+    ok(a.S.modal.type === 'final' && /Ann wins/.test(b.html()), 'then Ben presses it and gets the final score too: "You win" for Ann and "Ann wins" for Ben');
     a.dispatch({ type: 'onlineBack' }); b.dispatch({ type: 'onlineBack' });
     await R.srv.close();
   }

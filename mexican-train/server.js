@@ -27,6 +27,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+let monitorEventLoopDelay = null; try { monitorEventLoopDelay = require('perf_hooks').monitorEventLoopDelay; } catch (e) { /* older Node: no loop-lag figures */ }
 const { upgrade } = require('./ws-lite.js');
 const { OnlineMatch, cleanName, CHAT_PHRASES } = require('./online-match.js');
 const G = globalThis.MexicanTrainGame;                 // (loaded by online-match.js)
@@ -65,7 +66,12 @@ function createGameServer(options) {
   const opt = Object.assign({
     pagePath: path.join(__dirname, 'mexican-train.html'),
     graceMs: 3 * 60 * 1000,              // how long a dropped player has to come back
-    heartbeatMs: 20000,
+    heartbeatMs: 5000,                   // how often every connection is pinged (a browser answers pings by itself, without the page)
+    deadAfterMs: undefined,              // how long a connection may be completely silent (no message, no ping reply) before it is dropped: 30 s, or twice heartbeatMs if that is set
+    softGraceMs: 8000,                   // a player who drops is not announced, and the game is not paused, until they have been gone this long (most blips mend themselves)
+    healthMs: 60000,                     // while games are running, a line about the connections' health is logged this often
+    netStats: true,                      // GET /netstats shows who is connected, ping times and the recent drops
+    chatRng: null, timer: null, now: null, nativeChance: undefined, foodChance: undefined,    // (tests: the computer's talk uses these random numbers, clock and timers)
     maxRooms: 50, maxConnections: 200,
     idleRoomMs: 10 * 60 * 1000,          // an empty room is forgotten after this long
     overRoomMs: 60 * 1000,               // a finished game is kept this long after everyone has gone (a reload still shows the result)
@@ -77,9 +83,11 @@ function createGameServer(options) {
     maxWrongCodes: 8,                    // wrong join codes from one address before it must wait a minute
     ratePerSecond: 30, burst: 60,        // messages a connection may send: far more than a person can click
   }, options || {});
+  if (opt.deadAfterMs === undefined) opt.deadAfterMs = options && options.heartbeatMs !== undefined ? 2 * opt.heartbeatMs : 30000;
 
   const rooms = new Map();               // code -> room
   const conns = new Set();
+  let shuttingDown = false;
   const failures = new Map();            // ip -> { n, until }: wrong-code guesses, to slow down guessing
   let page = null, pageMtime = 0;
   let boundPort = 0;
@@ -111,6 +119,11 @@ function createGameServer(options) {
       res.writeHead(200, Object.assign({ 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) }, headers));
       return res.end(req.method === 'HEAD' ? undefined : body);
     }
+    if (url === '/netstats' && opt.netStats) {                // who is connected and how healthy the connections are (no secrets in it)
+      const body = JSON.stringify(netStats(), null, 2);
+      res.writeHead(200, Object.assign({ 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) }, headers));
+      return res.end(req.method === 'HEAD' ? undefined : body);
+    }
     if (url === '/healthz') { res.writeHead(200, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, headers)); return res.end('ok'); }
     res.writeHead(404, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, headers));
     res.end('Not found');
@@ -123,7 +136,7 @@ function createGameServer(options) {
     if (conns.size >= opt.maxConnections) { try { socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n'); socket.destroy(); } catch (e) { /* ignore */ } return; }
     const ws = upgrade(req, socket, { maxPayload: opt.maxMessage });
     if (!ws) return;
-    const c = { ws, ip: (req.socket && req.socket.remoteAddress) || '?', session: null, bucket: opt.burst, bucketAt: Date.now(), bad: 0, slowAt: 0 };
+    const c = { ws, ip: (req.socket && req.socket.remoteAddress) || '?', session: null, bucket: opt.burst, bucketAt: Date.now(), bad: 0, slowAt: 0, since: Date.now(), ua: String((req.headers && req.headers['user-agent']) || '').slice(0, 160), dropWhy: null };
     conns.add(c);
     send(c, { t: 'hello', game: 'mexican-train', v: PROTOCOL });
     ws.on('message', text => onMessage(c, text));
@@ -166,10 +179,10 @@ function createGameServer(options) {
   function newRoom(c, name, settings) {
     let code; do { code = randomCode(); } while (rooms.has(code));
     const room = {
-      code, settings: { rounds: [1, 4, 13].includes(Number(settings.rounds)) ? Number(settings.rounds) : 4, hand: [8, 12, 15].includes(Number(settings.hand)) ? Number(settings.hand) : 15, computer: cleanComputer(settings.computer), theme: cleanTheme(settings.theme) },
+      code, settings: { rounds: [1, 4, 13].includes(Number(settings.rounds)) ? Number(settings.rounds) : 4, hand: [8, 12, 15].includes(Number(settings.hand)) ? Number(settings.hand) : 15, computer: cleanComputer(settings.computer), theme: cleanTheme(settings.theme), allowHints: !(settings.allowHints === false || settings.allowHints === 'false') },
       computerName: null,
       players: [{ name, token: crypto.randomBytes(16).toString('hex'), conn: null, lostAt: null, timer: null }, null],
-      state: 'lobby', match: null, chatAt: [0, 0], lastActivity: Date.now(), over: null,
+      state: 'lobby', match: null, chatAt: [0, 0], chatLog: [[], []], lastActivity: Date.now(), over: null,
     };
     rooms.set(code, room);
     return room;
@@ -188,16 +201,66 @@ function createGameServer(options) {
     };
   }
   function sendLobby(room) { for (const seat of [0, 1]) sendSeat(room, seat, lobbyMessage(room, seat)); }
+  /* ------------------------------ what happened to a connection ------------------------------ */
+  const deviceOf = ua => {
+    ua = String(ua || '');
+    const os_ = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'unknown device';
+    const br = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /(Chrome|CriOS)\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : '';
+    return br ? `${os_}, ${br}` : os_;
+  };
+  const span = ms => ms < 1000 ? `${Math.max(0, Math.round(ms))} ms` : ms < 120000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms / 60000)} min`;
+  const rttText = ws => ws.rtt.n ? `ping round trip: last ${ws.rtt.last} ms, average ${Math.round(ws.rtt.sum / ws.rtt.n)} ms, worst ${ws.rtt.max} ms` : 'no ping answered yet';
+  const lag = monitorEventLoopDelay ? monitorEventLoopDelay({ resolution: 20 }) : null; if (lag) lag.enable();
+  const lagText = () => (lag && lag.count ? `this server's thread was never busy for more than ${(lag.max / 1e6).toFixed(0)} ms (99% under ${(lag.percentile(99) / 1e6).toFixed(0)} ms)` : 'no loop-lag figures');
+  const recentDrops = []; let stalls = 0, lastTick = Date.now();
+  // How a connection ended, in words. The page closes with its own codes when it ends a connection itself, so we can tell.
+  function whyEnded(c) {
+    if (c.dropWhy) return c.dropWhy;
+    const i = c.ws.closeInfo || { by: 'network' };
+    if (i.by === 'client') {
+      if (i.code === 4001) return `the page gave up waiting for this server ("${i.reason}")`;
+      if (i.code === 4002) return `the page started a new connection after waking up ("${i.reason}")`;
+      if (i.code === 1001) return 'the page was closed or left (a closed tab, a reload, or navigating away)';
+      return `the page closed it (code ${i.code}${i.reason ? ': ' + i.reason : ''})`;
+    }
+    if (i.by === 'server') return i.code === 4000 ? 'replaced by a newer connection from the same player' : `this server closed it${i.reason ? ' (' + i.reason + ')' : ''}`;
+    return 'it vanished without a goodbye: Wi-Fi dropping, a phone locking, a tab being suspended or killed, or a cable pulled';
+  }
+  function cleanDiag(d) {                                   // what the page says about why it reconnected: numbers and short words only
+    if (!d || typeof d !== 'object') return '';
+    const n = x => (typeof x === 'number' && isFinite(x) && x >= 0 && x < 1e9 ? Math.round(x) : null);
+    const w = x => (typeof x === 'string' ? x.replace(/[^A-Za-z0-9 .,:;()'\-]/g, '').slice(0, 60) : '');
+    const out = [];
+    if (w(d.why)) out.push(`ended because ${w(d.why)}`);
+    if (n(d.hiddenMs) !== null && n(d.hiddenMs) > 0) out.push(`it was in the background for ${span(n(d.hiddenMs))}`);
+    if (n(d.silentMs) !== null) out.push(`it had heard nothing for ${span(n(d.silentMs))}`);
+    if (n(d.tries) !== null && n(d.tries) > 1) out.push(`${n(d.tries)} attempts to reconnect`);
+    if (w(d.vis)) out.push(`the page was ${w(d.vis)}`);
+    return out.join('; ');
+  }
+  function netStats() {
+    const now = Date.now();
+    return {
+      at: new Date(now).toISOString(), uptimeSeconds: Math.round(process.uptime()),
+      settings: { pingEveryMs: opt.heartbeatMs, droppedAfterSilentMs: opt.deadAfterMs, pauseAfterGoneMs: opt.softGraceMs, comebackWithinMs: opt.graceMs },
+      thisServer: { busiestMomentMs: lag && lag.count ? Math.round(lag.max / 1e6) : null, p99Ms: lag && lag.count ? Math.round(lag.percentile(99) / 1e6) : null, stallsSeen: stalls },
+      connections: Array.from(conns).map(c => ({ player: c.session ? (c.session.room.players[c.session.seat] || {}).name || null : null, game: c.session ? showCode(c.session.room.code) : null,
+        from: c.ip, device: deviceOf(c.ua), connectedForSeconds: Math.round((now - c.since) / 1000), lastHeardMsAgo: now - c.ws.lastSeen,
+        pingMs: c.ws.rtt.n ? { last: c.ws.rtt.last, average: Math.round(c.ws.rtt.sum / c.ws.rtt.n), worst: c.ws.rtt.max, answered: c.ws.rtt.n } : null })),
+      recentDrops,
+    };
+  }
   function presence(room) {
     for (const seat of [0, 1]) {
       const other = room.players[1 - seat];
-      sendSeat(room, seat, { t: 'presence', oppConnected: !!(other && other.conn && other.conn.ws.open), graceUntil: other && other.lostAt ? other.lostAt + opt.graceMs : null });
+      // a player in the first few seconds after a drop still counts as there: most blips mend themselves, and nobody needs to hear about those
+      sendSeat(room, seat, { t: 'presence', oppConnected: !!(other && ((other.conn && other.conn.ws.open) || other.soft)), graceUntil: other && other.lostAt && !other.soft ? other.lostAt + opt.graceMs : null });
     }
   }
   function attach(room, seat, c) {
     const p = room.players[seat];
     if (p.conn && p.conn !== c) { p.conn.session = null; try { p.conn.ws.close(4000, 'replaced by a newer connection'); } catch (e) { /* ignore */ } }
-    p.conn = c; p.lostAt = null; cancel(p.timer); p.timer = null;
+    p.conn = c; p.lostAt = null; cancel(p.timer); p.timer = null; cancel(p.soft); p.soft = null;
     c.session = { room, seat };
     room.lastActivity = Date.now();
   }
@@ -205,18 +268,18 @@ function createGameServer(options) {
     if (room.state === 'over' && room.over) return;
     room.state = 'over'; room.over = reason;
     if (room.match) room.match.abort();
-    for (const seat of [0, 1]) { const p = room.players[seat]; if (p) { cancel(p.timer); p.timer = null; } }
+    for (const seat of [0, 1]) { const p = room.players[seat]; if (p) { cancel(p.timer); p.timer = null; cancel(p.soft); p.soft = null; } }
     for (const seat of [0, 1]) sendSeat(room, seat, { t: 'ended', reason, message });
     opt.log(`game ${showCode(room.code)} ended: ${reason}`);
   }
   function dropRoom(room) {
     endRoom(room, room.over || 'closed', 'This game was closed.');
-    for (const p of room.players) if (p) { cancel(p.timer); if (p.conn) p.conn.session = null; }
+    for (const p of room.players) if (p) { cancel(p.timer); cancel(p.soft); if (p.conn) p.conn.session = null; }
     rooms.delete(room.code);
   }
 
   /* ------------------------------ messages ------------------------------ */
-  const cleanSettings = msg => ({ rounds: msg.rounds, hand: msg.hand, computer: msg.computer, theme: msg.theme });
+  const cleanSettings = msg => ({ rounds: msg.rounds, hand: msg.hand, computer: msg.computer, theme: msg.theme, allowHints: msg.allowHints });
   const cleanComputer = v => (G.Engine.LEVELS.includes(v) ? v : null);       // 'easy', 'normal' or 'hard'; anything else means no computer player
   const cleanTheme = v => (G.THEME_IDS.includes(v) ? v : 'classic');            // who the computer player is, and the ring or toy train markers
   /* A name for the computer player, from the computer players of its level (and theme), not one a person at the table has. */
@@ -263,6 +326,7 @@ function createGameServer(options) {
     const seat = room ? room.players.findIndex(p => p && typeof msg.token === 'string' && p.token.length === msg.token.length && crypto.timingSafeEqual(Buffer.from(p.token), Buffer.from(msg.token))) : -1;
     if (!room || seat < 0) return reply(c, 'no_such_game', 'That game is no longer there.');
     if (room.state === 'over') { send(c, { t: 'ended', reason: room.over || 'closed', message: 'That game is over.' }); return; }
+    const wasGone = room.players[seat].lostAt, diag = cleanDiag(msg.d);
     attach(room, seat, c);
     send(c, { t: 'resumed', code: room.code, display: showCode(room.code), seat, settings: room.settings, state: room.state, addresses: lanAddresses(boundPort, opt.localOnly) });
     if (room.state === 'playing' && room.match) {
@@ -270,7 +334,7 @@ function createGameServer(options) {
       if (connectedSeats(room).every(Boolean)) room.match.setPaused(false);
     } else sendLobby(room);
     presence(room);
-    opt.log(`${room.players[seat].name} is back in game ${showCode(room.code)}`);
+    opt.log(`${room.players[seat].name} is back in game ${showCode(room.code)}${wasGone ? ' after ' + span(Date.now() - wasGone) : ''}${diag ? '; their page says: ' + diag : ''} [${deviceOf(c.ua)}]`);
   }
   function onSettings(c, msg) {
     const room = c.session && c.session.room;
@@ -284,6 +348,7 @@ function createGameServer(options) {
       else if (cleanComputer(v)) { room.settings.computer = v; nameComputer(room); }
     }
     if (s.theme !== undefined && G.THEME_IDS.includes(s.theme)) { room.settings.theme = s.theme; nameComputer(room); }   // an unknown theme is ignored
+    if (typeof s.allowHints === 'boolean') room.settings.allowHints = s.allowHints;                                       // the host's choice about hints, for everyone at the table
     sendLobby(room);
   }
   function onStart(c) {
@@ -294,10 +359,11 @@ function createGameServer(options) {
     room.state = 'playing';
     nameComputer(room);
     room.match = new OnlineMatch({
-      rounds: room.settings.rounds, hand: room.settings.hand,
+      rounds: room.settings.rounds, hand: room.settings.hand, allowHints: room.settings.allowHints !== false,
       names: room.settings.computer ? [room.players[0].name, room.players[1].name, room.computerName] : [room.players[0].name, room.players[1].name],
       computer: room.settings.computer ? { level: room.settings.computer } : undefined, theme: room.settings.theme,
       rng: opt.rng ? opt.rng(room) : undefined, stepDelay: opt.stepDelay, sleep: opt.sleep,
+      chatRng: opt.chatRng || undefined, timer: opt.timer || undefined, now: opt.now || undefined, nativeChance: opt.nativeChance, foodChance: opt.foodChance,
       push: (seat, msg) => sendSeat(room, seat, msg),
     });
     opt.log(`game ${showCode(room.code)} started: ${room.players[0].name} vs ${room.players[1].name}${room.settings.computer ? ' vs ' + room.computerName + ' (computer, ' + room.settings.computer + ')' : ''}${room.settings.theme !== 'classic' ? ' [' + room.settings.theme + ']' : ''}`);
@@ -322,22 +388,33 @@ function createGameServer(options) {
     const room = c.session && c.session.room;
     if (!room) return reply(c, 'not_in_game', 'Join a game first.');
     const seat = c.session.seat, now = Date.now();
-    if (!Number.isInteger(msg.id) || msg.id < 0 || msg.id >= CHAT_PHRASES.length) return reply(c, 'bad_message', 'Unknown phrase.');
-    if (now - room.chatAt[seat] < 1500) return reply(c, 'slow_down', 'Not so fast.');
-    room.chatAt[seat] = now;
-    sendSeat(room, 1 - seat, { t: 'chat', id: msg.id, text: CHAT_PHRASES[msg.id] });
+    // a quick phrase (by number) or something typed (as text, which is cleaned here whatever the page did: plain text, one line, 80 characters)
+    let text, id = null;
+    if (Number.isInteger(msg.id) && msg.id >= 0 && msg.id < CHAT_PHRASES.length) { id = msg.id; text = CHAT_PHRASES[id]; }     // (a phrase number wins: text sent along with it is ignored)
+    else if (typeof msg.text === 'string') { text = G.cleanChatText(msg.text); if (!text) return reply(c, 'bad_message', 'There was nothing to send.'); }
+    else return reply(c, 'bad_message', 'Unknown phrase.');
+    if (now - room.chatAt[seat] < 1500) return reply(c, 'slow_down', 'Not so fast: that message was not sent.');
+    const recent = (room.chatLog[seat] || []).filter(t => now - t < 60000);
+    if (recent.length >= 10) { room.chatLog[seat] = recent; return reply(c, 'slow_down', 'That is a lot of messages. Wait a little: that one was not sent.'); }
+    room.chatAt[seat] = now; recent.push(now); room.chatLog[seat] = recent;
+    sendSeat(room, 1 - seat, Object.assign({ t: 'chat', text }, id !== null ? { id } : {}));
   }
+  // Someone who has pressed "See the final score" has seen everything there is to see. If they leave (or close the page) before the
+  // other person has pressed it, the game is not abandoned: the other person still gets their final score.
+  const sawEverything = (room, seat) => !!(room.state === 'playing' && room.match && !room.match.over && room.match.modal
+    && room.match.modal.type === 'roundEnd' && room.match.modal.last && room.match.modalOk[seat]);
   function onLeave(c) {
     const room = c.session && c.session.room, seat = seatOf(c);
     if (!room) return;
     c.session = null;
     const p = room.players[seat];
-    if (p) { p.conn = null; cancel(p.timer); }
+    if (p) { p.conn = null; cancel(p.timer); cancel(p.soft); p.soft = null; }
     if (room.state === 'lobby') {
       if (seat === 0) { endRoom(room, 'left', `${p ? p.name : 'The host'} closed the game.`); rooms.delete(room.code); }
       else { room.players[1] = null; sendLobby(room); }
     } else if (room.state === 'playing') {
-      endRoom(room, 'left', `${p ? p.name : 'The other player'} left the game.`);
+      if (sawEverything(room, seat)) { opt.log(`${p ? p.name : 'A player'} left game ${showCode(room.code)} after seeing the final score; the other player has not yet`); room.match.seatLeft(seat); }
+      else endRoom(room, 'left', `${p ? p.name : 'The other player'} left the game.`);
     }
     if (room.players.every(x => !x || !x.conn)) rooms.delete(room.code);
   }
@@ -345,7 +422,11 @@ function createGameServer(options) {
   /* ------------------------------ dropped connections ------------------------------ */
   function onClose(c) {
     conns.delete(c);
+    if (shuttingDown) return;                                // the server is closing: nobody is waiting for anyone any more
     const s = c.session;
+    const why = whyEnded(c), heard = Date.now() - c.ws.lastSeen;
+    recentDrops.unshift({ at: new Date().toISOString(), player: s ? (s.room.players[s.seat] || {}).name || null : null, why, connectedForSeconds: Math.round((Date.now() - c.since) / 1000), lastHeardMsBefore: heard, device: deviceOf(c.ua) });
+    if (recentDrops.length > 30) recentDrops.pop();
     if (!s) return;
     const { room, seat } = s;
     const p = room.players[seat];
@@ -354,10 +435,18 @@ function createGameServer(options) {
     room.lastActivity = Date.now();
     if (room.state === 'over') { if (room.players.every(x => !x || !x.conn)) later(() => { if (rooms.get(room.code) === room && room.players.every(x => !x || !x.conn)) rooms.delete(room.code); }, opt.overRoomMs); return; }
     if (room.state === 'lobby' && seat === 1) { room.players[1] = null; sendLobby(room); return; }     // a guest who drops from the lobby just frees the seat
-    opt.log(`${p.name} lost the connection to game ${showCode(room.code)}`);
-    if (room.state === 'playing' && room.match) room.match.setPaused(true);
-    presence(room);
-    cancel(p.timer);
+    if (sawEverything(room, seat)) { opt.log(`${p.name} closed the page of game ${showCode(room.code)} after seeing the final score; the other player has not yet: no pause, no waiting for them`); room.match.seatLeft(seat); return; }
+    opt.log(`${p.name} lost the connection to game ${showCode(room.code)}: ${why}. (${span(Date.now() - c.since)} connected; heard from them ${span(heard)} before it ended; ${rttText(c.ws)}; ${lagText()}) [${deviceOf(c.ua)}]`);
+    cancel(p.timer); cancel(p.soft);
+    const announce = () => {                                 // they have been gone long enough that it is worth telling the other player, and pausing
+      p.soft = null;
+      if (p.conn || room.state === 'over') return;
+      if (room.state === 'playing' && room.match) room.match.setPaused(true);
+      presence(room);
+      if (opt.softGraceMs > 0) opt.log(`${p.name} is still gone after ${span(opt.softGraceMs)}: game ${showCode(room.code)} is paused until they come back (up to ${span(opt.graceMs)})`);
+    };
+    if (room.state === 'playing' && room.match && opt.softGraceMs > 0) p.soft = later(announce, opt.softGraceMs);
+    else announce();
     p.timer = later(() => {                                  // they did not come back in time
       p.timer = null;
       if (p.conn || room.state === 'over') return;
@@ -366,19 +455,38 @@ function createGameServer(options) {
   }
 
   /* ------------------------------ upkeep ------------------------------ */
-  const beat = setInterval(() => {
+  /* A connection is dropped when NOTHING has arrived from it (no message, no ping reply) for `deadAfterMs`, not when one ping goes
+   * unanswered. And if THIS process was not running for a while (stalled, or the computer slept) nobody is blamed for the silence:
+   * whatever they sent could not be read. */
+  function heartbeat(now) {
+    now = now === undefined ? Date.now() : now;
+    const late = now - lastTick - opt.heartbeatMs;
+    lastTick = now;
+    if (late > Math.max(1500, opt.heartbeatMs * 1.5)) {
+      stalls++;
+      for (const c of conns) c.ws.lastSeen = now;
+      opt.log(`this server was not running for about ${span(late + opt.heartbeatMs)} (stalled, or the computer slept): that is not counted against any player`);
+    }
     for (const c of Array.from(conns)) {
-      if (!c.ws.alive) { c.ws.terminate(); continue; }       // no answer to the last ping: the connection is dead
+      const silent = now - c.ws.lastSeen;
+      if (silent > opt.deadAfterMs) { c.dropWhy = `no sign of life for ${span(silent)} (it did not answer pings)`; c.ws.terminate('heartbeat'); continue; }
       c.ws.alive = false; c.ws.ping();
     }
-    const now = Date.now();
     for (const room of Array.from(rooms.values())) {
       const empty = room.players.every(x => !x || !x.conn);
       if (empty && now - room.lastActivity > opt.idleRoomMs && !(room.state === 'playing' && room.players.some(p => p && p.timer))) { dropRoom(room); }
     }
     for (const [ip, f] of failures) if (now > f.until) failures.delete(ip);
-  }, opt.heartbeatMs);
+  }
+  const beat = setInterval(() => heartbeat(), opt.heartbeatMs);
   if (beat.unref) beat.unref();
+  const health = setInterval(() => {                       // while games are on: one line about how the connections are doing
+    if (!Array.from(rooms.values()).some(r => r.state === 'playing')) { if (lag) lag.reset(); return; }
+    const parts = Array.from(conns).filter(c => c.session).map(c => `${(c.session.room.players[c.session.seat] || {}).name} ${c.ws.rtt.n ? `ping ${Math.round(c.ws.rtt.sum / c.ws.rtt.n)} ms (worst ${c.ws.rtt.max})` : 'no ping yet'} [${deviceOf(c.ua)}]`);
+    opt.log(`connections healthy: ${parts.join('; ') || 'none'}; ${lagText()}`);
+    if (lag) lag.reset();
+  }, opt.healthMs);
+  if (health.unref) health.unref();
 
   /* ------------------------------ starting and stopping ------------------------------ */
   function listen(port, host) {
@@ -393,14 +501,15 @@ function createGameServer(options) {
     });
   }
   function close() {
-    clearInterval(beat);
+    shuttingDown = true;
+    clearInterval(beat); clearInterval(health); if (lag) lag.disable();
     for (const t of Array.from(timers)) cancel(t);
     for (const room of Array.from(rooms.values())) { if (room.match) room.match.abort(); }
     rooms.clear();
     for (const c of Array.from(conns)) c.ws.terminate();
     return new Promise(res => http_.close(() => res()));
   }
-  return { listen, close, rooms, conns, http: http_, get port() { return boundPort; }, options: opt };
+  return { listen, close, rooms, conns, http: http_, get port() { return boundPort; }, options: opt, heartbeat, netStats };
 }
 
 /* ------------------------------ command line ------------------------------ */

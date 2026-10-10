@@ -63,7 +63,7 @@ The rules below are exactly what the game implements.
 
 At the start of every round, both players **build their own train at the same time**, before any normal turn:
 
-- Tap tiles one after another to add them to your train, or press **Build my longest train** to lay down the longest possible train automatically.
+- Tap tiles one after another to add them to your train and press **Done**, or press **Build my longest train** to lay down the longest possible train automatically: when the train is down, your opening is finished for you (there is no Done to press).
 - You can **take back** your last tile as often as you like until you press **Done**.
 - The computer builds too, but **its tiles stay face down** until it finishes. (Its doubles are shown standing across the train even while face down.)
 - **Done** is not allowed while your train ends on an uncovered double. Cover it or take it back.
@@ -77,6 +77,8 @@ Play one tile that matches the number a train needs onto one of:
 - your own train,
 - the **Mexican train**, or
 - the **computer's train, but only if it has a toy train marker on it**.
+
+Each train has its own row. A player's row shows the name and, when the train is open, "Open: ... can play here"; it does not say which number it needs (that is the number on the train's last tile). Only the shared **Mexican train** row also says which number it needs.
 
 **Nothing fits?** Draw one tile. If it fits, play it. If not, you **pass** and a **marker (a little toy train in your color) goes on your train**, which lets your opponent play there until you next play on it yourself.
 
@@ -105,7 +107,7 @@ Play one tile that matches the number a train needs onto one of:
 | **Rearrange your hand** | Drag tiles around your hand. Drop between or after other tiles, in any row. There is no Sort button: a new round starts with the automatic order again (heaviest tiles first). |
 | **Move a tile with the keyboard** | Focus it, then **Shift + Left/Right arrow**. |
 | **Draw** | Press the **Draw** spot in your hand, click the empty part of your hand, or press the boneyard button (only when drawing is your only move). |
-| **Build my longest train** | Button in the opening. |
+| **Build my longest train** | Button in the opening. Lays the longest train, then finishes your opening for you. |
 | **Take back / Done** | Buttons in the opening. |
 | **Mute sound** | The Mute button in the header. |
 | **Computer comments on/off** | The **Comments** button beside the computer's name. |
@@ -128,12 +130,11 @@ Open **New game** to choose these. They are saved between visits.
 |---|---|---|
 | Rounds | 1, 4, or 13 | 4 |
 | Tiles per hand | 8, 12, or 15 | 15 |
-| Tile style | **Colored pips** or **Large numbers** | Colored pips |
 | Computer players | **One** or **two** computer players (so two or three at the table) | One |
 | Computer level | **Easy**, **Medium**, **Hard** | Medium |
 | Second computer's level | **Easy**, **Medium**, **Hard** (only with two computers; each has its own) | Medium |
 | Theme | **Classic** or **The Lord of the Rings** (see [Themes](#themes)) | Classic |
-| Hints | **Allow hints** on / off (see Hints under Look, feel and sound) | on |
+| Hints | **Allow hints** on / off (see Hints under Look, feel and sound). In an online game it is the host's choice, for everyone | on |
 | Sound | on / off (also the Mute button) | on |
 | Computer comments | on / off (the Comments button) | on |
 
@@ -194,7 +195,7 @@ The **Theme** setting swaps the classic computer players for a cast of character
 - **Each character has their own voice**, with a full set of lines for every kind of comment (448 lines in all): Gollum hisses about tricksy moves, Treebeard thinks everything is hasty, Gimli swears by his beard, Saruman is smug about your mistakes. The lines are original, written in each character's spirit rather than quoted from the books or films.
 - **They get hungry for their own food** while you dither: Sam for rabbit stew, Gollum for raw fish, Treebeard for Ent-draught.
 - **An open train is marked with a golden ring** instead of a toy train, and the header says *Double-12 in Middle-earth*.
-- **Online too.** The host picks the theme on the Host screen or in the lobby. It applies to the whole online game: the computer player (if there is one) is a character of its level, and an open train wears the golden ring on everyone's screen. The guest's lobby says which theme was chosen. The server sends the theme with the other settings (`settings.theme`, `classic` or `lotr`) and ignores anything else.
+- **Online too.** The host picks the theme on the Host screen. It applies to the whole online game: the computer player (if there is one) is a character of its level, and an open train wears the golden ring on everyone's screen. The guest's lobby says which theme was chosen. The server sends the theme with the other settings (`settings.theme`, `classic` or `lotr`) and ignores anything else.
 
 Themes live in `THEMES` in `game.js`: a theme lists its characters by level, their lines (`voices`), their food (`food`) and how they say they are hungry (`foodLines`). Adding another theme means adding another entry; the setup screen lists it automatically.
 
@@ -203,6 +204,11 @@ Themes live in `THEMES` in `game.js`: a theme lists its characters by level, the
 ## Playing online
 
 Two people can play each other over a network. One of you runs a small game server on their own computer; both of you play in an ordinary browser. There is no account, no website and nothing to install for the second player.
+
+
+### The end of a game
+
+Between rounds, each person presses the button on the round-end dialog and the next round starts once **both** have, because the next round needs both of them. After the **last** round there is nothing left to start, so nobody waits: whoever presses **See final score** gets the final score at once, even if the other person has not pressed theirs yet (that person still has their own dialog, and gets their own score when they press it). Someone who has seen the final score may go back to the menu or close the page straight away: the game is not treated as abandoned, there is no pause, and the other person is told they have gone and can still press their button and see the final score. (Someone who leaves *before* pressing the button, or at the end of any round but the last, still ends the game for the other person, as before.)
 
 ### What you need
 
@@ -227,11 +233,13 @@ The server prints the address to open, for example:
 
 That is this computer's address on your network, never `localhost` (home and office addresses, 192.168.x.x, 10.x.x.x or 172.16-31.x.x, are preferred when there are several; the others are listed under it). Open it in your own browser, press **Host online game**, and pick the game length. The Host screen shows the same address in a **read-only field**: the server tells the page what it is (through `/info`), the page uses that and nothing typed in, and if the page was not opened from the game server it says so and offers no Create button. A server started with `--local-only` has no network address and shows `127.0.0.1`. You get a **join code** like `K7Q-F2M`. Give the guest the address (the lobby lists every address the server found) and the code. When they have joined, press **Start game**.
 
-**A computer player.** When you create the game, or any time in the lobby, the host can add a computer as a **third player** (Easy, Medium or Hard, the same players and skill as in the game against the computer). All three are at the table from the start, and each person sees the other person and the computer as two opponents, each with a row of face-down tiles and a train. The computer runs on the server, so the server must stay up for the whole game; it thinks for the same human-like pause as in the single-player game and plays a tile that covers an open double at once. It does not make comments in online games.
+**A computer player.** When the host creates the game, they can add a computer as a **third player** (on the Host screen: the first choice is **None**, then Easy, Medium or Hard) (the same players and skill as in the game against the computer). All three are at the table from the start, and each person sees the other person and the computer as two opponents, each with a row of face-down tiles and a train. The computer runs on the server, so the server must stay up for the whole game; it thinks for the same human-like pause as in the single-player game and plays a tile that covers an open double at once.
 
 **The rules with three players** are the usual ones. Everyone has a train of their own and there is the shared Mexican train; a marker on someone's train lets *both* of the others play on it. The turns go round the table, and who starts changes every round. All three build their opening trains at the same time. An open double must be covered by whoever is next able to, and the players who cannot pass and get a marker. A double as someone's last tile cannot go out: if it is then covered, its owner has gone out, and if the player who covers it also plays their last tile, those two tie (as do any players who are out together in the opening). A blocked round goes to the lowest hand; if two or three share the lowest, nobody wins it. Lowest total wins the game, and a shared lowest is "A tie between ...".
 
-The lobby also shows a **QR code** for the join link, for example `http://192.168.1.23:8080/?join=K7QF2M`, with a **Copy link** button under it. A phone on the same network can scan it and lands on the Join screen with the server address and the code already filled in, so it only has to type a name and tap Join. If the computer has more than one network address (Wi-Fi and a VPN, say), each one gets a **Show QR** button and the QR code shows one at a time. The QR code carries the computer's *local network* address; for a game over the internet, give the guest the same link with your public address and forwarded port instead (`http://PUBLIC-ADDRESS:PORT/?join=CODE`). The server does not look up its public address yet.
+**There is nothing to fill in after Create game.** Everything is chosen on the Host screen (game length, tiles each, computer player, theme, whether hints are allowed). The lobby that follows has no inputs: it shows the join code, the QR code and link, who has joined, a one-line summary of how the game was set up, **Leave**, and **Start game** (which waits for the other player). The join code is only shown there; once the game starts, the header just says "Online game".
+
+The lobby also shows a **QR code** for the join link, for example `http://192.168.1.23:8080/?join=K7QF2M`, with a **Copy link** button under it. A phone on the same network can scan it and lands on the Join screen with the server address and the code already filled in, so it only has to type a name and tap Join. If the computer has more than one network address (Wi-Fi and a VPN, say), each one gets a **Show QR** button and the QR code shows one at a time. The QR code carries the computer's *local network* address; for a game over the internet, give the guest the same link with your public address and forwarded port instead (`http://PUBLIC-ADDRESS:PORT/?join=CODE`). The server does not look up its public address yet. **Copy link** works even though the game is served over plain `http` on the local network, where browsers do not provide the clipboard API: it selects the link in a hidden box and copies that, falls back to the clipboard API if that fails, and if nothing can copy it says "Not copied: select the link above and copy it" instead of doing nothing. (The join code is shown large beside it; there is no separate Copy code button.)
 
 **"Listening on the whole network"** means the server accepts connections on every network interface the computer has (Wi-Fi, Ethernet, VPN), not only from the same machine, so another computer can connect to `your-ip:8080`. That is the default, because the point is to let someone else join. `--local-only` restricts it to the host machine. Your operating system's firewall may ask whether to allow Node.js: allow it on private networks.
 
@@ -245,10 +253,10 @@ On the same network (home Wi-Fi, an office) it just works. Over the internet the
 
 ### During a game
 
-- Everything works as in the game against the computer: tapping, dragging, **Build my longest train**, taking tiles back, the flying tiles and the click sounds. Your opponent's tiles click too. **Build my longest train** lays the tiles down one at a time with a random pause of 0.5 to 3 seconds between them, so the others see the train go down at a person's pace instead of all at once.
+- Everything works as in the game against the computer: tapping, dragging, **Build my longest train**, taking tiles back, the flying tiles and the click sounds. Your opponent's tiles click too. **Build my longest train** lays the tiles down one at a time with a random pause of 0.5 to 3 seconds between them, so the others see the train go down at a person's pace instead of all at once, and then a last pause before the opening is finished for that person (no Done to press).
 - **A low, short tone says it is your move.** It sounds when a new turn of yours begins, not for the rest of the same turn (covering your own double, or playing a tile you just drew), not while you build your opening train, and not when the dialogs appear. It is much lower and softer than the high click of a domino, and **Mute** silences it. It plays in online games only.
-- The computer's comments are replaced by **Say something**: twelve quick phrases ("Nice play!", "Hurry up!"...). Nothing anyone types can reach the other screen.
-- **If someone's connection drops**, the game pauses for both players and the other screen shows a 3-minute countdown. The dropped player's page reconnects by itself (and a reloaded page rejoins from a remembered code), landing back in the same game with the same hand. If they do not return in time, the game ends and the other player is told why.
+- **Say something** lets you talk to the other person: type a message and press Enter (or Send), or tap one of twelve quick phrases ("Nice play!", "Hurry up!"...). A typed message is plain text on one line, at most 80 characters: control characters, new lines, invisible characters and the ones that flip the direction of text are removed, and spaces are collapsed (by the page, and again by the server). It goes only to the other person (never to the computer player), is shown in a speech bubble in your name, and is always drawn as text, never as markup, so nothing in it can do anything on the other screen. You may send one message every 1.5 seconds and ten a minute; a message that is refused says so, where "You said" would be. The box you type in is kept outside the part of the page that is redrawn on every move (it is made once and only shown or hidden), so the words, the cursor and, on a phone, the keyboard are not lost when the other player moves; it sits at the top of the screen so a phone's keyboard never covers it, Escape closes it (what was typed is kept), and it hides while a dialog is open. The computer player's own comments (with their Comments switch) are separate from this.
+- **If someone's connection drops**, nothing happens for the first 8 seconds: most blips (a Wi-Fi hiccup, a page reconnecting by itself) mend within a second, and the other player never sees them. If the player is still gone after 8 seconds, the game pauses for both and the other screen shows a 3-minute countdown. The dropped player's page reconnects by itself (first try after a quarter of a second) and puts them back in their seat with the same hand (a reloaded page rejoins from a remembered code). If they do not return in time, the game ends and the other player is told why. See *When connections drop* below.
 - **Leave game** ends the game for both players (after a confirmation). Closing the page does not: you have the three minutes to come back.
 - If the same game is opened in a second window, the first window is closed rather than the two fighting over the seat.
 
@@ -260,6 +268,8 @@ A computer player in an online game talks just as it does in a game against the 
 - **The server decides what it says** (in `online-match.js`, with the same line-picking code as the page, `composeComment` in `game.js`) and sends it as `{ t: 'say', from, kind, text, lang?, trans? }`.
 - **Each player can turn it off** with the **Comments** button on the computer's row. That only hides the bubbles on that player's screen.
 - **It changes nothing in play.** It uses its own random numbers, so a game plays out the same whatever it says. It says nothing while the game is paused.
+- **When it may speak.** A reaction comes a moment after the move (0.6 to 1.1 seconds), by chance, and no more often than once every 7 seconds to the same person (each person has their own count; a few kinds, such as an awful move or no train at all, always get through). Jabs for a slow player start after 25 seconds. Nothing is ever said to the computer's own seat, and when the match ends, anything still on its way is dropped.
+- **The page trusts nothing it is sent.** A comment's text and name are escaped, the text is cut to 160 characters, empty or non-text comments are ignored, and a language is accepted only if it is one of the game's own (with a translation).
 
 ### Fair play and safety
 
@@ -276,9 +286,9 @@ The server (`server.js`) serves the page at `/` and a WebSocket at `/ws`. A smal
 | Page to server | Meaning |
 |---|---|
 | `create`, `join`, `resume` | open a game, join one by code, or take your seat back with the token you were given |
-| `settings`, `start` | the host sets the length and hand size, and starts |
+| `settings`, `start` | the host sets the length, hand size, computer player, theme and whether hints are allowed (any of them alone), and starts. (The page chooses everything on the Host screen when it creates the game and never sends `settings` from the lobby; the server still accepts it from the host, for other clients.) |
 | `i` | an intent (`a`: what, `tile`, `train`, and an `id` that comes back in the `ack`) |
-| `chat`, `leave`, `ping` | a quick phrase by number, leave, keep-alive |
+| `chat`, `leave`, `ping` | a quick phrase by number or typed text (`{ t: 'chat', text }`), leave, keep-alive |
 
 | Server to page | Meaning |
 |---|---|
@@ -286,6 +296,21 @@ The server (`server.js`) serves the page at `/` and a WebSocket at `/ws`. A smal
 | `state` | the full view for this player, plus the events that led to it (so tiles can fly) |
 | `presence` | the other player dropped or came back, and when the wait runs out |
 | `ack`, `error`, `chat`, `ended`, `pong` | answers, a phrase from the other player, the game is over and why |
+
+### When connections drop (and how to find out why)
+
+**How a drop is detected.** The server pings every connection every **5 seconds** (a browser answers by itself, without the page). A connection counts as alive when *anything at all* has arrived from it: a game message, a ping reply, even part of a message. It is dropped only after **30 seconds of complete silence**, not when one ping goes unanswered. If the server itself was not running for a while (it was stalled, or the computer slept) it says so in its log and does not blame anyone for the silence. The page does the same from its side: any message from the server proves the connection is alive, a quiet connection is pinged after 10 seconds, and it is given up after 30 seconds of silence. If the *page* was not running for a while (a hidden tab, a locked phone) it does not conclude the server is dead: it checks the connection at once when it wakes up, and reconnects immediately if there is no answer.
+
+**What the other player sees.** A player who drops is not announced, and the game is not paused, for the first **8 seconds**. If they are back by then, nobody notices. Otherwise the game pauses for both and the other screen counts down the 3 minutes they have to return.
+
+All of these can be changed when starting the server in code (`createGameServer({ heartbeatMs, deadAfterMs, softGraceMs, graceMs })`): `heartbeatMs` 5000, `deadAfterMs` 30000, `softGraceMs` 8000, `graceMs` 180000. `softGraceMs: 0` pauses at once, as before.
+
+**Finding out why it happened.** Every drop now explains itself.
+- **The server's log** says, for each drop, *how the connection ended* ("the page gave up waiting for this server", "the page was closed or left", "it vanished without a goodbye: Wi-Fi dropping, a phone locking, a tab being suspended or killed", "no sign of life for 30 s"), how long it was up, when it was last heard from, the ping round-trip times (last, average, worst), whether the server's own thread was ever busy, and the device ("iPhone, Safari"). When the player comes back it adds *the page's own account*: how long the page was in the background, how long it had heard nothing, how many reconnection attempts it took. While games are on, a line about the health of the connections appears every minute. `--quiet` silences all of it.
+- **`http://host:port/netstats`** (open it in any browser) shows who is connected, each connection's ping times and when it was last heard, how busy the server has been, and the last 30 drops with their reasons.
+- **The page** writes every connection event to the browser's console as `[net] ...` (last 60 kept). Open the game with **`?debug=1`** in the address (for example `http://192.168.1.10:8080/?debug=1`) to show the same log in a small panel on the page, with a Copy button: useful on a phone, which has no console.
+
+**Reading a drop.** *Vanished without a goodbye* plus *in the background for N s* in the page's account: the device suspended the page (a locked phone, a tab in the background): keep the screen awake while playing. *The page gave up waiting for this server* with a server line saying its thread was busy: the server was stalled (on Windows, clicking inside the console window freezes a running program until you press a key). Many `slow-reply` events and high ping times: a weak or crowded Wi-Fi signal. *No sign of life for 30 s* with nothing in the page's account: the device or its network went away. `code 1001`: a tab was closed or reloaded.
 
 ### Limits
 
@@ -301,6 +326,8 @@ The server (`server.js`) serves the page at `/` and a WebSocket at `/ws`. A smal
 
 **Hints.** The main screen has an **Allow hints** switch (on by default). With it off, nothing highlights the tiles you can play or the trains they can go on, nothing is picked or played for you, and "Build my longest train" is hidden: you pick a tile and then a train, and a wrong guess is refused with a message. With it on, your hand has a **Show hints** button to switch the highlights off and on during a game. The train with an open double to cover is always outlined, and the hand always has its Draw button.
 
+**In an online game the host's choice applies to everyone at the table.** The Host screen has an **Allow hints** switch (starting from the host's own main-screen setting), and the lobby afterwards only says whether hints are allowed (there is nothing to change there, for the host or for guests). With hints allowed, each player still has their own **Show hints** button; with them off nobody has one, and nobody is offered **Build my longest train**. The server enforces it as well: with hints off it does not send how long a train could be built, and it refuses a request to build one. Against the computer, the player's own main-screen setting is what counts.
+
 - **Flying tiles.** Played tiles fly from where they were (your hand, the spot where you let go of a drag, or the computer's row of face-down tiles) to their place on the train, and turn face up in flight when they become public. Drawn tiles fly from the boneyard into the hand. Nothing flies if your system asks for reduced motion.
 - **Trains** scroll themselves to follow the newest tile. There are no scroll bars: a soft fade appears on the left edge when older tiles are out of sight.
 - **The boneyard button** is pinned to the top right of the opponent row and never moves or resizes.
@@ -315,7 +342,7 @@ The server (`server.js`) serves the page at `/` and a WebSocket at `/ws`. A smal
 - Status messages and the computer's comments are in live regions.
 - Everything can be done from the keyboard, including reordering your hand.
 - The game respects the system **reduced motion** setting (no flying tiles or animation; shorter pauses).
-- Colored pips are only one of two tile styles: **Large numbers** is there for anyone who finds the colors hard to tell apart.
+- Colored pips are only one of two tile styles: **Large numbers** (the **Show numbers** button in the game, which is remembered; there is no such choice on the main screen) is there for anyone who finds the colors hard to tell apart.
 
 ---
 
@@ -396,7 +423,7 @@ for f in test_*.js; do node "$f" || echo "FAILED: $f"; done    # each suite exit
 | `test_open` | The opening phase against a brute-force oracle, 1,500 computer rounds and 1,200 random-agent openings | ~10,850 |
 | `test_levels` | Skill levels: Medium is move-for-move identical to the original; every pairing plays legally; strength ordering | ~70,700 |
 | `test_ui` | The whole interface by playing complete matches through the actions | ~80,400 |
-| `test_boot` | The real built page, run in a sandbox with a fake DOM and audio | 52 |
+| `test_boot` | The real built page, run in a sandbox with a fake DOM and audio | 54 |
 | `test_fx` | Flying-tile and draw animations, hand dragging, scroll behavior | ~7,100 |
 | `test_drag_play` | Dragging a tile onto a train, the no-pause double cover, the fixed boneyard | 53 |
 | `test_hand_layout` | The flat multi-row hand, the Draw spot, dropping into rows | 77 |
@@ -410,24 +437,38 @@ for f in test_*.js; do node "$f" || echo "FAILED: $f"; done    # each suite exit
 | `test_food` | Every player's home country, dishes and hunger remarks | ~200 |
 | `test_spelling` | Everything a player can read uses American spelling | 6 |
 | `test_ws` | The WebSocket layer over real sockets: handshake, every frame size, fragmentation, every protocol violation and its close code, 600 connections of garbage | 74 |
-| `test_online_match` | Whole two-human matches: no hidden tile is ever sent (checked on every message of 36 matches, and shown to catch three injected leaks), both views agree, no tile is lost, every bad intent is refused, rigged first-train wins | 83 |
-| `test_server` | The server over real sockets: the page and path tricks, which network address is shown (ranking, `/info`, never localhost), codes and the lobby (including the computer player option), hostile clients, flooding, 12 simultaneous games, whole games with a computer, dropping and returning, the time limit, chat, the heartbeat, the command line | 153 |
-| `test_online_client` | The real page logic against the real server, played through the same actions a person triggers: Host and Join screens, lobby, whole games, a rigged first-turn win, chat, reconnecting, the paused screen, reload and resume, a hostile server trying to inject markup, and the turn sound checked against the engine's own record of turns | 133 |
+| `test_online_match` | Whole two-human matches: no hidden tile is ever sent (checked on every message of 36 matches, and shown to catch three injected leaks), both views agree, no tile is lost, every bad intent is refused, rigged first-train wins | 101 |
+| `test_server` | The server over real sockets: the page and path tricks, which network address is shown (ranking, `/info`, never localhost), codes and the lobby (including the computer player option), hostile clients, flooding, 12 simultaneous games, whole games with a computer, dropping and returning, the time limit, chat, the heartbeat, the command line | 196 |
+| `test_online_client` | The real page logic against the real server, played through the same actions a person triggers: Host and Join screens, lobby, whole games, a rigged first-turn win, chat, reconnecting, the paused screen, reload and resume, a hostile server trying to inject markup, and the turn sound checked against the engine's own record of turns | 135 |
 | `test_three_players` | The rules with three players: the deal, who may play where, a marker, an open double travelling past a player who cannot cover it, ties and blocked rounds among three, the three-way opening, and 1,500 simulated rounds with all invariants checked at every play | 37 |
 | `test_online_three` | A server-side match with two people and a computer: nothing hidden is ever sent to either person (checked on every message of 30 matches, and shown to catch leaks of the second opponent), both views agree under their different labels, the computer builds and plays by itself, pausing, a rigged win | 37 |
-| `test_three_client` | The real page against the real server with a computer player, through the screens: the Computer player option, the lobby, two opponent rows, whole games, each opponent's animations, the turn sound against the engine's record, chat attribution, a dropped connection, a rigged win, a hostile server describing three players | 54 |
-| `test_hints` | Allow hints and Show hints: no hint of any kind on any screen of whole games with hints off (played by guessing tile and train), wrong guesses change nothing, nothing is picked for you, the toggles and their saving, the opening, dragging, online, the always-on double outline and Draw button | 52 |
+| `test_three_client` | The real page against the real server with a computer player, through the screens: the Computer player option, the lobby, two opponent rows, whole games, each opponent's animations, the turn sound against the engine's record, chat attribution, a dropped connection, a rigged win, a hostile server describing three players | 52 |
+| `test_hints` | Allow hints and Show hints: no hint of any kind on any screen of whole games with hints off (played by guessing tile and train), wrong guesses change nothing, nothing is picked for you, the toggles and their saving, the opening, dragging, online, the always-on double outline and Draw button | 69 |
 | `test_toy_train` | The toy train marker: its drawing (shades of one color, two wheels half covered by the body, same height), the three colors and its size, when it appears (every screen of six whole games), the wording with no lanterns left, three players online | 38 |
 | `test_two_computers` | One person against two computers: the setup form (and the real page's form), names and skills, whole games of up to 13 rounds with every screen inspected, that each computer really plays at its own skill in either seat (Easy and Hard build very different opening trains), the narration naming the right computer, the commentary speakers, the toy train colors | 43 |
 | `test_bubble_flash` | A speech bubble fades in once, when it first appears, and not again each time the page is redrawn for a move (the computer's comments and online chat); not at all behind an open dialog; the stylesheet and the real browser's measured opacity and running animations | 22 |
 | `test_dim_spacing` | The hand is dimmed on every screen where it is not your turn (against the computer and online) and not on your turn; the end-of-train padding is two dominoes | 12 |
 | `test_browser.py` | The real page in real Chromium (Playwright) against the real server: measured opacity of the hand, measured empty space after each train's last tile (wide and phone-sized screens), the host address field (an IP, read-only, cannot be edited), the QR code as the browser really draws it decoded by OpenCV, layout of the three-player table, and whole games between two and three real browser pages with no JavaScript errors. Skipped if Playwright is not installed; saves screenshots | 95 |
 | `test_qr` | The QR generator: a published Reed-Solomon example, the standard's block tables and format and version strings, and 52 codes across all ten versions read back by an independent decoder (OpenCV, skipped if python3 with OpenCV is not installed) | 35 |
-| `test_join_link` | The real built page opened from a scanned link (`?join=`), the Host screen's address, the lobby's QR code and Copy link button, several network addresses, and the lobby's QR decoded back to its link | 33 |
+| `test_join_link` | The real built page opened from a scanned link (`?join=`), the Host screen's address, the lobby's QR code and Copy link button, several network addresses, and the lobby's QR decoded back to its link | 45 |
 | `test_theme` | The Lord of the Rings theme: the cast and their levels, every character's full set of lines (mild, American spelling, none shared, placeholders right), their food, picking names and lines, the golden ring, whole games where every speech bubble is checked against the speaker's own lines and every open train wears the ring, the classic game unchanged, the setup form | 70 |
-| `test_theme_online` | The theme in online games: the server's settings (creating with it, changing it in the lobby, a new level keeping it, unknown themes ignored, only the host may change it, no computer with a person's name), the Host screen's Theme choice, whole online games with a computer character and golden rings on both screens, the guest seeing a switch at once, Classic online games unchanged | 39 |
+| `test_connection` | The server's handling of connections: any traffic counts as proof of life, real silence is dropped, a stalled server blames nobody, the soft grace (a drop that mends itself is invisible; a longer one pauses and announces; coming back unpauses; never coming back ends the game), every drop explained in the log, the page's account sanitized, `/netstats`, the health line | 37 |
+| `test_connection_client` | The page's side: any message counts, quiet connections are pinged, 30 s of silence ends one (saying why), the quick first retry and back-off, a suspended page is not held against the server, waking up checks at once, the account sent on reconnecting, the event log (console, reconnect screen, `?debug=1` panel) | 40 |
+| `test_browser_connection.py` | Real Chromium and the real server: a guest's connection is cut mid-game; what the other player sees (run with `--original` against older code to compare) | 6 |
+| `test_auto_done` | The opening finishing by itself when "Build my longest train" has laid the whole train (also after a tile was laid by hand and taken back by the plan); a plan that goes wrong hands control back instead; laying tiles by hand never finishes it; no Build button with hints off | 13 |
+| `test_say_text` | Typed messages on the page: cleaning (new lines, control, invisible and direction-flipping characters, emoji and other languages kept, 80 characters counted as people see them), sending only what is clean, escaping what is shown, ignoring junk, how long a message stays up, a refused message saying so, and the separate text box (shown, hidden, cleared; hidden under dialogs) | 44 |
+| `test_browser_say.py` | Real Chromium, two people: the text box is the very same element with the same text, cursor and focus after the page is redrawn many times; Enter sends, Escape closes and keeps the draft, a quick phrase works, hostile text is only text, a second message straight away is refused with a message, a dialog hides it, it fits a 390-pixel phone | 24 |
+| `test_browser_hints.py` | Real Chromium, two people: the host's Allow hints setting reaches the guest (Host screen, the lobbies, the game), the guest's own Show hints button, nothing highlighted or offered with hints off, and Build my longest train finishing the opening by itself, seen by the other player | 19 |
+| `test_browser_final.py` | Real Chromium, two people, a one-round game played to the end: the host presses "See final score" and has the final score at once (not waiting for the guest), the guest still has their own dialog, the host goes back to the menu and the guest's game is not ended, is told Ann has gone, and gets the final score too | 8 |
+| `test_browser_cleanup.py` | Real Chromium, two people: the Host screen's first computer choice is just "None"; after Create game neither lobby has any inputs; in the game the players' rows have no "Needs N" (the Mexican train's still does, exactly once on the whole screen); and the join code is on neither screen in any of 18 samples (start, the Rules dialog, the Leave question, during play, round end, final score) | 14 |
+| `test_cleanup` | The screen clean-ups: no "Needs N" on any player's row (one and two computers, while building and after, and in a hosted game) but still on the Mexican train; an open train still says it is open; "None" as the first computer choice; no inputs in the lobby after Create game, with the join code, Copy link, Leave and Start still there; no join code in a hosted game's header | 19 |
+| `test_markers` | Where the marker goes: after every turn of 1,500 rounds (two and three players, the boneyard empty or nearly empty) a pass puts it on the passing player's own train and changes nothing else, and playing on your own train takes it off; hand-made cases (a player who must draw the last tile and still cannot play, nothing to draw so a pass at once, a drawn tile that fits); the simultaneous opening where several players want the last tile; and, in 100 hosted matches, every person's own screen after every pass | 20 |
+| `test_browser_copy.py` | Real Chromium: on a plain-http network address (no clipboard API) Copy link copies the link (read back from the real clipboard), says "Copied", leaves nothing behind; the same on localhost; no Copy code button | 9 |
+| `test_online_talk_more` | The hosted computer's talk, rule by rule and end to end: when it may speak (a beat after a move, a 7-second cooldown that is each person's own, the kinds that always get through, never to the computer's seat, nothing left on the clock when the match ends); the page receiving a comment (escaped, a real language with a translation, never an inherited property such as `constructor`, cut to 160 characters, empty or non-text ignored, fades in once, the Comments switch); and through the real server with a clock the test controls, in both the Lord of the Rings and classic themes, including a player dropping and returning mid-wait and a paused game | 54 |
+| `test_browser_talk.py` | Real Chromium, a hosted game with a computer character in each theme: it speaks to both people after a long think, in its own name, beside that theme's own markers (rings or toy trains), and the Comments switch takes the bubble away | 13 |
+| `test_theme_online` | The theme in online games: the server's settings (creating with it, changing it in the lobby, a new level keeping it, unknown themes ignored, only the host may change it, no computer with a person's name), the Host screen's Theme choice, whole online games with a computer character and golden rings on both screens, the guest seeing a switch at once, Classic online games unchanged | 37 |
 | `test_online_talk` | The online computer player's comments: whole matches where every comment is checked against the speaker's own lines, comments go only to the person they are about, the slow-player jabs (timing, getting ruder, hunger for its own food, stopping when you act, silence while paused), a classic player's native language, no comments without a computer, the same game whether it talks or not, and the real server and page (bubbles, the Comments switch) | 25 |
-| `test_turn_sound` | The turn sound as numbers (pitch, length, no clicks, unlike the domino click), its audio plumbing, and when it plays: once per turn, not once per prompt | 50 |
+| `test_turn_sound` | The turn sound as numbers (pitch, length, no clicks, unlike the domino click), its audio plumbing, and when it plays: once per turn, not once per prompt | 53 |
 
 A few techniques worth knowing about:
 

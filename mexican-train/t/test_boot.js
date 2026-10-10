@@ -58,9 +58,13 @@ const click = (attrs, trackTrain) => ({
   fireDoc('click', {}); fireDoc('keydown', { key: 'a' });
   ok(audio.created === 1, 'later gestures never create another');
 
-  formValues = { '#opt-rounds': '4', '#opt-hand': '15', '#opt-style': 'numbers', '#opt-level': 'hard' };
+  ok(!/opt-style|Tile faces/.test(app.state.overlay ? rootEl.innerHTML : '') && !/opt-style|Tile faces/.test(rootEl.innerHTML), 'the main screen has no Tile faces choice (it is the Show numbers button in the game)');
+  app.dispatch({ type: 'toggleStyle' });                    // the player chose numbers, in the game
+  formValues = { '#opt-rounds': '4', '#opt-hand': '15', '#opt-level': 'hard' };
   handlers.click(click({ action: 'startGame' }));
-  ok(app.state.opts.rounds === 4 && app.state.opts.hand === 15 && app.state.opts.style === 'numbers', 'Start game applied the form values');
+  ok(app.state.opts.rounds === 4 && app.state.opts.hand === 15 && app.state.opts.level === 'hard', 'Start game applied the form values');
+  ok(app.state.opts.style === 'numbers', 'and kept the tile faces the player had chosen in the game (the form no longer says)');
+  app.dispatch({ type: 'toggleStyle' });                    // (back to pips, for the checks below)
   ok(JSON.parse(store['mt-opts']).hand === 15, 'settings saved to localStorage');
   ok(app.state.opts.level === 'hard' && JSON.parse(store['mt-opts']).level === 'hard', 'the skill level was read from the setup form and saved');
   ok(rootEl.innerHTML.includes('Computer: Hard'), 'the header shows the computer level');
@@ -110,13 +114,17 @@ const click = (attrs, trackTrain) => ({
     if (a.kind === 'build') {
       if (a.canDraw) { handlers.click(click({ action: 'draw' })); used.drawBuild++; await sleep(5); continue; }
       if (!a.canDone) { handlers.click(click({ action: 'undoTile' })); used.undo++; await sleep(5); continue; }
-      if (used.auto === 0 && a.canBuild) {
-        ok(rootEl.innerHTML.includes('Build my longest train'), 'Build button is on screen');
-        handlers.click(click({ action: 'autoBuild' })); used.auto++; await sleep(5); continue;
+      if (used.undo === 0 && !a.canUndo && a.moves.length) {         // lay a tile by hand first, so that Take back has something to take back
+        const m0 = a.moves[0];
+        handlers.click(click({ action: 'selectTile', key: m0.tile[0] + '-' + m0.tile[1] })); used.plays++; await sleep(5); continue;
       }
       if (used.undo === 0 && a.canUndo) {
         ok(rootEl.innerHTML.includes('data-action="undoTile"') && /Take back \d+-\d+/.test(rootEl.innerHTML), 'Take back button names the tile');
         handlers.click(click({ action: 'undoTile' })); used.undo++; await sleep(5); continue;
+      }
+      if (used.auto === 0 && a.canBuild) {            // (the opening then finishes by itself: there is no Done to press)
+        ok(rootEl.innerHTML.includes('Build my longest train'), 'Build button is on screen');
+        handlers.click(click({ action: 'autoBuild' })); used.auto++; await sleep(5); continue;
       }
       if (a.canDone && (a.moves.length === 0 || used.plays % 3 === 0 || used.done === 0)) {
         ok(rootEl.innerHTML.includes('data-action="endBuild"'), 'Done button is on screen');

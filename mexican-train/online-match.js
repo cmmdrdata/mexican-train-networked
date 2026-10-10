@@ -49,6 +49,7 @@ class OnlineMatch {
   constructor(opts) {
     this.rounds = [1, 4, 13].includes(Number(opts.rounds)) ? Number(opts.rounds) : 4;
     this.hand = [8, 12, 15].includes(Number(opts.hand)) ? Number(opts.hand) : 15;
+    this.allowHints = opts.allowHints !== false;                    // the host's choice for the whole table: with it off nobody is shown (or can ask for) the longest train
     this.n = opts.names && opts.names.length === 3 ? 3 : 2;
     this.names = Array.from({ length: this.n }, (_, i) => cleanName(opts.names && opts.names[i], `Player ${i + 1}`));
     this.computers = {};                                   // seat -> { level }: seats played by the computer
@@ -156,6 +157,10 @@ class OnlineMatch {
     this._broadcast(this.noEvents());
   }
 
+  /* Someone who has already seen the final score has left, and the other has not pressed the button yet: they are told, and the game
+   * carries on until they have. */
+  seatLeft(seat) { this._tell(seat, `${this.names[seat]} has gone. Press the button to see the final score.`); this._broadcast(this.noEvents()); }
+
   /* Wait until a seat sends the intent that answers `kind`. Resolves with the engine-shaped answer. */
   _wait(seat, kind, extra) {
     return new Promise((resolve, reject) => {
@@ -226,9 +231,11 @@ class OnlineMatch {
       }
       this.plans[seat] = null;              // something unexpected: hand control back to the player
     }
+    const finished = !!(this.plans[seat] && this.plans[seat].length === 0);       // the plan ran to its end: the longest train is down
     this.plans[seat] = null;
+    if (finished && info.canDone) { await this._pauseFor(this._stepMs()); return { type: 'done' }; }     // so the opening is finished too: no Done to press
     const chain = longestFullChain(game, player);
-    return this._wait(seat, 'build', { info, canBuild: chain.length > (info.canDone ? info.placed : -1), buildCount: chain.length });
+    return this._wait(seat, 'build', { info, canBuild: this.allowHints && chain.length > (info.canDone ? info.placed : -1), buildCount: this.allowHints ? chain.length : 0 });
   }
   _seat(player) { return SEATS.indexOf(player.id); }
 
@@ -450,9 +457,11 @@ class OnlineMatch {
       else awaiting = { kind: aw.kind };
     }
     let modal = null;
-    if (this.modal && (this.modal.type === 'final' || !this.modalOk[seat])) {
+    // After the LAST round there is nothing left to wait for the other person about: whoever presses "See the final score" gets it at once
+    const early = !!(this.modal && this.modal.type === 'roundEnd' && this.modal.last && this.modalOk[seat]);
+    if (this.modal && (this.modal.type === 'final' || early || !this.modalOk[seat])) {
       const md = this.modal;
-      if (md.type === 'final') modal = { type: 'final', totals: flipTotals(md.totals) };
+      if (md.type === 'final' || early) modal = { type: 'final', totals: flipTotals(md.totals) };
       else {
         modal = {
           type: 'roundEnd', blocked: md.blocked, tie: md.tie, winnerId: md.winnerId ? cid(md.winnerId) : null,
@@ -465,7 +474,7 @@ class OnlineMatch {
     const view = {
       seq: this.seq, round: this.roundIndex, rounds: this.rounds,
       me: { name: this.names[seat], seat }, opp: { name: opps[0].name }, opps,
-      totals: flipTotals(this.totals), paused: this.paused, over: this.over,
+      totals: flipTotals(this.totals), paused: this.paused, over: early ? 'finished' : this.over,
       log: this.logs[seat].slice(-8), banner: this.banners[seat], modal, awaiting, game: null,
     };
     if (!g) return view;
@@ -515,6 +524,7 @@ class OnlineMatch {
         if (a === 'draw') { if (!i.canDraw) return bad('illegal', 'You cannot draw now.'); aw.resolve({ type: 'draw' }); return { ok: true }; }
         if (a === 'done') { if (!i.canDone) return bad('illegal', 'Cover the double or take it back first.'); aw.resolve({ type: 'done' }); return { ok: true }; }
         if (a === 'autoBuild') {
+          if (!this.allowHints) return bad('illegal', 'The host has turned hints off, so the game does not build a train for you.');
           if (!aw.canBuild) return bad('illegal', 'There is no longer train to build.');
           const player = this.game.players[seat];
           const steps = buildSteps(this.game, player);
@@ -544,8 +554,7 @@ class OnlineMatch {
       case 'modal':
         if (a !== 'ok') return bad('bad_message', 'Press OK to go on.');
         this.modalOk[seat] = true;
-        this._logOne(seat, this.modal && this.modal.last ? 'Waiting for the final score.'
-          : this.n === 2 ? `Waiting for ${this.names[1 - seat]} to be ready for the next round.` : 'Waiting for the others to be ready for the next round.');
+        if (!(this.modal && this.modal.last)) this._logOne(seat, this.n === 2 ? `Waiting for ${this.names[1 - seat]} to be ready for the next round.` : 'Waiting for the others to be ready for the next round.');
         aw.resolve();
         this._broadcast(this.noEvents());                       // her dialog goes away at once and she sees she is waiting
         return { ok: true };

@@ -200,6 +200,9 @@
       const canDone = !last || !isDouble(last);
       const info = { moves, placed, canUndo: placed > 0, canDraw, canDone, drew: st.lastDrew, lastDouble };
       const action = await agent.act(game, player, info);
+      // The opening is simultaneous: while this player was deciding to draw, another may have taken the last tile. There is then
+      // nothing to draw (and "drawing" it would put a missing tile in the hand): look again, and they pass.
+      if (action && action.type === 'draw' && canDraw && game.boneyard.length === 0) continue;
 
       if (action && action.type === 'play') {
         const mv = moves.find(m => sameTile(m.tile, action.move.tile) && m.trainId === action.move.trainId);
@@ -1893,7 +1896,7 @@
   function viewBar(S) {
     const g = S.game, on = S.online;
     const round = g
-      ? `<div class="round"><span>Round ${S.roundIndex + 1} of ${on ? on.rounds : S.opts.rounds}</span><span>Engine double-${g.engine}</span>${on ? `<span>Online game ${on.display}</span>` : tableIds(S).length === 3 ? `<span>Computers: ${LEVEL_LABEL[S.opts.level]} and ${LEVEL_LABEL[S.opts.level2]}</span>` : `<span>Computer: ${LEVEL_LABEL[S.opts.level]}</span>`}</div>`
+      ? `<div class="round"><span>Round ${S.roundIndex + 1} of ${on ? on.rounds : S.opts.rounds}</span><span>Engine double-${g.engine}</span>${on ? '<span>Online game</span>' : tableIds(S).length === 3 ? `<span>Computers: ${LEVEL_LABEL[S.opts.level]} and ${LEVEL_LABEL[S.opts.level2]}</span>` : `<span>Computer: ${LEVEL_LABEL[S.opts.level]}</span>`}</div>`
       : '';
     return `<header class="bar">
       <div class="brand"><h1>Mexican Train</h1><p class="sub">${on ? (themeNow(S) === 'lotr' ? 'Double-12 online, in Middle-earth' : 'Double-12 online') : S.opts.theme === 'lotr' ? 'Double-12 in Middle-earth' : tableIds(S).length === 3 ? 'Double-12 against two computers' : 'Double-12 against the computer'}</p></div>
@@ -1941,9 +1944,9 @@
         ${toggle}
       </div>`;
     }).join('\n      ');
-    const panel = on && S.sayOpen
-      ? `<div class="say-panel" role="group" aria-label="Quick phrases">${ONLINE_PHRASES.map((ph, i) => `<button class="btn say" data-action="sendChat" data-key="${i}">${esc(ph)}</button>`).join('')}</div>` : '';
-    const mine = on && S.mySay ? `<div class="you-said">You said: ${esc(S.mySay.text)}</div>` : '';
+    const panel = on && S.sayOpen && !S.dockMode
+      ? `<div class="say-panel" role="group" aria-label="Say something"><form class="say-form" data-say-form><input id="say-text" type="text" maxlength="${CHAT_MAX}" placeholder="Type a message" aria-label="Your message" autocomplete="off"><button type="button" class="btn primary" data-action="sendText">Send</button></form>${ONLINE_PHRASES.map((ph, i) => `<button class="btn say" data-action="sendChat" data-key="${i}">${esc(ph)}</button>`).join('')}</div>` : '';
+    const mine = on && S.mySay ? `<div class="you-said${S.mySay.failed ? ' not-sent' : ''}">${S.mySay.failed ? '' : 'You said: '}${esc(S.mySay.text)}</div>` : '';
     const speaker = c && c.from ? c.from : cpuName(S);
     return `<section class="opp${ids.length > 1 ? ' three' : ''}" aria-label="Opponent and boneyard">
       ${rows}
@@ -1960,7 +1963,10 @@
 
   /* Hints: which tiles can be played and where is shown. They are off if the player turned "Allow hints" off on the
    * main screen, or has switched "Show hints" off on their hand (the button only exists when hints are allowed). */
-  const hintsOn = S => S.opts.allowHints !== false && S.showHints !== false;
+  // Whether hints are allowed at all: in a game against the computer, this player's setting; in a hosted game, the host's choice,
+  // for everyone at the table (each player may still switch their own hints off and on, if the host allows them).
+  const allowHintsNow = S => (S.online ? !(S.online.settings && S.online.settings.allowHints === false) : S.opts.allowHints !== false);
+  const hintsOn = S => allowHintsNow(S) && S.showHints !== false;
   function targetsOf(S) {
     const a = S.awaiting;
     const set = {};
@@ -2062,7 +2068,7 @@
       : `<span class="needs">Needs <b class="num" style="--c:${PIP_COLORS[need]}">${need}</b></span>`;
     const label = `<div class="track-label">
         <div class="track-name">${trainName(S, id)}</div>
-        <div class="track-info">${note}${needs}</div>
+        <div class="track-info">${note}${id === 'mexican' ? needs : ''}</div>
         ${must ? '<div class="cover">Cover the double here</div>' : ''}
       </div>`;
 
@@ -2139,7 +2145,7 @@
     }).join('');
     const tip = S.roundIndex === 0 && !S.handOrder ? '<span class="tip">Drag a tile onto a train to play it, or around your hand to rearrange</span>' : '';
     // only when hints are allowed (main screen): a switch to show or hide them during the game
-    const hintBtn = S.opts.allowHints !== false ? `<button class="btn hints-toggle" data-action="toggleShowHints" aria-pressed="${hints ? 'true' : 'false'}" data-focus-id="hints">Show hints: ${hints ? 'on' : 'off'}</button>` : '';
+    const hintBtn = allowHintsNow(S) ? `<button class="btn hints-toggle" data-action="toggleShowHints" aria-pressed="${hints ? 'true' : 'false'}" data-focus-id="hints">Show hints: ${hints ? 'on' : 'off'}</button>` : '';
     // Two or more rows: half the tiles (plus one spare spot) per row, at most 10 across. On a narrow
     // screen the grid simply wraps into more rows.
     const n = me.hand.length;
@@ -2206,8 +2212,6 @@
       <div class="field"><label for="opt-hints">Hints</label>
         <button type="button" id="opt-hints" class="btn toggle" data-action="toggleAllowHints" aria-pressed="${o.allowHints !== false ? 'true' : 'false'}">Allow hints: ${o.allowHints !== false ? 'on' : 'off'}</button>
         <p class="field-note">On: the tiles you can play and the trains they can go on are highlighted, and your hand gets a Show hints button to switch that off or on. Off: nothing is highlighted and nothing is played for you: you pick the tile and then the train.</p></div>
-      <div class="field"><label for="opt-style">Tile faces</label>
-        <select id="opt-style">${optionList(['pips', 'numbers'], o.style, v => v === 'pips' ? 'Colored pips' : 'Large numbers')}</select></div>
       <details class="how"><summary>How to play</summary>${RULES_HTML}</details>
       <div class="actions">
         ${S.matchActive ? '<button class="btn" data-action="closeOverlay">Keep playing</button>' : ''}
@@ -2322,11 +2326,13 @@
       <div class="field"><label for="net-hand">Tiles dealt to each player</label>
         <select id="net-hand">${optionList([8, 12, 15], Number(f.hand) || 15, v => v === 15 ? '15 (standard)' : String(v))}</select></div>
       <div class="field"><label for="net-computer">Computer player</label>
-        <select id="net-computer">${optionList(['none', 'easy', 'normal', 'hard'], f.computer || 'none', v => v === 'none' ? 'None: two players' : 'Add a ' + LEVEL_LABEL[v] + ' computer as a third player')}</select>
+        <select id="net-computer">${optionList(['none', 'easy', 'normal', 'hard'], f.computer || 'none', v => v === 'none' ? 'None' : 'Add a ' + LEVEL_LABEL[v] + ' computer as a third player')}</select>
         <p class="field-note">With a computer player, all three are at the table from the start.</p></div>
       <div class="field"><label for="net-theme">Theme</label>
         <select id="net-theme">${optionList(THEME_IDS, THEME_IDS.includes(f.theme) ? f.theme : 'classic', v => THEME_LABEL[v])}</select>
-        <p class="field-note">The Lord of the Rings: the computer player is a character from Middle-earth, and an open train is marked with a golden ring on everyone's screen.</p></div>` : ''}
+        <p class="field-note">The Lord of the Rings: the computer player is a character from Middle-earth, and an open train is marked with a golden ring on everyone's screen.</p></div>
+      <div class="field"><button type="button" id="net-hints" class="btn toggle" data-action="toggleNetHintsForm" aria-pressed="${f.allowHints !== false ? 'true' : 'false'}">Allow hints: ${f.allowHints !== false ? 'on' : 'off'}</button>
+        <p class="field-note">Your choice applies to everyone at the table. On: the tiles that can be played are highlighted, and each player can switch that off or on for themselves. Off: no highlights and no "Build my longest train", for anyone.</p></div>` : ''}
       ${err}
       <div class="actions">
         <button class="btn" data-action="closeOverlay">Back</button>
@@ -2344,27 +2350,20 @@
     const qr = host && link
       ? `<div class="qrbox">${qrSvg(link, 'QR code: scan it to join the game')}
           <div class="qrtext"><p>Scan with a phone on the same network to join.</p><p class="field-note"><code>${esc(link)}</code></p>
-          <button class="btn" data-action="copyLink" data-key="${esc(link)}">${S.copied === 'link' ? 'Copied' : 'Copy link'}</button></div></div>` : '';
+          <button class="btn" data-action="copyLink" data-key="${esc(link)}">${S.copied === 'link' ? 'Copied' : S.copied === 'failed' ? 'Not copied: select the link above and copy it' : 'Copy link'}</button></div></div>` : '';
     const addrs = host
       ? (o.addresses.length
         ? `${qr}<p>Or the other player opens one of these addresses in a browser, or enters it under <b>Join online game</b>:</p><ul class="addrs">${o.addresses.map((a, i) => `<li><code>${esc(a)}</code>${o.addresses.length > 1 ? ` <button class="btn small" data-action="selectQr" data-key="${i}" aria-pressed="${i === qi ? 'true' : 'false'}">${i === qi ? 'QR shown' : 'Show QR'}</button>` : ''}</li>`).join('')}</ul>`
         : '<p>This server is only reachable from this computer (it was started with <code>--local-only</code>, or has no network address).</p>')
       : '';
-    const settings = host
-      ? `<div class="field-row"><div class="field"><label for="net-rounds">Game length</label>
-          <select id="net-rounds">${optionList([1, 4, 13], o.settings.rounds, v => v === 1 ? 'One round' : v === 4 ? '4 rounds' : '13 rounds')}</select></div>
-        <div class="field"><label for="net-hand">Tiles each</label>
-          <select id="net-hand">${optionList([8, 12, 15], o.settings.hand, v => String(v))}</select></div>
-        <div class="field"><label for="net-computer">Computer player</label>
-          <select id="net-computer">${optionList(['none', 'easy', 'normal', 'hard'], o.settings.computer || 'none', v => v === 'none' ? 'None' : LEVEL_LABEL[v])}</select></div>
-        <div class="field"><label for="net-theme">Theme</label>
-          <select id="net-theme">${optionList(THEME_IDS, o.settings.theme || 'classic', v => THEME_LABEL[v])}</select></div></div>`
-      : `<p>${o.settings.rounds === 1 ? 'One round' : o.settings.rounds + ' rounds'}, ${o.settings.hand} tiles each${o.settings.computer ? `, with a ${LEVEL_LABEL[o.settings.computer]} computer player` : ''}${o.settings.theme && o.settings.theme !== 'classic' ? `, theme: ${THEME_LABEL[o.settings.theme]}` : ''}. ${o.players[0] ? o.players[0].name : 'The host'} will start the game.</p>`;
+    // Nothing to set on this screen: the game was set up on the Host screen, and now the host is only waiting for the other player to join.
+    const summary = `${o.settings.rounds === 1 ? 'One round' : o.settings.rounds + ' rounds'}, ${o.settings.hand} tiles each${o.settings.computer ? `, with a ${LEVEL_LABEL[o.settings.computer]} computer player` : ''}${o.settings.theme && o.settings.theme !== 'classic' ? `, theme: ${THEME_LABEL[o.settings.theme]}` : ''}.`;
+    const hintsNote = o.settings.allowHints === false ? (host ? 'Hints are off.' : 'Hints are off (the host\'s choice).') : (host ? 'Hints are allowed.' : 'Hints are allowed: you can switch them off for yourself in the game.');
+    const settings = `<p>${summary} ${hintsNote}${host ? '' : ` ${o.players[0] ? o.players[0].name : 'The host'} will start the game.`}</p>`;
     return `<div class="overlay"><div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
       <h2 id="dlg-title">Online game</h2>
       <p>Join code</p>
-      <div class="codebox"><span class="code-big" aria-label="Join code ${esc(o.display)}">${o.display}</span>
-        <button class="btn" data-action="copyCode" data-key="${esc(o.display)}">${S.copied === 'code' ? 'Copied' : 'Copy code'}</button></div>
+      <div class="codebox"><span class="code-big" aria-label="Join code ${esc(o.display)}">${o.display}</span></div>
       ${addrs}
       <ul class="players">${players}</ul>
       ${settings}
@@ -2379,7 +2378,8 @@
     if (o.phase === 'resuming' && o.conn === 'open') { title = 'Rejoining your game'; body = '<p>Asking the server for your game...</p>'; }
     else if (o.conn !== 'open') {
       title = 'Connection lost';
-      body = `<p>${o.conn === 'connecting' ? 'Connecting' : 'Trying to reconnect'} to <code>${esc(o.server)}</code>... The server keeps your seat for a few minutes, so you can carry on where you left off.</p>`;
+      const why = (S.netLog || []).slice().reverse().find(e => ['dead', 'closed', 'error', 'suspended'].includes(e.kind));
+      body = `<p>${o.conn === 'connecting' ? 'Connecting' : 'Trying to reconnect'} to <code>${esc(o.server)}</code>... The server keeps your seat for a few minutes, so you can carry on where you left off.</p>${why ? `<p class="field-note">What happened: ${esc(why.detail)}.</p>` : ''}`;
     } else {
       title = 'Game paused';
       const left = o.graceUntil ? clock(o.graceUntil - (S.nowMs || 0)) : '';
@@ -2417,7 +2417,13 @@
         `<section class="tracks" aria-label="Trains">${tableIds(S).slice(1).map(id => viewTrack(S, id)).join('')}${viewTrack(S, 'mexican')}${viewTrack(S, 'human')}</section>` +
         viewStatus(S) + viewTray(S) + viewLog(S)
       : '<section class="empty"><p>Choose your game settings to deal the first round.</p></section>';
-    return `<div class="shell">${viewBar(S)}<main class="table">${body}</main>${viewOverlay(S)}</div>`;
+    return `<div class="shell">${viewBar(S)}<main class="table">${body}</main>${viewOverlay(S)}${S.debugNet && S.online ? viewNetDebug(S) : ''}</div>`;
+  }
+  /* ?debug=1: the last connection events, on the page, so a drop can be understood (and copied) without a console. */
+  function viewNetDebug(S) {
+    const o = S.online;
+    const lines = S.netLog.slice(-14).map(e => `${esc(new Date(e.at).toISOString().slice(11, 19))} ${esc(e.kind)}${e.detail ? ': ' + esc(e.detail) : ''}`).join('\n');
+    return `<aside class="net-debug" aria-label="Connection log"><b>Connection: ${esc(o.conn)}</b> <button class="btn" data-action="copyNetLog" data-focus-id="netlog">Copy</button><pre>${lines || 'nothing yet'}</pre></aside>`;
   }
 
   /* ================================== QR CODE ================================== */
@@ -2608,6 +2614,19 @@
    * rule about names, phrases and addresses is written once. */
 
   // Quick phrases instead of free chat: nothing a player types can reach the other screen.
+  /* A message typed by one person to the other: plain text, on one line, at most CHAT_MAX characters. Control characters and
+   * new lines become spaces, invisible characters and the ones that flip the direction of text are removed, runs of spaces
+   * become one. (Everything is escaped again when it is drawn: this is about what a message may contain, not about markup.) */
+  const CHAT_MAX = 80;
+  function cleanChatText(text) {
+    if (typeof text !== 'string') return '';
+    let t = text.normalize ? text.normalize('NFC') : text;
+    t = t.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ')
+      .replace(/[\u200b\u2060\ufeff\u200e\u200f\u061c\u202a-\u202e\u2066-\u2069]/g, '')
+      .replace(/\s+/g, ' ').trim();
+    const chars = Array.from(t);
+    return chars.length > CHAT_MAX ? chars.slice(0, CHAT_MAX).join('').trim() : t;
+  }
   const ONLINE_PHRASES = [
     'Nice play!', 'Well played!', 'Good game!', 'Ouch!', 'Oops!', 'Hurry up!', 'Take your time.', 'Thanks!',
     'Ha, I needed that.', 'Nothing fits...', 'Your move!', 'One tile left!',
@@ -2623,6 +2642,33 @@
 
   /* "192.168.1.23:8080", "http://myhost:3000/", "ws://10.0.0.5" -> "192.168.1.23:8080" ... or null.
    * The port defaults to 8080, the server's default. */
+  /* Copy text to the clipboard. The modern clipboard API (navigator.clipboard) only exists on SECURE pages (https, or localhost),
+   * and this game is served over plain http on the local network, where it is simply missing: a button that relies on it does
+   * nothing. So the older way comes first (put the text in a hidden box, select it, and copy: this works on any page, as long
+   * as it happens inside the click), and the clipboard API is the second chance. Resolves true if the text was copied.
+   * env: { document, navigator }. Keyboard focus is put back where it was. */
+  function copyText(text, env) {
+    const doc = env && env.document, nav = env && env.navigator;
+    const bySelection = () => {
+      if (!doc || !doc.createElement || !doc.body || typeof doc.execCommand !== 'function') return false;
+      const was = doc.activeElement;
+      let box = null, copied = false;
+      try {
+        box = doc.createElement('textarea');
+        box.value = text; box.setAttribute('readonly', '');
+        box.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+        doc.body.appendChild(box);
+        box.focus(); box.select(); box.setSelectionRange(0, text.length);
+        copied = !!doc.execCommand('copy');
+      } catch (e) { copied = false; }
+      try { if (box && box.parentNode) box.parentNode.removeChild(box); } catch (e) { /* ignore */ }
+      try { if (was && was.focus) was.focus(); } catch (e) { /* ignore */ }
+      return copied;
+    };
+    if (bySelection()) return Promise.resolve(true);
+    try { if (nav && nav.clipboard && typeof nav.clipboard.writeText === 'function') return Promise.resolve(nav.clipboard.writeText(text)).then(() => true, () => false); } catch (e) { /* fall through */ }
+    return Promise.resolve(false);
+  }
   function parseServerAddress(raw) {
     let t = String(raw === undefined || raw === null ? '' : raw).trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/[/?#].*$/, '');
     if (!t || t.length > 255) return null;
@@ -2722,8 +2768,8 @@
       hoverKey: null, flashPhase: 0, handOrder: null, dragKey: null,
       dropTrain: null, dropFrom: null, comment: null, pendingRating: null, lastCommentAt: -Infinity, lastLine: null,
       banner: '', log: [], lastCounts: {}, lastDialog: null,
-      opps: null, cpu2Name: null, seats: null, hostInfo: null, showHints: true, notice: '',
-      online: null, onlineError: '', form: null, sayOpen: false, mySay: null, copied: false, qrIndex: 0,
+      opps: null, cpu2Name: null, seats: null, hostInfo: null, netLog: [], debugNet: false, showHints: true, notice: '',
+      online: null, onlineError: '', form: null, sayOpen: false, mySay: null, dockMode: !!(env && env.dock), copied: false, qrIndex: 0,
     };
     S.opts = loadOpts();
 
@@ -2732,7 +2778,7 @@
     // the page then would wipe whatever the player is choosing, so background updates
     // are skipped; the actions that open/close dialogs pass force=true and redraw.
     function render(force) {                           // returns whether the page was redrawn
-      if (!force && S.overlay && S.lastDialog === S.overlay) return false;
+      if (!force && S.overlay && S.lastDialog === S.overlay) { if (dock) dock.sync(false); return false; }
       S.flashPhase = Math.floor(now() % FLASH_MS);   // re-drawing restarts CSS animations; this keeps the flash in step
       S.nowMs = now();                               // for the countdown shown while waiting for a dropped player
       const saved = {};
@@ -2767,6 +2813,7 @@
       if (fx) fx.reapply();
       S.lastPlay = null;
       S.revealed = null;
+      if (dock) dock.sync(!!(S.sayOpen && S.online && S.game && !S.overlay && !S.modal));
       return true;
     }
 
@@ -3020,7 +3067,9 @@
         }
         S.plan = null;   // something unexpected: hand control back to the player
       }
+      const planDone = !!(S.plan && S.plan.length === 0);          // the plan ran to its end: the longest train is down
       S.plan = null;
+      if (planDone && info.canDone) { await pause(450); return { type: 'done' }; }       // so the opening is finished too: there is no Done to press
       const chain = longestFullChain(game, player);
       return awaitUser('build', {
         moves: info.moves, placed: info.placed, canUndo: info.canUndo, canDraw: info.canDraw, canDone: info.canDone, lastDouble: !!info.lastDouble,
@@ -3043,6 +3092,23 @@
     // bottom player), so the screens draw them as they are.
     const WebSocketImpl = env.WebSocket || null;
     let ws = null, wsId = 0, lastSeq = -1, intentId = 0, tries = 0, pingN = 0;
+    let lastRx = 0, watchAt = 0, hiddenMs = 0, lastDrop = null; const pingSent = {};
+    /* How the page decides that a connection is dead. ANY message from the server is proof of life (not just the answer to a ping),
+     * a quiet connection is pinged now and then, and a connection is only given up after `deadMs` of real silence. If the PAGE was
+     * not running for a while (a hidden tab, a locked phone, a stalled browser) the silence is not held against the server: the
+     * connection is checked at once instead. */
+    const NET = { checkMs: 5000, pingIdleMs: 10000, deadMs: 30000, wakeProbeMs: 6000, firstRetryMs: 250, suspendedMs: 10000 };
+    const dock = env.dock || null;                      // the place where a person types to the other person (outside the redrawn page; see boot)
+    const netConsole = env.netConsole !== undefined ? env.netConsole : (typeof window !== 'undefined' && typeof document !== 'undefined');
+    // Everything that happens to the connection is written down (the last 60 events): to the browser's console, to the
+    // reconnect screen, and, with ?debug=1 in the address, to a panel on the page.
+    function netEvent(kind, detail) {
+      S.netLog.push({ at: now(), kind, detail: detail || '' });
+      if (S.netLog.length > 60) S.netLog.shift();
+      if (netConsole) { try { console.info('[net] ' + kind + (detail ? ': ' + detail : '')); } catch (x) { /* ignore */ } }
+      if (S.debugNet) render();                       // the on-screen log updates as things happen
+    }
+    const diagFor = () => (lastDrop ? { why: lastDrop.why, hiddenMs: Math.round(hiddenMs), silentMs: lastDrop.silentMs, tries: tries + 1 } : undefined);   // told to the server on resuming, for its log
     let reconnectTimer = null, pingTimer = null, pongTimer = null, tickTimer = null, pendingTimer = null;
 
     const clean = t => esc(String(t === undefined || t === null ? '' : t));   // all text from the network is escaped before it reaches the page
@@ -3081,18 +3147,23 @@
       ws = sock; o.conn = 'connecting';
       sock.onopen = () => {
         if (id !== wsId) return;
-        o.conn = 'open'; tries = 0;
-        if (first) netSend(first); else if (o.token) netSend({ t: 'resume', code: o.code, token: o.token });
+        o.conn = 'open'; lastRx = now(); watchAt = lastRx;
+        netEvent('open', tries ? `connected again after ${tries} ${tries === 1 ? 'try' : 'tries'}` : 'connected');
+        tries = 0;
+        if (first) netSend(first); else if (o.token) { netSend({ t: 'resume', code: o.code, token: o.token, d: diagFor() }); lastDrop = null; hiddenMs = 0; }
         schedulePing();
         render(true);
       };
       sock.onmessage = e => {
         if (id !== wsId) return;
+        lastRx = now();
         let m; try { m = JSON.parse(e.data); } catch (x) { return; }
         if (m && typeof m === 'object') { try { netMessage(m); } catch (err) { if (typeof console !== 'undefined') console.error(err); } }   // nothing the network says may break the page
       };
       sock.onclose = e => {
         if (id !== wsId) return;
+        netEvent('closed', `code ${e && e.code}${e && e.reason ? ' "' + e.reason + '"' : ''}${e && e.wasClean === false ? ', not clean' : ''}`);
+        if (!lastDrop) lastDrop = { why: `the connection closed (code ${e && e.code})`, silentMs: now() - lastRx };
         if (e && e.code === 4000 && S.online === o) {   // the server gave our seat to a newer window: do not fight over it
           netClose();
           o.ended = { reason: 'replaced', message: 'This game was opened in another window or tab, so it is closed here.' };
@@ -3103,6 +3174,8 @@
       };
       sock.onerror = () => {                          // a refused connection may report only an error, with no close after it
         if (id !== wsId) return;
+        netEvent('error', 'the connection reported an error');
+        if (!lastDrop) lastDrop = { why: 'the connection reported an error', silentMs: now() - lastRx };
         wsId++; ws = null;
         try { sock.close(); } catch (e) { /* ignore */ }
         netClosed();
@@ -3123,24 +3196,54 @@
         return;
       }
       o.conn = 'reconnecting';                        // in a game: keep trying, the server holds the seat for a while
-      reconnectTimer = timer.set(() => { reconnectTimer = null; if (S.online === o && !o.ended) netConnect(null); }, Math.min(5000, 1000 * ++tries));
+      const wait = tries === 0 ? NET.firstRetryMs : Math.min(5000, 1000 * tries);      // the first retry is almost at once: most blips are over by then
+      tries++;
+      netEvent('reconnecting', `try ${tries} in ${wait} ms`);
+      reconnectTimer = timer.set(() => { reconnectTimer = null; if (S.online === o && !o.ended) netConnect(null); }, wait);
       startTick();
       render(true);
     }
-    function schedulePing() {
+    function schedulePing() {                         // (kept under its old name) the watch over a quiet connection
       timer.clear(pingTimer);
       pingTimer = timer.set(() => {
         pingTimer = null;
         if (!ws) return;
-        netSend({ t: 'ping', n: ++pingN });
-        pongTimer = timer.set(() => {                 // no answer: the connection is dead even though nothing said so
-          pongTimer = null;
-          wsId++; const w = ws; ws = null;
-          if (w) { try { w.close(); } catch (e) { /* ignore */ } }
-          netClosed();
-        }, 10000);
+        const t = now(), late = t - watchAt - NET.checkMs;
+        watchAt = t;
+        if (late > NET.suspendedMs) {                 // this page was not running for a while: nothing could be received, so the silence proves nothing
+          netEvent('suspended', `the page was not running for about ${Math.round((late + NET.checkMs) / 1000)} s (a hidden tab, a locked phone or a stalled browser)`);
+          lastRx = t; probe('the page was suspended');
+        } else if (t - lastRx > NET.deadMs) { dead(`nothing heard from the server for ${Math.round((t - lastRx) / 1000)} s`); return; }
+        else if (t - lastRx > NET.pingIdleMs) sendPing();                // (a busy game is its own proof of life: the server talks to us all the time)
         schedulePing();
-      }, 15000);
+      }, NET.checkMs);
+    }
+    function sendPing() { pingSent[++pingN] = now(); netSend({ t: 'ping', n: pingN }); }
+    // Is the connection alive right now? Ask, and give it a few seconds to answer (anything at all counts).
+    function probe(why) {
+      const t = now(); sendPing();
+      timer.clear(pongTimer);
+      pongTimer = timer.set(() => { pongTimer = null; if (lastRx <= t) dead(`no answer within ${Math.round(NET.wakeProbeMs / 1000)} s of checking (${why})`); }, NET.wakeProbeMs);
+    }
+    function dead(why) {                              // give this connection up and make a new one
+      netEvent('dead', why);
+      lastDrop = { why, silentMs: now() - lastRx };
+      wsId++; const w = ws; ws = null;
+      if (w) { try { w.close(4001, ('page: ' + why).slice(0, 100)); } catch (e) { /* ignore */ } }   // (the server logs our reason)
+      netClosed();
+    }
+    // The page came back (it was hidden, or the network returned): do not wait for the next check, look at the connection now.
+    function netWake(a) {
+      const o = S.online;
+      if (!o || o.ended || o.leaving) return;
+      if (a && a.hiddenMs > 0) hiddenMs += a.hiddenMs;
+      netEvent('wake', `${(a && a.why) || 'woke'}${a && a.hiddenMs > 0 ? ' (hidden for ' + Math.round(a.hiddenMs / 1000) + ' s)' : ''}`);
+      if (o.conn === 'reconnecting' && reconnectTimer !== null) { timer.clear(reconnectTimer); reconnectTimer = null; netConnect(null); return; }   // do not wait out the retry timer
+      if (ws && ws.readyState === 1) probe((a && a.why) || 'woke');
+    }
+    function copyNetLog() {
+      const text = S.netLog.map(e => `${new Date(e.at).toISOString().slice(11, 19)} ${e.kind}${e.detail ? ': ' + e.detail : ''}`).join('\n');
+      try { if (global.navigator && global.navigator.clipboard) global.navigator.clipboard.writeText(text); } catch (e) { /* ignore */ }
     }
     // a once-a-second redraw while a countdown is on screen
     function startTick() {
@@ -3185,7 +3288,7 @@
         case 'resumed': {
           o.code = String(m.code || o.code); o.display = clean(m.display || ''); o.seat = m.seat === 1 ? 1 : 0; o.host = o.seat === 0;
           if (m.token) o.token = String(m.token);
-          if (m.settings) o.settings = { rounds: Number(m.settings.rounds) || 4, hand: Number(m.settings.hand) || 15, computer: LEVELS.includes(m.settings.computer) ? m.settings.computer : null, theme: THEME_IDS.includes(m.settings.theme) ? m.settings.theme : 'classic' };
+          if (m.settings) o.settings = readOnlineSettings(m.settings);
           if (Array.isArray(m.addresses)) o.addresses = m.addresses.map(String).slice(0, 8);
           o.phase = m.t === 'resumed' && m.state === 'playing' ? 'playing' : 'lobby';
           o.resuming = false; o.oppConnected = true; o.graceUntil = null;
@@ -3199,7 +3302,7 @@
             ? { name: clean(p.name), connected: !!p.connected, computer: !!p.computer, level: LEVELS.includes(p.level) ? p.level : null } : null));
           while (o.players.length < 2) o.players.push(null);
           o.canStart = !!m.canStart;
-          if (m.settings) o.settings = { rounds: Number(m.settings.rounds) || 4, hand: Number(m.settings.hand) || 15, computer: LEVELS.includes(m.settings.computer) ? m.settings.computer : null, theme: THEME_IDS.includes(m.settings.theme) ? m.settings.theme : 'classic' };
+          if (m.settings) o.settings = readOnlineSettings(m.settings);
           if (Array.isArray(m.addresses)) o.addresses = m.addresses.map(String).slice(0, 8);
           if (m.state === 'playing') o.phase = 'playing';
           const other = o.players[1 - o.seat];
@@ -3213,12 +3316,17 @@
           if (!o.oppConnected) startTick();
           render();
           return;
-        case 'chat': if (typeof m.text === 'string') showChat(m.text.slice(0, 60)); return;
+        case 'chat': { const said = cleanChatText(m.text); if (said) showChat(said); return; }
         case 'say': if (typeof m.text === 'string') showSay(m); return;
         case 'ack':
           if (o.pending && o.pending.id === m.id) { if (m.ok) o.pending.ackSeq = Number(m.seq); else o.pending = null; }
           return;
-        case 'pong': timer.clear(pongTimer); pongTimer = null; return;
+        case 'pong': {
+          timer.clear(pongTimer); pongTimer = null;
+          const sent = pingSent[m.n]; delete pingSent[m.n];
+          if (sent !== undefined && now() - sent > 1000) netEvent('slow-reply', `the server took ${now() - sent} ms to answer a ping`);
+          return;
+        }
         case 'ended':
           o.ended = { reason: String(m.reason || 'closed'), message: clean(m.message || 'The game is over.') };
           clearSession(); netClose(); render(true);
@@ -3227,6 +3335,11 @@
           if (o.phase === 'connecting') { onlineFailed(String(m.message || 'Could not start the game.')); netClose(); return; }
           if (o.resuming && m.code === 'no_such_game') { clearSession(); netClose(); S.online = null; S.overlay = 'setup'; S.game = null; S.modal = null; S.awaiting = null; S.matchActive = false; render(true); return; }
           o.pending = null;
+          if (m.code === 'slow_down') {                              // what was typed or tapped was not sent: do not say it was, and say so where "You said" would be
+            const fid = ++commentId;
+            S.mySay = { id: fid, text: clean(m.message || 'Not so fast: that message was not sent.'), failed: true };
+            later(() => { if (S.mySay && S.mySay.id === fid) { S.mySay = null; render(); } }, 4500);
+          }
           S.banner = clean(m.message || 'That did not work.');
           render();
           return;
@@ -3275,9 +3388,12 @@
         else if (ev.e === 'reveal') S.revealed = ev.who === 'opp2' ? 'cpu2' : 'cpu';
       }
       // whose move came last, to tell a new turn from the rest of the same turn (covering your own double, playing a drawn tile)
-      const g0 = v.game;
+      // (Moves made while the trains were still being built are not part of the play: that includes the last of them, which can
+      // arrive in the very message that says the opening is over. So the opening counts as running if it was running before.)
+      const g0 = v.game, gPrev = S.game;
       const openingNow = !!(g0 && g0.opening && !g0.players.every(p => g0.opening[p.id].finished));
-      if (!openingNow) for (const ev of evs) if (ev && (ev.e === 'play' || ev.e === 'draw' || ev.e === 'pass') && (ev.who === 'me' || ev.who === 'opp' || ev.who === 'opp2')) o.lastActor = ev.who;
+      const openingBefore = !!(gPrev && gPrev.opening && o.round === v.round && !gPrev.players.every(p => gPrev.opening[p.id] && gPrev.opening[p.id].finished));
+      if (!openingNow && !openingBefore) for (const ev of evs) if (ev && (ev.e === 'play' || ev.e === 'draw' || ev.e === 'pass') && (ev.who === 'me' || ev.who === 'opp' || ev.who === 'opp2')) o.lastActor = ev.who;
       // 3. the new state
       if (o.round !== v.round) { S.handOrder = null; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; o.round = v.round; o.lastActor = null; }
       o.rounds = Number(v.rounds) || o.rounds;
@@ -3351,21 +3467,39 @@
       return netSend(Object.assign({ t: 'i', id }, a));
     }
 
+    // the room's settings as the server sends them (anything missing or odd gets the usual value)
+    function readOnlineSettings(m) {
+      return { rounds: Number(m.rounds) || 4, hand: Number(m.hand) || 15, computer: LEVELS.includes(m.computer) ? m.computer : null, theme: THEME_IDS.includes(m.theme) ? m.theme : 'classic', allowHints: m.allowHints !== false };
+    }
     function showChat(text) {
       const id = ++commentId;
       const person = S.opps && S.opps.find(x => !x.computer);
       S.comment = { id, kind: 'chat', text: String(text), from: person ? person.name : null };
       if (render()) popBubble();
-      later(() => { if (S.comment && S.comment.id === id) { S.comment = null; render(); } }, CHAT.showMs);
+      later(() => { if (S.comment && S.comment.id === id) { S.comment = null; render(); } }, Math.min(12000, CHAT.showMs + 45 * String(text).length));      // a longer message stays up longer
     }
     /* The online computer player says something (the server decides what, and sends it only to the player it is about).
      * Shown like its comments in the game against the computer, unless this player has turned comments off. */
     function showSay(m) {
-      if (!S.opts.chat || !S.game) return;
-      const id = ++commentId, lang = typeof m.lang === 'string' && NATIVE_LINES[m.lang] ? m.lang : null;
-      S.comment = Object.assign({ id, kind: 'computer', text: String(m.text).slice(0, 160), from: cleanPlayerName(m.from, 'Computer') }, lang ? { lang, trans: String(m.trans || '').slice(0, 160) } : {});
+      if (!S.opts.chat || !S.game || typeof m.text !== 'string' || !m.text) return;
+      // (everything from the network is untrusted: the text is escaped when drawn; the language must be one of ours, an actual
+      // entry of the table and not an inherited property such as "constructor", and must come with a translation)
+      const id = ++commentId, lang = typeof m.lang === 'string' && typeof m.trans === 'string' && Object.prototype.hasOwnProperty.call(NATIVE_LINES, m.lang) ? m.lang : null;
+      S.comment = Object.assign({ id, kind: 'computer', text: m.text.slice(0, 160), from: cleanPlayerName(m.from, 'Computer') }, lang ? { lang, trans: m.trans.slice(0, 160) } : {});
       if (render()) popBubble();
       later(() => { if (S.comment && S.comment.id === id) { S.comment = null; render(); } }, CHAT.showMs);
+    }
+    /* Something typed. It is cleaned the way the server will clean it, so what the person sees as "You said" is what is sent. */
+    function sendText(text) {
+      if (!S.online || !S.game) return;
+      const said = cleanChatText(text);
+      if (!said) return;
+      if (!netSend({ t: 'chat', text: said })) return;
+      const mid = ++commentId;
+      S.mySay = { id: mid, text: said }; S.sayOpen = false;
+      if (dock) dock.clear();
+      later(() => { if (S.mySay && S.mySay.id === mid) { S.mySay = null; render(); } }, Math.min(12000, 4000 + 45 * said.length));
+      render(true);
     }
     function sendChat(i) {
       const id = Number(i);
@@ -3382,15 +3516,15 @@
       abortMatch();
       const hosting = kind === 'create';
       const server = hosting ? (S.hostInfo && S.hostInfo.state === 'ready' ? parseServerAddress(S.hostInfo.address) : null) : parseServerAddress(a.server);
-      S.form = { server: hosting && server ? server : String(a.server || ''), name: String(a.name || ''), code: String(a.code || ''), rounds: a.rounds, hand: a.hand, computer: a.computer, theme: a.theme };
+      S.form = { server: hosting && server ? server : String(a.server || ''), name: String(a.name || ''), code: String(a.code || ''), rounds: a.rounds, hand: a.hand, computer: a.computer, theme: a.theme, allowHints: a.allowHints !== false };
       if (!server) { S.onlineError = hosting ? 'This computer\'s address is not known. Open this page from the game server: start it with node server.js and open the address it prints.' : 'Enter the server address, like 192.168.1.23:8080.'; render(true); return; }
       if (kind === 'join' && !String(a.code || '').trim()) { S.onlineError = 'Enter the join code you were given.'; render(true); return; }
       const name = cleanPlayerName(a.name, kind === 'create' ? 'Host' : 'Guest');
       try { storage.set('mt-name', name); storage.set('mt-server', server); } catch (e) { /* ignore */ }
       S.onlineError = '';
       lastSeq = -1; tries = 0; S.qrIndex = 0; S.showHints = true;
-      S.online = { phase: 'connecting', kind, server, name, code: '', display: '', token: '', seat: kind === 'create' ? 0 : 1, host: kind === 'create', settings: { rounds: 4, hand: 15, computer: null, theme: 'classic' }, players: [null, null], canStart: false, addresses: [], conn: 'connecting', oppConnected: true, graceUntil: null, ended: null, rounds: 4, pending: null, round: -1, oppName: '', lastActor: null };
-      const first = kind === 'create' ? { t: 'create', name, rounds: Number(a.rounds), hand: Number(a.hand), computer: LEVELS.includes(a.computer) ? a.computer : null, theme: THEME_IDS.includes(a.theme) ? a.theme : 'classic' } : { t: 'join', code: String(a.code), name };
+      S.online = { phase: 'connecting', kind, server, name, code: '', display: '', token: '', seat: kind === 'create' ? 0 : 1, host: kind === 'create', settings: { rounds: 4, hand: 15, computer: null, theme: 'classic', allowHints: true }, players: [null, null], canStart: false, addresses: [], conn: 'connecting', oppConnected: true, graceUntil: null, ended: null, rounds: 4, pending: null, round: -1, oppName: '', lastActor: null };
+      const first = kind === 'create' ? { t: 'create', name, rounds: Number(a.rounds), hand: Number(a.hand), computer: LEVELS.includes(a.computer) ? a.computer : null, theme: THEME_IDS.includes(a.theme) ? a.theme : 'classic', allowHints: a.allowHints !== false } : { t: 'join', code: String(a.code), name };
       netConnect(first);
     }
     function resumeOnline() {
@@ -3438,7 +3572,7 @@
       if (!S.form) {                                  // the address of the server this page came from, else the one used last time
         let sv = '', nm = '';
         try { sv = String(storage.get('mt-server') || ''); nm = String(storage.get('mt-name') || ''); } catch (e) { /* ignore */ }
-        S.form = { server: defaultServer || sv, name: nm, code: '', rounds: S.opts.rounds, hand: S.opts.hand, computer: 'none', theme: S.opts.theme };
+        S.form = { server: defaultServer || sv, name: nm, code: '', rounds: S.opts.rounds, hand: S.opts.hand, computer: 'none', theme: S.opts.theme, allowHints: S.opts.allowHints };      // (the host's own setting on the main screen is the starting point)
       }
       if (code) {                                     // from a scanned link: the code is filled in, nothing else to type
         const c = String(code).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
@@ -3523,7 +3657,7 @@
     function startGame(a) {
       if (S.online) leaveOnline(true);
       abortMatch();
-      S.opts = sanitize(Object.assign({}, a, { sound: S.opts.sound, chat: S.opts.chat, allowHints: a.allowHints === undefined ? S.opts.allowHints : a.allowHints, cpus: a.cpus === undefined ? S.opts.cpus : a.cpus, level2: a.level2 === undefined ? S.opts.level2 : a.level2, theme: a.theme === undefined ? S.opts.theme : a.theme }));   // the setup form has no sound field: keep the current setting
+      S.opts = sanitize(Object.assign({}, a, { sound: S.opts.sound, chat: S.opts.chat, allowHints: a.allowHints === undefined ? S.opts.allowHints : a.allowHints, cpus: a.cpus === undefined ? S.opts.cpus : a.cpus, level2: a.level2 === undefined ? S.opts.level2 : a.level2, theme: a.theme === undefined ? S.opts.theme : a.theme, style: a.style === undefined ? S.opts.style : a.style }));   // the setup form has no sound or tile-face field (that is the "Show numbers" button in the game): keep the current setting
       S.showHints = true; S.notice = '';
       saveOpts();
       // a fresh random name for the computer: not one already at the table, and not last game's
@@ -3753,14 +3887,14 @@
           return loadHostInfo().then(() => beginOnline('create', a));
         case 'joinGame': return beginOnline('join', a);
         case 'startOnline': if (S.online && S.online.host) netSend({ t: 'start' }); return;
-        case 'onlineSettings': if (S.online && S.online.host && S.online.phase === 'lobby') netSend({ t: 'settings', rounds: Number(a.rounds), hand: Number(a.hand), computer: LEVELS.includes(a.computer) ? a.computer : 'none', theme: THEME_IDS.includes(a.theme) ? a.theme : 'classic' }); return;
         case 'sendChat': return sendChat(a.key);
+        case 'sendText': return sendText(a.text);
         case 'toggleSay': S.sayOpen = !S.sayOpen; return render(true);
         case 'askLeave': S.overlay = 'online-leave'; return render(true);
         case 'confirmLeave': leaveOnline(false); S.overlay = 'setup'; return render(true);
         case 'onlineBack': leaveOnline(true, !!(S.online && S.online.ended && S.online.ended.reason === 'replaced')); S.overlay = 'setup'; return render(true);
         case 'resumeOnline': return resumeOnline();
-        case 'copied': S.copied = a.which === 'copyLink' ? 'link' : 'code'; later(() => { S.copied = false; render(); }, 2000); return render();
+        case 'copied': S.copied = a.which === 'copyLink' ? 'link' : 'failed'; later(() => { S.copied = false; render(); }, a.which === 'copyLink' ? 2000 : 6000); return render();
         case 'selectQr': S.qrIndex = Math.max(0, Number(a.key) || 0); return render();
         case 'hoverTile': return hoverTile(a.key);
         case 'dragStart': return dragStart(a.key);
@@ -3772,6 +3906,11 @@
         case 'snapTrains': return snapTrains();
         case 'toggleSound': return toggleSound();
         case 'toggleChat': return toggleChat();
+        case 'netWake': return netWake(a);
+        case 'netNote': return netEvent('note', String(a.what || ''));
+        case 'netDebug': S.debugNet = true; return render(true);
+        case 'copyNetLog': return copyNetLog();
+        case 'setNetHintsForm': if (S.form) S.form.allowHints = !!a.value; return;                  // (the Host screen's switch: remembered, no redraw)
         case 'toggleShowHints': S.showHints = S.showHints === false; S.hoverKey = null; S.notice = ''; return render(true);
         case 'setAllowHints': S.opts.allowHints = !!a.value; saveOpts(); S.hoverKey = null; S.notice = ''; return render();
         case 'toggleStyle': S.opts.style = S.opts.style === 'numbers' ? 'pips' : 'numbers'; saveOpts(); return render(true);
@@ -3788,7 +3927,8 @@
   function boot() {
     const root = document.getElementById('app');
     let seed = null, joinCode = '';
-    try { seed = new URLSearchParams(location.search).get('seed'); } catch (e) { /* ignore */ }
+    let debugNet = false;
+    try { seed = new URLSearchParams(location.search).get('seed'); debugNet = /^(1|true|on)$/i.test(new URLSearchParams(location.search).get('debug') || ''); } catch (e) { /* ignore */ }
     try {                                              // a scanned QR code opens  http://host:port/?join=CODE
       const u = new URL(location.href);
       joinCode = u.searchParams.get('join') || '';
@@ -3805,8 +3945,31 @@
     // Served by a game server (http://...)? Then that server is the default for hosting and joining.
     let defaultServer = '';
     try { if (location.protocol === 'http:' && location.host) defaultServer = location.host; } catch (e) { /* ignore */ }
+    /* Where a person types to the other person. It lives OUTSIDE the page's redrawn area on purpose: the page is redrawn on every move
+     * the other player makes, and a text box inside it would lose the words, the cursor (and, on a phone, the keyboard) in the
+     * middle of a sentence. This one is made once and only shown or hidden. */
+    let dock = null;
+    try {                                               // (if the page cannot make it, the quick-phrase panel inside the page is used instead)
+      if (!(document.createElement && document.body && document.body.appendChild)) throw new Error('no document');
+      const box = document.createElement('div');
+      box.id = 'say-dock'; box.className = 'say-dock'; box.hidden = true;
+      box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Say something to the other player');
+      box.innerHTML = `<form class="say-form" autocomplete="off"><input id="say-text" type="text" maxlength="${CHAT_MAX}" placeholder="Type a message, then press Enter" aria-label="Your message" autocomplete="off" autocapitalize="sentences" enterkeyhint="send"><button class="btn primary" type="submit">Send</button><button class="btn" type="button" data-dock="close">Close</button></form>`
+        + `<div class="say-quick" role="group" aria-label="Quick phrases">${ONLINE_PHRASES.map((ph, i) => `<button class="btn say" type="button" data-phrase="${i}">${esc(ph)}</button>`).join('')}</div>`;
+      document.body.appendChild(box);
+      const input = box.querySelector('#say-text');
+      dock = { sync(open) { const was = !box.hidden; box.hidden = !open; if (open && !was && input && input.focus) input.focus(); }, clear() { if (input) input.value = ''; } };
+      box.addEventListener('submit', e => { e.preventDefault(); app.dispatch({ type: 'sendText', text: input ? input.value : '' }); });
+      box.addEventListener('click', e => {
+        const b = e.target && e.target.closest ? e.target.closest('button') : null;
+        if (!b || !b.dataset) return;
+        if (b.dataset.phrase !== undefined) app.dispatch({ type: 'sendChat', key: b.dataset.phrase });
+        else if (b.dataset.dock === 'close') app.dispatch({ type: 'toggleSay' });
+      });
+      box.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); app.dispatch({ type: 'toggleSay' }); } });
+    } catch (err) { dock = null; }
     const app = createApp({
-      root, storage, reducedMotion: reduced, sound, fx,
+      root, storage, reducedMotion: reduced, sound, fx, dock,
       WebSocket: global.WebSocket, defaultServer, fetch: global.fetch ? global.fetch.bind(global) : null,
       rng: seed !== null && seed !== '' ? mulberry32(Number(seed)) : Math.random,
     });
@@ -3823,14 +3986,23 @@
           app.dispatch({ type: 'setAllowHints', value: on });
           return;
         }
+        if (d.action === 'toggleNetHintsForm') {          // the Host screen's switch: it changes at once, without redrawing the form under the player's hands
+          const on = !(el.getAttribute && el.getAttribute('aria-pressed') === 'true');
+          if (el.setAttribute) { el.setAttribute('aria-pressed', String(on)); el.textContent = 'Allow hints: ' + (on ? 'on' : 'off'); }
+          app.dispatch({ type: 'setNetHintsForm', value: on });
+          return;
+        }
         if (d.action === 'startGame') {
           const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
-          app.dispatch({ type: 'startGame', rounds: val('#opt-rounds'), hand: val('#opt-hand'), style: val('#opt-style'), level: val('#opt-level'), cpus: val('#opt-cpus'), level2: val('#opt-level2'), theme: val('#opt-theme') });
+          app.dispatch({ type: 'startGame', rounds: val('#opt-rounds'), hand: val('#opt-hand'), level: val('#opt-level'), cpus: val('#opt-cpus'), level2: val('#opt-level2'), theme: val('#opt-theme') });
         } else if (d.action === 'hostGame' || d.action === 'joinGame') {
           const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
-          app.dispatch({ type: d.action, server: val('#net-server'), name: val('#net-name'), code: val('#net-code'), rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer'), theme: val('#net-theme') });
-        } else if (d.action === 'copyCode' || d.action === 'copyLink') {
-          try { if (global.navigator && global.navigator.clipboard) global.navigator.clipboard.writeText(String(d.key || '')).then(() => app.dispatch({ type: 'copied', which: d.action }), () => {}); } catch (err) { /* the text is selectable on screen */ }
+          app.dispatch({ type: d.action, server: val('#net-server'), name: val('#net-name'), code: val('#net-code'), rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer'), theme: val('#net-theme'), allowHints: !(app.state.form && app.state.form.allowHints === false) });
+        } else if (d.action === 'sendText') {                  // (the in-page box, used only when there is no separate one)
+          const n = root.querySelector('#say-text');
+          app.dispatch({ type: 'sendText', text: n ? n.value : '' });
+        } else if (d.action === 'copyLink') {
+          copyText(String(d.key || ''), { document, navigator: global.navigator }).then(done => app.dispatch({ type: 'copied', which: done ? 'copyLink' : 'failed' }));
         } else {
           app.dispatch({ type: d.action, key: d.key, train: d.train });
         }
@@ -3841,7 +4013,19 @@
       if (track && track.dataset) app.dispatch({ type: 'playOn', train: track.dataset.train });
     });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') app.dispatch({ type: 'closeOverlay' }); });
-    // the host changes the game length or hand size in the lobby: tell the server straight away
+    if (debugNet) app.dispatch({ type: 'netDebug' });
+    // The browser tells us when the page is hidden or the network changes: a phone that locks, or a tab sent to the background,
+    // may have lost its connection, and a returning page should look at it at once rather than wait for the next check.
+    let hiddenAt = null;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { hiddenAt = Date.now(); app.dispatch({ type: 'netNote', what: 'the page was hidden' }); }
+      else { const ms = hiddenAt ? Date.now() - hiddenAt : 0; hiddenAt = null; app.dispatch({ type: 'netWake', why: 'the page is visible again', hiddenMs: ms }); }
+    });
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('online', () => app.dispatch({ type: 'netWake', why: 'the network came back' }));
+      window.addEventListener('offline', () => app.dispatch({ type: 'netNote', what: 'the browser says it is offline' }));
+      window.addEventListener('pageshow', e => { if (e && e.persisted) app.dispatch({ type: 'netWake', why: 'the page was restored from the back/forward cache' }); });
+    }
     root.addEventListener('change', e => {
       const id = e.target && e.target.id;
       if (id === 'opt-cpus') {                           // the second computer's skill only matters with two computers
@@ -3849,9 +4033,6 @@
         if (f) f.hidden = String(e.target.value) !== '2';
         return;
       }
-      if (id !== 'net-rounds' && id !== 'net-hand' && id !== 'net-computer' && id !== 'net-theme') return;
-      const val = i => { const n = root.querySelector(i); return n ? n.value : undefined; };
-      app.dispatch({ type: 'onlineSettings', rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer'), theme: val('#net-theme') });
     });
     // Enter in a text box of the host/join form presses its main button
     root.addEventListener('keydown', e => {
@@ -3897,7 +4078,7 @@
     tileSVG, tileBackSVG, pipPoints, viewApp, createApp, pickCpuName, PIP_COLORS, PACE, CPU_NAMES, renderClack, clackGapMs, renderTurn, createSound,
     flightGeometry, flightRotation, flightStart, moveInOrder, slotAt, dropIndexAt, createFx, createDrag, orderedHand,
     RATING, CHAT, LINES, commentKindFor, pickLine, fillLine, composeComment, paceFor, soleTile, CPU_PLAYERS, levelOfName, NATIVE_LINES, NATIVE_LANG, nativeLangOf, FOOD, FOOD_ENGLISH, FOOD_NATIVE, foodComment,
-    PLAYER_IDS, toyTrainSVG, ringSVG, THEMES, THEME_IDS, voiceOf, foodOf, trainColor, ONLINE_PHRASES, cleanPlayerName, parseServerAddress, qrEncode, qrSvg, qrCodewords, rsEncode, QR_BLOCKS_M, QR_TOTAL_CODEWORDS,
+    PLAYER_IDS, toyTrainSVG, ringSVG, THEMES, THEME_IDS, voiceOf, foodOf, trainColor, ONLINE_PHRASES, cleanChatText, CHAT_MAX, cleanPlayerName, parseServerAddress, copyText, qrEncode, qrSvg, qrCodewords, rsEncode, QR_BLOCKS_M, QR_TOTAL_CODEWORDS,
   };
 
   if (typeof document !== 'undefined') {

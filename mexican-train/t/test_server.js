@@ -19,7 +19,7 @@ const canon = t => [Math.min(t[0], t[1]), Math.max(t[0], t[1])];
 
 /* ---------------------------------- helpers ---------------------------------- */
 async function startServer(opts) {
-  const srv = createGameServer(Object.assign({ pagePath: PAGE, stepDelay: 0, sleep: async () => {}, log: () => {}, heartbeatMs: 60000 }, opts));
+  const srv = createGameServer(Object.assign({ pagePath: PAGE, stepDelay: 0, sleep: async () => {}, log: () => {}, heartbeatMs: 60000, softGraceMs: 0 }, opts));
   const port = await srv.listen(0, '127.0.0.1');
   return { srv, port };
 }
@@ -174,7 +174,7 @@ const structuralLeaks = c => {                                // no real tile of
     ok(head.status === 200 && (await head.text()) === '', 'HEAD works too');
     await I.srv.close();
     // a server open to the whole network offers real network addresses, best first
-    const W = createGameServer({ pagePath: PAGE, log: () => {}, heartbeatMs: 60000 });
+    const W = createGameServer({ pagePath: PAGE, log: () => {}, heartbeatMs: 60000, softGraceMs: 0 });
     const wp = await W.listen(0, '0.0.0.0');
     const wj = await (await fetch(`http://127.0.0.1:${wp}/info`)).json();
     ok(wj.addresses.length === 0 ? wj.preferred === `127.0.0.1:${wp}` : wj.addresses.every(a => /^\d+\.\d+\.\d+\.\d+:\d+$/.test(a) && !a.startsWith('127.')) && wj.preferred === wj.addresses[0], 'a server listening on the whole network offers this computer\'s network addresses (none starting 127.), best first: ' + wj.addresses.join(', '));
@@ -428,12 +428,12 @@ const structuralLeaks = c => {                                // no real tile of
     ok(st.view.awaiting.buildCount === 15 && st.view.awaiting.canBuild, 'Ann, dealt a complete train, is offered "Build my longest train" (15 tiles)');
     a.send({ t: 'i', id: 1, a: 'autoBuild' });
     ok((await a.next(m => m.t === 'ack' && m.id === 1)).ok === true, 'the server accepts it');
-    st = await a.next(m => m.t === 'state' && m.view.awaiting && m.view.awaiting.placed === 15, 5000);
-    ok(!!st && st.view.game.players[0].hand.length === 0, 'all 15 tiles are laid, one after another');
+    st = await a.next(m => m.t === 'state' && m.view.game && m.view.game.players[0].hand.length === 0, 5000);
+    ok(!!st, 'all 15 tiles are laid, one after another');
     ok(a.of('state').flatMap(m => m.events).filter(e => e.e === 'play').length === 15, 'announced to her as 15 separate play events');
     await until(() => b.of('state').flatMap(m => m.events).filter(e => e.e === 'play' && e.who === 'opp').length >= 15, 3000);
     ok(b.of('state').flatMap(m => m.events).filter(e => e.e === 'play' && e.who === 'opp').length === 15 && b.of('state').flatMap(m => m.events).filter(e => e.e === 'play').every(e => e.tile === null), 'and to Ben as 15 plays whose tiles are hidden from him');
-    a.send({ t: 'i', id: 2, a: 'done' });
+    ok(!a.of('state').some(m => m.view.awaiting && m.view.awaiting.kind === 'build' && m.view.awaiting.placed === 15), 'and Ann is never asked to press Done: when the longest train is down, her opening is finished for her');
     // Ben has no 12: he draws, passes, and the round is over
     const sb = {}; const bs = await b.next(m => m.t === 'state' && m.view.awaiting, 3000);
     b.send({ t: 'i', id: 1, a: 'draw' });
@@ -578,6 +578,59 @@ const structuralLeaks = c => {                                // no real tile of
     a.close(); b.close();
   }
 
+  console.log('7b. typed messages');
+  {
+    const room = n => Array.from(L.srv.rooms.values())[n];
+    const { a, b } = await pair(L.port, {});
+    const code = a.of('lobby')[0].code, R = L.srv.rooms.get(code);
+    const clear = () => { R.chatAt[0] = R.chatAt[1] = 0; };
+    const msgs = () => b.of('chat');
+    a.send({ t: 'chat', text: 'Good luck, Ben!' });
+    const m = await b.next(x => x.t === 'chat', 2000);
+    ok(m.text === 'Good luck, Ben!' && !('id' in m) && !a.of('chat').length, 'a typed message reaches the other player, as typed, and is not echoed back to the sender');
+    ok(!('from' in m) && Object.keys(m).sort().join() === 't,text', 'and carries nothing else (the other page uses the name it already knows: a sender cannot claim to be someone else)');
+    clear(); a.send({ t: 'chat', text: '<img src=x onerror=alert(1)> & "quotes" \'too\'' });
+    ok((await b.next(x => x.t === 'chat' && /img/.test(x.text), 2000)).text === '<img src=x onerror=alert(1)> & "quotes" \'too\'', 'markup is just text: it is passed on unchanged for the page to show as text (never as HTML)');
+    clear(); a.send({ t: 'chat', text: '  two   spaces,\nnew line\tand a tab\u0000 \u202e(flipped)\u200b ' });
+    ok((await b.next(x => x.t === 'chat' && /two/.test(x.text), 2000)).text === 'two spaces, new line and a tab (flipped)', 'control characters, new lines, invisible and direction-flipping characters are cleaned up, and spaces collapse');
+    clear(); a.send({ t: 'chat', text: 'x'.repeat(500) });
+    ok((await b.next(x => x.t === 'chat' && /^x+$/.test(x.text), 2000)).text.length === 80, 'a long message is cut to 80 characters');
+    clear(); a.send({ t: 'chat', text: '\u{1F600}'.repeat(100) });
+    const em = await b.next(x => x.t === 'chat' && /\u{1F600}/u.test(x.text), 2000);
+    ok(Array.from(em.text).length === 80 && Array.from(em.text).every(ch => ch === '\u{1F600}'), '...counted in characters, not bytes: 80 emoji, none cut in half');
+    for (const bad of ['', '   ', '\n\t', '\u200b\u200b', 42, null, {}, [], true]) { clear(); a.send({ t: 'chat', text: bad }); const e = await a.next(x => x.t === 'error'); if (e.code !== 'bad_message') ok(false, 'bad text ' + JSON.stringify(bad) + ' gave ' + e.code); }
+    ok(!msgs().some(x => !x.text || typeof x.text !== 'string'), 'nothing empty, or not text, ever reaches the other player');
+    clear(); a.send({ t: 'chat', text: 'first of two' });
+    await b.next(x => x.t === 'chat' && x.text === 'first of two', 2000);
+    const before = msgs().length;
+    a.send({ t: 'chat', text: 'too soon' });
+    ok((await a.next(x => x.t === 'error' && x.code === 'slow_down')) && msgs().length === before, 'a second message within a second and a half is refused, with a message saying it was not sent');
+    clear(); b.send({ t: 'chat', text: 'Thanks!' });
+    ok((await a.next(x => x.t === 'chat', 2000)).text === 'Thanks!', 'it works both ways');
+    // no more than 10 a minute from one person
+    for (let i = 0; i < 12; i++) { clear(); a.send({ t: 'chat', text: 'message ' + i }); await wait(15); }
+    await wait(50);
+    const got = msgs().filter(x => /^message /.test(x.text)).length;
+    ok(got <= 8 && a.of('error').filter(x => x.code === 'slow_down').length >= 3, `and no more than 10 in a minute (the other player got ${got} of 12; the rest were refused)`);
+    R.chatLog[0] = R.chatLog[0].map(t => t - 61000); clear();
+    a.send({ t: 'chat', text: 'a minute later' });
+    ok((await b.next(x => x.t === 'chat' && x.text === 'a minute later', 2000)).text === 'a minute later', 'a minute later they can write again');
+    clear(); a.send({ t: 'chat', id: 3, text: 'sneaky' });
+    const ph = await b.next(x => x.t === 'chat' && x.id === 3, 2000);
+    ok(ph.text === E.CHAT_PHRASES[3], 'a quick-phrase number still wins over any text sent with it (a phrase cannot be turned into something else)');
+    a.close(); b.close();
+  }
+  {
+    // with a computer at the table the typed message goes to the other PERSON, and nowhere else; and it works before the game starts and during it
+    const { a, b } = await pair(L.port, { computer: 'easy' });
+    a.send({ t: 'chat', text: 'before we start' });
+    ok((await b.next(x => x.t === 'chat', 2000)).text === 'before we start', 'with a computer player at the table, it goes to the other person (in the lobby)');
+    a.send({ t: 'start' }); await a.next(m => m.t === 'state'); await b.next(m => m.t === 'state');
+    await wait(1600); a.send({ t: 'chat', text: 'and in the game' });
+    ok((await b.next(x => x.t === 'chat' && /in the game/.test(x.text), 2000)).text === 'and in the game' && !a.of('say').some(x => /in the game/.test(x.text)), 'and in the game; the computer never replies to it or repeats it');
+    a.close(); b.close();
+  }
+
   /* ======================================================================== */
   console.log('8. many games at once');
   {
@@ -633,6 +686,129 @@ const structuralLeaks = c => {                                // no real tile of
   }
 
   /* ======================================================================== */
+  console.log('9b. hints are the host\'s choice, for the whole table');
+  {
+    const T = await startServer({});
+    const p0 = await pair(T.port, {});
+    ok(p0.a.last('lobby').settings.allowHints === true && p0.b.last('lobby').settings.allowHints === true, 'by default hints are allowed, and both players are told so');
+    p0.a.send({ t: 'settings', allowHints: false });
+    const la = await p0.a.next(m => m.t === 'lobby' && m.settings.allowHints === false), lb = await p0.b.next(m => m.t === 'lobby' && m.settings.allowHints === false);
+    ok(!!la && !!lb && la.settings.rounds === p0.a.of('lobby')[0].settings.rounds && la.settings.hand === p0.a.of('lobby')[0].settings.hand, 'the host turns them off: both players are told, and nothing else about the game changed');
+    p0.b.send({ t: 'settings', allowHints: true });
+    ok((await p0.b.next(m => m.t === 'error')).code === 'not_allowed' && p0.a.last('lobby').settings.allowHints === false, 'a guest cannot turn them back on');
+    for (const junk of ['maybe', 1, 0, null, {}, [], 'true']) p0.a.send({ t: 'settings', allowHints: junk });
+    p0.a.send({ t: 'settings', rounds: 1 });
+    const lj = await p0.a.next(m => m.t === 'lobby' && m.settings.rounds === 1);
+    ok(lj.settings.allowHints === false, 'anything that is not true or false is ignored (the setting stayed off)');
+    p0.a.send({ t: 'settings', allowHints: true });
+    ok(!!(await p0.a.next(m => m.t === 'lobby' && m.settings.allowHints === true)), 'and the host can turn them on again');
+    p0.a.close(); p0.b.close();
+    const h1 = await host(T.port, 'Ann', { allowHints: false });
+    ok(h1.created.settings.allowHints === false, 'a game can be created with hints off');
+    const g1 = await join(T.port, h1.created.code, 'Ben');
+    ok(g1.joined.settings.allowHints === false, 'and the guest who joins is told');
+    h1.c.send({ t: 'start' }); await h1.c.next(m => m.t === 'state'); const sb = await g1.c.next(m => m.t === 'state' && m.view.awaiting);
+    ok(sb.view.awaiting.kind === 'build' && sb.view.awaiting.canBuild === false && sb.view.awaiting.buildCount === 0, 'with hints off the build prompt does not say how long a train could be built, or offer to build it');
+    g1.c.send({ t: 'i', id: 1, a: 'autoBuild' });
+    const ack = await g1.c.next(m => m.t === 'ack' && m.id === 1);
+    ok(ack.ok === false && !g1.c.of('state').flatMap(m => m.events).some(e => e.e === 'play'), 'and a request to build it anyway (from a changed page) is refused, and nothing is played');
+    const tok = g1.joined.token; g1.c.close();
+    const g2 = await connect(T.port); g2.send({ t: 'resume', code: h1.created.code, token: tok });
+    const rs = await g2.next(m => m.t === 'resumed');
+    ok(rs.settings.allowHints === false, 'a guest who reconnects is told again');
+    h1.c.close(); g2.close();
+    const h2 = await host(T.port, 'Zoe', { allowHints: 'false' });
+    ok(h2.created.settings.allowHints === false, '("false" in text counts as false)'); h2.c.close();
+    const h3 = await host(T.port, 'Yan', { allowHints: 'nonsense' });
+    ok(h3.created.settings.allowHints === true, '(and nonsense counts as the default: allowed)'); h3.c.close();
+    await T.srv.close();
+  }
+
+  console.log('9c. after the last round, nobody waits for the other person to see the final score');
+  {
+    const toRoundEnd = async (c, policy) => {                    // one player's side of a match, up to the round-end dialog
+      let n = 0, minSeq = -1;
+      for (;;) {
+        const m = await c.next(x => x.t === 'state' || x.t === 'ended', 15000);
+        if (!m || m.t === 'ended') return false;
+        if (m.seq <= minSeq) continue;
+        const v = m.view;
+        if (v.modal) return v.modal.type === 'roundEnd';
+        if (!v.awaiting) continue;
+        const id = ++n;
+        c.send(Object.assign({ t: 'i', id }, policy(v)));
+        const ack = await c.next(x => x.t === 'ack' && x.id === id, 4000);
+        if (ack) minSeq = ack.seq;
+      }
+    };
+    const setup = async (seed, rounds) => {
+      const T = await startServer({ softGraceMs: 300, graceMs: 20000, ratePerSecond: 5000, burst: 10000 });        // (a whole game is played: no rate limit)
+      const { a, b } = await pair(T.port, { rounds: rounds || 1, hand: 8 });
+      const code = a.of('lobby')[0].code;
+      a.send({ t: 'start' });
+      const ends = await Promise.all([toRoundEnd(a, policyFor(mulberry32(seed))), toRoundEnd(b, policyFor(mulberry32(seed + 1)))]);
+      return { T, a, b, code, room: () => T.srv.rooms.get(code), ready: ends[0] && ends[1] };
+    };
+    const lastState = c => c.of('state').slice(-1)[0].view;
+    {
+      const g = await setup(11);
+      ok(g.ready, 'a one-round game is played to its round-end dialog on both screens');
+      g.a.send({ t: 'i', id: 900, a: 'ok' });
+      const fa = await g.a.next(m => m.t === 'state' && m.view.modal && m.view.modal.type === 'final', 3000);
+      ok(!!fa && fa.view.over === 'finished', 'Ann presses "See final score" and has the final score at once');
+      await wait(100);
+      ok(lastState(g.b).modal.type === 'roundEnd' && lastState(g.b).over === null, 'while Ben, who has not pressed it, still has the round-end dialog (the game is still his)');
+      ok(fa.view.totals.human === lastState(g.a).totals.human && JSON.stringify(fa.view.totals) === JSON.stringify(lastState(g.a).totals), '(her final score is the real one)');
+      ok(!g.a.of('ended').length && !g.b.of('ended').length && g.room().state === 'playing', 'nothing ends: the game is waiting only for Ben to press his button');
+      g.b.send({ t: 'i', id: 901, a: 'ok' });
+      const fb = await g.b.next(m => m.t === 'state' && m.view.modal && m.view.modal.type === 'final', 3000);
+      ok(!!fb && fb.view.over === 'finished', 'Ben presses it and has his');
+      ok(await until(() => g.room() && g.room().state === 'over' && g.room().over === 'finished', 2000), 'and now the game is finished');
+      g.a.close(); g.b.close(); await g.T.srv.close();
+    }
+    {
+      const g = await setup(12);
+      g.a.send({ t: 'i', id: 900, a: 'ok' });
+      await g.a.next(m => m.t === 'state' && m.view.modal && m.view.modal.type === 'final', 3000);
+      g.a.send({ t: 'leave' });                                         // Ann sees her score and goes back to the menu
+      await wait(300);
+      ok(!g.b.of('ended').length && g.room() && g.room().state === 'playing', 'Ann sees the final score and leaves: the game is NOT ended for Ben');
+      ok(/has gone/.test(JSON.stringify(lastState(g.b).log) + lastState(g.b).banner) && lastState(g.b).modal.type === 'roundEnd', 'Ben is told she has gone, and still has his button');
+      g.b.send({ t: 'i', id: 901, a: 'ok' });
+      const fb = await g.b.next(m => m.t === 'state' && m.view.modal && m.view.modal.type === 'final', 3000);
+      ok(!!fb && fb.view.totals && await until(() => g.room() && g.room().over === 'finished', 2000), 'and he gets his final score, and the game finishes');
+      g.b.close(); await g.T.srv.close();
+    }
+    {
+      const g = await setup(13);
+      g.a.send({ t: 'i', id: 900, a: 'ok' });
+      await g.a.next(m => m.t === 'state' && m.view.modal && m.view.modal.type === 'final', 3000);
+      g.a.close();                                                      // ...or simply closes the page
+      await wait(900);                                                  // (longer than the pause delay)
+      ok(g.room().match.paused === false && !g.b.of('ended').length, 'Ann closes the page after seeing the final score: the game is not paused, and not ended, for Ben');
+      g.b.send({ t: 'i', id: 901, a: 'ok' });
+      ok(!!(await g.b.next(m => m.t === 'state' && m.view.modal && m.view.modal.type === 'final', 3000)), 'Ben gets his final score');
+      g.b.close(); await g.T.srv.close();
+    }
+    {
+      const g = await setup(14);                                         // control: leaving BEFORE pressing the button still ends the game
+      g.a.send({ t: 'leave' });
+      const e = await g.b.next(m => m.t === 'ended', 3000);
+      ok(!!e && e.reason === 'left', 'someone who leaves before pressing the button still ends the game for the other player, as before');
+      g.b.close(); await g.T.srv.close();
+    }
+    {
+      const g = await setup(15, 4);                                      // control: between rounds the next round needs both, so leaving still ends the game
+      ok(g.ready && lastState(g.a).modal.last === false, '(a four-round game, at the end of its first round)');
+      g.a.send({ t: 'i', id: 900, a: 'ok' }); await wait(200);
+      ok(lastState(g.a).modal === null, 'between rounds, pressing the button means waiting for the other person (no final score yet)');
+      g.a.send({ t: 'leave' });
+      const e = await g.b.next(m => m.t === 'ended', 3000);
+      ok(!!e && e.reason === 'left', 'and leaving then still ends the game for the other player: the next round cannot be played without them');
+      g.b.close(); await g.T.srv.close();
+    }
+  }
+
   console.log('10. the command line');
   {
     const run = (args, ms) => new Promise(res => {

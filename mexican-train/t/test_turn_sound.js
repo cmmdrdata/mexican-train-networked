@@ -147,6 +147,18 @@ console.log('3. when it plays: once per turn, not once per prompt');
   send(p, view({ round: 1, awaiting: null }), [play('opp2')]);
   send(p, view({ round: 1, awaiting: move }), []);
   ok(p.calls.turn === before2 + 1, 'a turn that follows only the second opponent\'s move (events from "opp2") still gets its sound');
+  // The last person to finish building also has the first turn, and their final building move arrives in the SAME message
+  // that says the opening is over. That move is part of the opening, not "your last move": the first turn still sounds.
+  const before3 = p.calls.turn;
+  const buildingGame = () => Object.assign(view().game, { opening: { human: { finished: false, drew: false, lastDrew: null }, cpu: { finished: true, drew: false, lastDrew: null } } });
+  send(p, view({ round: 2, awaiting: build, game: buildingGame() }), []);
+  ok(p.calls.turn === before3, '(while you are still building: no sound)');
+  send(p, view({ round: 2, awaiting: move }), [Object.assign(play('me', 'human'), { hidden: false })]);
+  ok(p.calls.turn === before3 + 1, 'your last building move arriving in the same message as the first turn does not cancel the first turn\'s sound');
+  send(p, view({ round: 2, awaiting: null }), [play('me')]);
+  send(p, view({ round: 2, awaiting: null }), [play('opp')]);
+  send(p, view({ round: 2, awaiting: move }), []);
+  ok(p.calls.turn === before3 + 2, '(and after that, turns go on as usual)');
 
   p = await start(true);
   send(p, view({ awaiting: move }), []);

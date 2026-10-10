@@ -412,3 +412,24 @@ select option { color: #1b2523; background: #fff; }
 
 /* The Lord of the Rings theme: the open-train marker is a golden ring with a soft glow. */
 .toy-train.ring svg { filter: drop-shadow(0 0 3px rgba(255, 200, 70, 0.75)) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35)); }
+
+/* the connection log shown by ?debug=1 */
+.net-debug { position: fixed; left: 8px; bottom: 8px; z-index: 60; max-width: min(560px, 96vw); max-height: 40vh; overflow: auto; padding: 8px 10px; border-radius: 10px;
+  background: rgba(0, 0, 0, 0.85); color: #d6f5e6; font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace; }
+.net-debug pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; font: inherit; }
+.net-debug .btn { padding: 2px 8px; font-size: 11px; }
+
+/* The box where a person types to the other person: made once, outside the redrawn page, and only shown or hidden. At the top of the
+   screen, where a phone's keyboard never covers it. */
+.say-dock {
+  position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 15;
+  width: min(580px, calc(100vw - 16px)); box-sizing: border-box; padding: 10px;
+  background: rgba(10, 40, 34, 0.98); border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.say-dock[hidden] { display: none; }
+.say-dock .say-form, .say-panel .say-form { display: flex; gap: 8px; align-items: center; }
+.say-dock input, .say-panel input { flex: 1 1 auto; min-width: 0; box-sizing: border-box; padding: 9px 11px; font: inherit; font-size: 16px; color: #1b2523; background: #f6f0e0; border: 1px solid rgba(0, 0, 0, 0.35); border-radius: 8px; }
+.say-dock .say-quick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.say-dock .say-quick .btn { padding: 5px 11px; font-size: 0.85rem; }
+.say-panel .say-form { flex-basis: 100%; margin-bottom: 6px; }
+.you-said.not-sent { color: #f2c06b; font-style: italic; }
