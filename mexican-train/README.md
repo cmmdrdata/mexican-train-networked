@@ -1,6 +1,6 @@
 # Mexican Train
 
-A single-file, browser-based **Mexican Train** domino game (double-12 set) for one player against a computer opponent, with three skill levels, a talkative opponent, and a lot of polish on how it looks and sounds.
+A single-file, browser-based **Mexican Train** domino game (double-12 set) for one player against a computer opponent, with four skill levels, a talkative opponent, and a lot of polish on how it looks and sounds.
 
 - **One file, no dependencies.** The whole game is a self-contained HTML page (about 160 KB) with no libraries, no fonts, no images, no audio files and no network requests. Tile art is inline SVG and the tile click is synthesized with Web Audio.
 - **Plays offline.** Open `mexican-train.html` in a modern browser. That's it.
@@ -78,7 +78,7 @@ Play one tile that matches the number a train needs onto one of:
 - the **Mexican train**, or
 - the **computer's train, but only if it has a toy train marker on it**.
 
-Each train has its own row. A player's row shows the name and, when the train is open, "Open: ... can play here"; it does not say which number it needs (that is the number on the train's last tile). Only the shared **Mexican train** row also says which number it needs.
+Each train has its own row. A row shows the train's name and, when the train is open, "Open: ... can play here". It does not say which number the train needs: that is the number on its last tile.
 
 **Nothing fits?** Draw one tile. If it fits, play it. If not, you **pass** and a **marker (a little toy train in your color) goes on your train**, which lets your opponent play there until you next play on it yourself.
 
@@ -146,24 +146,29 @@ Open **New game** to choose these. They are saved between visits.
 
 Choose **Two computer players** and you play against two computers at once, three at the table, each with **its own skill**: an Easy and a Hard one, say, or two of the same. They get different names from the lists for their own skill, play at their own skill (an Easy computer builds short trains, a Hard one long ones), and the header says which is which ("Computers: Easy and Hard"). The turns go round the table and who plays first rotates every round; a marker on a train lets *both* of the others play there; and the usual tie rules apply (two players who go out together tie, a blocked round goes to the lowest hand, and the final can be "A tie between ..."). Their comments are spoken by one computer at a time, in its own voice: during one long wait the same computer does all the "you are taking too long" jabs, getting ruder.
 
-### Three skill levels
+### Four skill levels
 
 | Level | How it plays |
 |---|---|
 | **Easy** | Plays a random legal move a good share of the time and builds short opening trains (about 2 tiles on average). |
 | **Medium** | A sensible heuristic: heavy tiles first, prefers its own train, covers doubles it can follow up, and builds the longest possible opening train. |
-| **Hard** | Medium plus true pip counting (0-0 costs 50) and a **lookahead** that keeps long chains buildable. |
+| **Hard** | Medium plus true pip counting (0-0 costs 50), a **lookahead** that keeps long chains buildable, and **a rule against leaving you a play**: it estimates the chance that the other player holds a tile for each end they could play on after its move, and avoids moves that leave them one. It reads the table the way anyone could: the tiles on the trains and in its own hand tell it which numbers are finished, and when a player has had to pass, everybody knows they hold no tile for the ends they could have played on (until they draw again). |
+| **Expert** | Hard, and it also **thinks several moves ahead**: it takes its five best-looking moves, guesses 16 times at what the other player and the boneyard hold (always consistent with the tiles it can see and with what passes have shown), plays each move out to the end of the round with Hard on every side, and chooses the move that works out best on average. It does this when it plays **one other player**; at a table of three (two computers, or a hosted game with a computer) it plays like Hard, because the look-ahead was measured to help only against one opponent. A decision takes about 20 milliseconds. |
 
-Measured over 1,400 rounds each, with every deal played twice with the seats swapped:
+Measured with the real engine, every deal played twice with the seats swapped (`t/sim_levels.js` runs the full study; `t/test_expert_strength.js` checks the main results):
 
-| Matchup | Round wins |
+| Matchup | Result |
 |---|---|
-| Hard vs Medium | 54.7% to 44.0% |
+| Hard (before the new rule) vs Medium | 54.7% to 44.0% of rounds (1,400 rounds) |
+| **New Hard vs old Hard**, two players, 15 / 12 / 8 tiles | 51.6 / 51.0 / 51.1% to 47.6 / 48.4 / 48.4% (16,000 rounds each), about 2 pips fewer left per round |
+| New Hard vs old Hard at a three-player table | 34.2% of the rounds against a fair share of 33.3% (15,000 rounds) |
+| **Expert vs new Hard**, two players | 53.5% to 46.3% (1,040 rounds); 53.7% to 45.8% in the repeat in the test suite |
+| Expert at a three-player table | no better than Hard (30.6% and 33.1% of the rounds in two tries, against a fair 33.3%), so it plays as Hard there |
 | Medium vs Easy | 60.6% to 38.3% |
-| Hard vs Easy | 67.2% to 31.9% |
+| Hard (before the new rule) vs Easy | 67.2% to 31.9% |
 | Easy vs a purely random player | 56.6% to 42.3% |
 
-(Hard's edge is real but modest: the game has a lot of luck. Ideas that were tried and made no measurable difference include counting unseen tiles and avoiding awkward shared-train ends.)
+(The game has a lot of luck, so each step up is real but modest. The new rule helps almost entirely when the other player's own train is marked: they have been unable to play, and leaving them an end they can use hands them a way out. The rule was first tuned on one batch of deals; the figures above are from fresh deals. Hard's comments about a human's moves still rate them with the plain evaluation, so Hard itself is rated "poor" a little more often than before.)
 
 ### Pacing like a person
 
@@ -171,8 +176,8 @@ Every tile the computer places waits a random **0.5 to 4 seconds**. The exceptio
 
 ### Names, tags and voices
 
-- There are **48 computer players, 16 per level**. Each name always plays at one level, and the level is shown as a colored tag next to the name. The name is drawn from the pool for the level you chose.
-- **Each level has its own voice.** Easy is a flustered beginner, Medium is sassy, and Hard is smug and exact. Each has its own full set of lines (no line is shared).
+- There are **48 computer players**: 16 Easy, 16 Medium, 8 Hard and 8 Expert (the old 16 Hard names are shared out between the last two: Ingrid, Dmitri, Arjun, Kwame, Tariq, Elsa, Diego and Stefan stay Hard; Chiara, Amara, Leon, Odile, Rafael, Kenji, Selam and Paloma are the Experts). Each name always plays at one level, and the level is shown as a colored tag next to the name. The name is drawn from the pool for the level you chose.
+- **Each level has its own voice.** Easy is a flustered beginner, Medium is sassy, and Hard is smug and exact; the Expert talks like Hard. Easy, Medium and Hard each have their own full set of lines (no line is shared).
 
 ### It talks about your play
 
@@ -191,7 +196,7 @@ Every tile the computer places waits a random **0.5 to 4 seconds**. The exceptio
 
 The **Theme** setting swaps the classic computer players for a cast of characters. There is one so far, **The Lord of the Rings**:
 
-- **14 characters, each at a fixed level.** Easy: Pippin, Merry, Gollum, Treebeard. Medium: Frodo, Sam, Gimli, Legolas, Boromir. Hard: Gandalf, Aragorn, Galadriel, Elrond, Saruman. They play exactly like any other computer player of their level; only who they are changes.
+- **14 characters, each at a fixed level.** Easy: Pippin, Merry, Gollum, Treebeard. Medium: Frodo, Sam, Gimli, Legolas, Boromir. Hard: Aragorn, Elrond. Expert: Gandalf, Galadriel, Saruman. (Two computers can sit at one table, so two characters per level is the least that works.) They play exactly like any other computer player of their level; only who they are changes.
 - **Each character has their own voice**, with a full set of lines for every kind of comment (448 lines in all): Gollum hisses about tricksy moves, Treebeard thinks everything is hasty, Gimli swears by his beard, Saruman is smug about your mistakes. The lines are original, written in each character's spirit rather than quoted from the books or films.
 - **They get hungry for their own food** while you dither: Sam for rabbit stew, Gollum for raw fish, Treebeard for Ent-draught.
 - **An open train is marked with a golden ring** instead of a toy train, and the header says *Double-12 in Middle-earth*.
@@ -221,6 +226,7 @@ Between rounds, each person presses the button on the round-end dialog and the n
 node server.js                  # listen on port 8080, on every network interface
 node server.js --port 3000      # another port
 node server.js --local-only     # only this computer may connect (for trying it out)
+node server.js --no-public-ip   # never ask an internet service what this computer's public address is
 node server.js --help
 ```
 
@@ -231,21 +237,31 @@ The server prints the address to open, for example:
   The other player opens the same address to join.
 ```
 
-That is this computer's address on your network, never `localhost` (home and office addresses, 192.168.x.x, 10.x.x.x or 172.16-31.x.x, are preferred when there are several; the others are listed under it). Open it in your own browser, press **Host online game**, and pick the game length. The Host screen shows the same address in a **read-only field**: the server tells the page what it is (through `/info`), the page uses that and nothing typed in, and if the page was not opened from the game server it says so and offers no Create button. A server started with `--local-only` has no network address and shows `127.0.0.1`. You get a **join code** like `K7Q-F2M`. Give the guest the address (the lobby lists every address the server found) and the code. When they have joined, press **Start game**.
+That is this computer's address on your network, never `localhost` (home and office addresses, 192.168.x.x, 10.x.x.x or 172.16-31.x.x, are preferred when there are several; the others are listed under it). Open it in your own browser, press **Host online game**, and pick the game length. The Host screen offers it as the first of **three ways for the other player to join** (below). The server tells the page what it is (through `/info`), the page connects with that and nothing typed in, and if the page was not opened from the game server it says so and offers no Create button. A server started with `--local-only` has no network address and shows `127.0.0.1`. You get a **join code** like `K7Q-F2M`. Give the guest the address (the lobby lists every address the server found) and the code. When they have joined, press **Start game**.
 
-**A computer player.** When the host creates the game, they can add a computer as a **third player** (on the Host screen: the first choice is **None**, then Easy, Medium or Hard) (the same players and skill as in the game against the computer). All three are at the table from the start, and each person sees the other person and the computer as two opponents, each with a row of face-down tiles and a train. The computer runs on the server, so the server must stay up for the whole game; it thinks for the same human-like pause as in the single-player game and plays a tile that covers an open double at once.
+**A computer player.** When the host creates the game, they can add a computer as a **third player** (on the Host screen: the first choice is **None**, then Easy, Medium, Hard or Expert; at a table of three the Expert plays like Hard) (the same players and skill as in the game against the computer). All three are at the table from the start, and each person sees the other person and the computer as two opponents, each with a row of face-down tiles and a train. The computer runs on the server, so the server must stay up for the whole game; it thinks for the same human-like pause as in the single-player game and plays a tile that covers an open double at once.
 
 **The rules with three players** are the usual ones. Everyone has a train of their own and there is the shared Mexican train; a marker on someone's train lets *both* of the others play on it. The turns go round the table, and who starts changes every round. All three build their opening trains at the same time. An open double must be covered by whoever is next able to, and the players who cannot pass and get a marker. A double as someone's last tile cannot go out: if it is then covered, its owner has gone out, and if the player who covers it also plays their last tile, those two tie (as do any players who are out together in the opening). A blocked round goes to the lowest hand; if two or three share the lowest, nobody wins it. Lowest total wins the game, and a shared lowest is "A tie between ...".
 
 **There is nothing to fill in after Create game.** Everything is chosen on the Host screen (game length, tiles each, computer player, theme, whether hints are allowed). The lobby that follows has no inputs: it shows the join code, the QR code and link, who has joined, a one-line summary of how the game was set up, **Leave**, and **Start game** (which waits for the other player). The join code is only shown there; once the game starts, the header just says "Online game".
 
-The lobby also shows a **QR code** for the join link, for example `http://192.168.1.23:8080/?join=K7QF2M`, with a **Copy link** button under it. A phone on the same network can scan it and lands on the Join screen with the server address and the code already filled in, so it only has to type a name and tap Join. If the computer has more than one network address (Wi-Fi and a VPN, say), each one gets a **Show QR** button and the QR code shows one at a time. The QR code carries the computer's *local network* address; for a game over the internet, give the guest the same link with your public address and forwarded port instead (`http://PUBLIC-ADDRESS:PORT/?join=CODE`). The server does not look up its public address yet. **Copy link** works even though the game is served over plain `http` on the local network, where browsers do not provide the clipboard API: it selects the link in a hidden box and copies that, falls back to the clipboard API if that fails, and if nothing can copy it says "Not copied: select the link above and copy it" instead of doing nothing. (The join code is shown large beside it; there is no separate Copy code button.)
+The lobby also shows a **QR code** for the join link, for example `http://192.168.1.23:8080/?join=K7QF2M`, with a **Copy link** button under it. A phone on the same network can scan it and lands on the Join screen with the server address and the code already filled in, so it only has to type a name and tap Join. If the computer has more than one network address (Wi-Fi and a VPN, say), each one gets a **Show QR** button and the QR code shows one at a time. The QR code and link use the way to join the host chose on the Host screen (below); the other addresses are listed with their own **Show QR** buttons, each marked *on this network*, *over the internet* or *typed by you*. **Copy link** works even though the game is served over plain `http` on the local network, where browsers do not provide the clipboard API: it selects the link in a hidden box and copies that, falls back to the clipboard API if that fails, and if nothing can copy it says "Not copied: select the link above and copy it" instead of doing nothing. (The join code is shown large beside it; there is no separate Copy code button.)
 
 **"Listening on the whole network"** means the server accepts connections on every network interface the computer has (Wi-Fi, Ethernet, VPN), not only from the same machine, so another computer can connect to `your-ip:8080`. That is the default, because the point is to let someone else join. `--local-only` restricts it to the host machine. Your operating system's firewall may ask whether to allow Node.js: allow it on private networks.
 
 ### Joining
 
 Either scan the host's QR code (or open the link it contains), which fills in everything but your name; or open the host's address in a browser (`http://192.168.1.23:8080`), press **Join online game** and enter the code; or open any saved copy of `mexican-train.html`, press **Join online game**, and type the address as well as the code. The address may be written as `192.168.1.23:8080`, `192.168.1.23` (port 8080 is assumed) or pasted as a full `http://...` link.
+
+### How the other player joins: this network, the internet, or an address you type
+
+The Host screen asks **How will the other player join?** and offers three choices:
+
+- **On this network:** the server's local address (as above). For players on the same Wi-Fi or network. This is the default.
+- **Over the internet:** this computer's **public address** with the server's port, for players on other networks. The server finds it by asking a public "what is my address" service (`api.ipify.org`, then `checkip.amazonaws.com`, then `icanhazip.com`: the first that answers). Until the answer arrives (a few seconds) the choice says it is looking and cannot be picked; if nothing answers (no internet, or the lookup is blocked) it says so and stays unavailable. The answer is accepted only if it is a plain public IPv4 address (not a private, loopback, link-local, carrier-grade-NAT, multicast or reserved one, and nothing else in the reply), and the reply is limited to a few bytes and a time limit. **Your router must forward that port to this computer** for it to work, and it will not work behind carrier-grade NAT (some mobile and cable providers): the server cannot check that the address is reachable from outside, it only reports what the service saw.
+- **Type an address:** an IP address (or a name) and a port, such as `203.0.113.9:8080`, for a router that forwards a *different* port to this computer, or a name you have for it. With no port typed, the server's own port is used. An entry that is not an address is refused, with the reason, and what was typed stays on the screen.
+
+Whatever is chosen decides which address the lobby shows first (QR code, link and Copy link); the other addresses are listed under it. **The lookup contacts a third party and tells it this computer's public address** (that is what such a service is for), so it is done only when the Host screen is opened, never when the server starts or while a game is running, remembered for ten minutes (a failure for thirty seconds, so it cannot be made to ask over and over), and it can be switched off for good with `node server.js --no-public-ip`: the internet choice then says it is not offered, and typing an address still works. When the public address turns up while the host is already typing a name or an address, only that one choice changes: nothing typed is touched.
 
 ### Over the internet
 
@@ -360,6 +376,7 @@ All of these can be changed when starting the server in code (`createGameServer(
 ├── online-match.js        a two-human match run on the server with the real engine, and each player's view
 ├── mexican-train.js       the separate, older terminal version (see below)
 ├── game_v4_rule.js        a frozen reference engine used by test_levels
+├── t/sim_levels.js        the strength study: `node t/sim_levels.js <tested> <baseline> <deals> <hand> <2|3 players>`, with oldhard, normal, hard, expert
 ├── .gitignore
 └── t/                     the tests
     ├── test_*.js          the test suites (see below)
@@ -385,7 +402,7 @@ Nothing is minified or bundled, so the built file is readable.
 |---|---|
 | **Engine** | Pure game rules: tiles, deals, legal moves, turns, doubles and markers, blocked-round detection, scoring. No UI. |
 | **The opening** | The simultaneous opening phase, the exact longest-train search, and the computer's opening play. |
-| **Skill levels** | The Easy, Medium and Hard move choosers, and the move-rating function used for comments. |
+| **Skill levels** | The Easy, Medium, Hard and Expert move choosers (including what a pass reveals, the reading of unseen tiles, and the Expert's look-ahead), and the move-rating function used for comments. |
 | **Sound** | The click synthesis (plain maths on an array) and the Web Audio player. |
 | **Tile art** | One inline SVG per tile, in pips or numbers style. |
 | **Motion** | Flying-tile animation, drag-to-play and hand rearranging. |
@@ -421,8 +438,11 @@ for f in test_*.js; do node "$f" || echo "FAILED: $f"; done    # each suite exit
 | `test_rules` | Core rules, including the last-tile-double rule and ties | 61 |
 | `test_sim` | 5,200 simulated rounds (CPU vs CPU, random vs CPU, random vs random) with board invariants checked on every move, and every outcome of the double rule exercised | all invariants |
 | `test_open` | The opening phase against a brute-force oracle, 1,500 computer rounds and 1,200 random-agent openings | ~10,850 |
-| `test_levels` | Skill levels: Medium is move-for-move identical to the original; every pairing plays legally; strength ordering | ~70,700 |
-| `test_ui` | The whole interface by playing complete matches through the actions | ~80,400 |
+| `test_levels` | Skill levels: Medium is move-for-move identical to the original; every pairing of the four levels plays legally; strength ordering | ~82,500 |
+| `test_expert` | The new Hard rule and the Expert: what a pass tells everyone is always true (500 rounds, two and three players); the tiles nobody can see always add up; the chance of holding a tile checked against counting every possible hand; a dead end changes Hard's choice and so does what a pass showed; the Expert returns a legal move, leaves the real game untouched, uses one random number of the game's, is repeatable, plays as Hard at a table of three, and its guesses honour what passes showed; the fourth level in the pools, names, tags and comments | 40 |
+| `test_expert_strength` | The new Hard beats the old Hard (15 and 8 tiles, 5,000 rounds each) and the Expert beats Hard (760 rounds); slow, about two minutes | 3 |
+| `test_browser_expert.py` | Real Chromium: the four levels in the setup dialog, an Expert decision measured inside the browser (typically well under 80 ms), a whole round played against an Expert, its tag, and the themed Experts and Hard characters (`quick` runs everything but the round, `round` only the round) | 10 + 10 |
+| `test_ui` | The whole interface by playing complete matches through the actions | 75,687 |
 | `test_boot` | The real built page, run in a sandbox with a fake DOM and audio | 54 |
 | `test_fx` | Flying-tile and draw animations, hand dragging, scroll behavior | ~7,100 |
 | `test_drag_play` | Dragging a tile onto a train, the no-pause double cover, the fixed boneyard | 53 |
@@ -432,7 +452,7 @@ for f in test_*.js; do node "$f" || echo "FAILED: $f"; done    # each suite exit
 | `test_cpu_cover` | The computer's no-delay cover, compared with the previous build | 18 |
 | `test_first_turn_win` | Using every tile on your first train, played through the game from a rigged deal | 54 |
 | `test_sound` | The synthesized click as numbers (spectrum, timing, two contacts), against the old sound | 43 |
-| `test_chat` | Move rating, thresholds, comment timing, per-level voices, the Comments toggle | ~120 |
+| `test_chat` | Move rating, thresholds, comment timing, per-level voices, the Comments toggle | 127 |
 | `test_native` | Every native-language line is in the right script and translated | ~140 |
 | `test_food` | Every player's home country, dishes and hunger remarks | ~200 |
 | `test_spelling` | Everything a player can read uses American spelling | 6 |
@@ -448,10 +468,10 @@ for f in test_*.js; do node "$f" || echo "FAILED: $f"; done    # each suite exit
 | `test_two_computers` | One person against two computers: the setup form (and the real page's form), names and skills, whole games of up to 13 rounds with every screen inspected, that each computer really plays at its own skill in either seat (Easy and Hard build very different opening trains), the narration naming the right computer, the commentary speakers, the toy train colors | 43 |
 | `test_bubble_flash` | A speech bubble fades in once, when it first appears, and not again each time the page is redrawn for a move (the computer's comments and online chat); not at all behind an open dialog; the stylesheet and the real browser's measured opacity and running animations | 22 |
 | `test_dim_spacing` | The hand is dimmed on every screen where it is not your turn (against the computer and online) and not on your turn; the end-of-train padding is two dominoes | 12 |
-| `test_browser.py` | The real page in real Chromium (Playwright) against the real server: measured opacity of the hand, measured empty space after each train's last tile (wide and phone-sized screens), the host address field (an IP, read-only, cannot be edited), the QR code as the browser really draws it decoded by OpenCV, layout of the three-player table, and whole games between two and three real browser pages with no JavaScript errors. Skipped if Playwright is not installed; saves screenshots | 95 |
+| `test_browser.py` | The real page in real Chromium (Playwright) against the real server: measured opacity of the hand, measured empty space after each train's last tile (wide and phone-sized screens), the host address field (an IP, read-only, cannot be edited), the QR code as the browser really draws it decoded by OpenCV, layout of the three-player table, and whole games between two and three real browser pages with no JavaScript errors. Skipped if Playwright is not installed; saves screenshots | 93 |
 | `test_qr` | The QR generator: a published Reed-Solomon example, the standard's block tables and format and version strings, and 52 codes across all ten versions read back by an independent decoder (OpenCV, skipped if python3 with OpenCV is not installed) | 35 |
 | `test_join_link` | The real built page opened from a scanned link (`?join=`), the Host screen's address, the lobby's QR code and Copy link button, several network addresses, and the lobby's QR decoded back to its link | 45 |
-| `test_theme` | The Lord of the Rings theme: the cast and their levels, every character's full set of lines (mild, American spelling, none shared, placeholders right), their food, picking names and lines, the golden ring, whole games where every speech bubble is checked against the speaker's own lines and every open train wears the ring, the classic game unchanged, the setup form | 70 |
+| `test_theme` | The Lord of the Rings theme: the cast and their levels, every character's full set of lines (mild, American spelling, none shared, placeholders right), their food, picking names and lines, the golden ring, whole games where every speech bubble is checked against the speaker's own lines and every open train wears the ring, the classic game unchanged, the setup form | 71 |
 | `test_connection` | The server's handling of connections: any traffic counts as proof of life, real silence is dropped, a stalled server blames nobody, the soft grace (a drop that mends itself is invisible; a longer one pauses and announces; coming back unpauses; never coming back ends the game), every drop explained in the log, the page's account sanitized, `/netstats`, the health line | 37 |
 | `test_connection_client` | The page's side: any message counts, quiet connections are pinged, 30 s of silence ends one (saying why), the quick first retry and back-off, a suspended page is not held against the server, waking up checks at once, the account sent on reconnecting, the event log (console, reconnect screen, `?debug=1` panel) | 40 |
 | `test_browser_connection.py` | Real Chromium and the real server: a guest's connection is cut mid-game; what the other player sees (run with `--original` against older code to compare) | 6 |
@@ -460,8 +480,11 @@ for f in test_*.js; do node "$f" || echo "FAILED: $f"; done    # each suite exit
 | `test_browser_say.py` | Real Chromium, two people: the text box is the very same element with the same text, cursor and focus after the page is redrawn many times; Enter sends, Escape closes and keeps the draft, a quick phrase works, hostile text is only text, a second message straight away is refused with a message, a dialog hides it, it fits a 390-pixel phone | 24 |
 | `test_browser_hints.py` | Real Chromium, two people: the host's Allow hints setting reaches the guest (Host screen, the lobbies, the game), the guest's own Show hints button, nothing highlighted or offered with hints off, and Build my longest train finishing the opening by itself, seen by the other player | 19 |
 | `test_browser_final.py` | Real Chromium, two people, a one-round game played to the end: the host presses "See final score" and has the final score at once (not waiting for the guest), the guest still has their own dialog, the host goes back to the menu and the guest's game is not ended, is told Ann has gone, and gets the final score too | 8 |
-| `test_browser_cleanup.py` | Real Chromium, two people: the Host screen's first computer choice is just "None"; after Create game neither lobby has any inputs; in the game the players' rows have no "Needs N" (the Mexican train's still does, exactly once on the whole screen); and the join code is on neither screen in any of 18 samples (start, the Rules dialog, the Leave question, during play, round end, final score) | 14 |
-| `test_cleanup` | The screen clean-ups: no "Needs N" on any player's row (one and two computers, while building and after, and in a hosted game) but still on the Mexican train; an open train still says it is open; "None" as the first computer choice; no inputs in the lobby after Create game, with the join code, Copy link, Leave and Start still there; no join code in a hosted game's header | 19 |
+| `test_publicip` | The server finding its public address (`/publicip`) against small local "services" so the real request code runs: which addresses count as public (private, loopback, link-local, carrier-grade NAT, multicast, reserved and malformed ones do not), a good answer, eleven kinds of untrusted answer (HTML, empty, private, IPv6, two addresses, text around the address, error statuses, a redirect), a reply that is too long, one service failing and the next being tried, a service that never answers, remembered answers and one question at a time (twelve at once are one), a failing service not asked every time, recovery, nothing asked unless the Host screen asks, `--no-public-ip` and `--local-only`, and `--help` | 39 |
+| `test_join_choices` | The Host screen's three ways to join, on the page: what a typed address may be (valid and invalid forms), the states while looking up, found, not found, switched off, failing, junk and very late answers, the form not being redrawn when the public address arrives, remembering the choice, creating with each choice, the lobby's order, QR code, link and notes, errors that keep what was typed, nothing injected | 104 |
+| `test_browser_join.py` | Real Chromium: a name and a half-typed address surviving the public address arriving mid-typing (same text, still in the box), the keyboard skipping a choice that cannot be made, the lobby for the internet and for a typed address, Show QR changing the link and the QR code, refusing a bad address with what was typed kept, a guest joining through the link, the lookup failing; the lookup is faked, so nothing contacts the internet | 23 |
+| `test_browser_cleanup.py` | Real Chromium, two people: the Host screen's first computer choice is just "None"; after Create game neither lobby has any inputs; in the game no row says "Needs N" (the word is nowhere on the screen); and the join code is on neither screen in any of 18 samples (start, the Rules dialog, the Leave question, during play, round end, final score) | 14 |
+| `test_cleanup` | The screen clean-ups: no "Needs N" on any train's row, the Mexican train included (one and two computers, while building and after, and in a hosted game); an open train still says it is open; "None" as the first computer choice; no inputs in the lobby after Create game, with the join code, Copy link, Leave and Start still there; no join code in a hosted game's header | 19 |
 | `test_markers` | Where the marker goes: after every turn of 1,500 rounds (two and three players, the boneyard empty or nearly empty) a pass puts it on the passing player's own train and changes nothing else, and playing on your own train takes it off; hand-made cases (a player who must draw the last tile and still cannot play, nothing to draw so a pass at once, a drawn tile that fits); the simultaneous opening where several players want the last tile; and, in 100 hosted matches, every person's own screen after every pass | 20 |
 | `test_browser_copy.py` | Real Chromium: on a plain-http network address (no clipboard API) Copy link copies the link (read back from the real clipboard), says "Copied", leaves nothing behind; the same on localhost; no Copy code button | 9 |
 | `test_online_talk_more` | The hosted computer's talk, rule by rule and end to end: when it may speak (a beat after a move, a 7-second cooldown that is each person's own, the kinds that always get through, never to the computer's seat, nothing left on the clock when the match ends); the page receiving a comment (escaped, a real language with a translation, never an inherited property such as `constructor`, cut to 160 characters, empty or non-text ignored, fades in once, the Comments switch); and through the real server with a clock the test controls, in both the Lord of the Rings and classic themes, including a player dropping and returning mid-wait and a paused game | 54 |
@@ -514,7 +537,7 @@ These are discussed, **not implemented**:
 
 - **Encrypted connections** (HTTPS and `wss://`) for playing over the open internet, which would need a certificate or a tunnel in front of the server.
 - **More than three players**, or two people sharing a screen. (Three at the table is done, as two people and a computer, online.)
-- **Online play over the internet without port forwarding.** (The server does not look up its public address.)
+- **Online play over the internet without port forwarding.** (The server can look up its public address, but cannot open the port or check that it is reachable from outside.)
 - **The computer commenting online**, as it does in the game against the computer.
 
 ---

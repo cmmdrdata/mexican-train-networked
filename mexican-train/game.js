@@ -117,6 +117,19 @@
     return tile;
   }
 
+  /* WHAT EVERYONE AT THE TABLE CAN KNOW ABOUT A PLAYER'S HAND. A player who has to pass has shown that, after drawing, they hold no tile
+   * for any end they could play on. That stays true until they draw again (a tile they play from the hand they have cannot make it
+   * false). game.noMatch[id] = the numbers they could not match then, or null/undefined when that is not known. Only public events
+   * (a draw, a pass) feed it, and the computer players use it like anyone could. */
+  function endsOpenTo(game, p) {
+    if (game.openDouble) return [game.trains[game.openDouble.trainId].end];
+    const ends = [game.trains[p.id].end, game.trains.mexican.end];
+    for (const o of game.players) if (o !== p && game.trains[o.id].marker) ends.push(game.trains[o.id].end);
+    return ends;
+  }
+  function noteDraw(game, p) { (game.noMatch || (game.noMatch = {}))[p.id] = null; }
+  function notePass(game, p) { (game.noMatch || (game.noMatch = {}))[p.id] = endsOpenTo(game, p); }
+
   /* One normal turn: a tile (plus the forced follow-up after a double). */
   async function playTurn(game, player, controller, ui) {
     for (;;) {
@@ -128,10 +141,12 @@
           await ui.onNeedDraw(game, player);
           drew = game.boneyard.pop();
           player.hand.push(drew);
+          noteDraw(game, player);
           await ui.onDraw(game, player, drew);
           moves = legalMoves(game, player);
         }
         if (moves.length === 0) {
+          notePass(game, player);
           game.trains[player.id].marker = true;
           await ui.onPass(game, player);
           return;
@@ -217,6 +232,7 @@
       } else if (action && action.type === 'draw' && canDraw) {
         const tile = game.boneyard.pop();
         player.hand.push(tile);
+        noteDraw(game, player);
         st.drew = true;
         st.lastDrew = tile;
         if (ui.onBuildDraw) await ui.onBuildDraw(game, player, tile);
@@ -284,17 +300,21 @@
    *           buildable. Beats Normal ~55% of rounds and leaves ~4 fewer pips in hand.
    *   Easy  = a random legal move 70% of the time, and a casual opening. Normal beats it ~63%.
    * (Counting unseen tiles and other opening values were tried and made no measurable difference.) */
-  const LEVELS = ['easy', 'normal', 'hard'];
-  const LEVEL_LABEL = { easy: 'Easy', normal: 'Medium', hard: 'Hard' };   // the key stays 'normal' so saved settings keep working
+  const LEVELS = ['easy', 'normal', 'hard', 'expert'];
+  const LEVEL_LABEL = { easy: 'Easy', normal: 'Medium', hard: 'Hard', expert: 'Expert' };   // the key stays 'normal' so saved settings keep working
   const EASY_RANDOM = 0.7;       // chance Easy just plays a random legal move
   const EASY_STOP = 0.35;        // chance Easy stops building after each tile of its opening
   const HARD_LOOKAHEAD = 12;     // Hard: bonus per tile of the longest chain still buildable afterwards
+  const DENIAL_WEIGHT = 150;     // Hard and Expert: cost of a move for each whole chance that it leaves the other player a tile to play
+  const EXPERT_SAMPLES = 16;     // Expert: how many guesses at the other players' hidden tiles it plays each candidate move out against
+  const EXPERT_CANDIDATES = 5;   // ...and how many of its best-looking moves it plays out
 
   // The computer player's normal-turn heuristic: dump heavy tiles, only play a double it
   // can follow up, keep its own train extendable, and take its own marker off when it can.
   function cpuChoose(game, player, moves, level) {
     if (level === 'easy' && game.rng() < EASY_RANDOM) return moves[Math.floor(game.rng() * moves.length)];
-    const hard = level === 'hard';
+    const hard = level === 'hard' || level === 'expert';
+    const denial = hard ? denialContext(game, player) : null;
     let best = null, bestScore = -Infinity;
     for (const m of moves) {
       const rest = player.hand.filter(t => !sameTile(t, m.tile));
@@ -310,10 +330,143 @@
       }
       score += 2 * rest.filter(t => t[0] === m.newEnd || t[1] === m.newEnd).length;
       if (hard) score += HARD_LOOKAHEAD * longestChain(rest, m.newEnd, isDouble(m.tile)).length;
+      if (denial) score -= DENIAL_WEIGHT * denial.chanceAfter(m);
       score += game.rng() * 0.5;
       if (score > bestScore) { bestScore = score; best = m; }
     }
     return best;
+  }
+
+  /* ----- reading the table: which tiles can the other players be holding? ----- */
+  const ALL_TILES = [];
+  for (let a = 0; a <= 12; a++) for (let b = a; b <= 12; b++) ALL_TILES.push([a, b]);
+  const tileId = t => (t[0] <= t[1] ? t[0] * 13 + t[1] : t[1] * 13 + t[0]);
+  /* The tiles a player cannot see: not in their own hand, not on any train (and not the engine). Each is in another player's hand or in the boneyard. */
+  function tilesNotSeen(game, me) {
+    const seen = new Set([tileId([game.engine, game.engine])]);
+    me.hand.forEach(t => seen.add(tileId(t)));
+    for (const id in game.trains) game.trains[id].tiles.forEach(t => seen.add(tileId(t)));
+    return ALL_TILES.filter(t => !seen.has(tileId(t)));
+  }
+  /* The chance that a player holding `handSize` of the unseen tiles has one that matches any number in `numbers`; `noMatch` is what
+   * their last pass showed they do not have (so those numbers are ruled out). */
+  function chanceHolds(handSize, numbers, unseen, noMatch) {
+    if (handSize <= 0) return 0;
+    let pool = unseen;
+    if (noMatch && noMatch.length) {
+      const ruledOut = new Set(noMatch), allowed = unseen.filter(t => !ruledOut.has(t[0]) && !ruledOut.has(t[1]));
+      if (allowed.length >= handSize) pool = allowed;
+    }
+    const wanted = new Set(numbers);
+    const k = pool.filter(t => wanted.has(t[0]) || wanted.has(t[1])).length;
+    if (k === 0) return 0;
+    let none = 1;
+    for (let i = 0; i < handSize; i++) { const left = pool.length - k - i; if (left <= 0) { none = 0; break; } none *= left / (pool.length - i); }
+    return 1 - none;
+  }
+  /* "Would this move leave the others something to play?" For a candidate move: the average, over the other players, of the chance they
+   * hold a tile for an end they could play on after it (their own train, the shared train, and any marked train). */
+  function denialContext(game, me) {
+    const others = game.players.filter(p => p !== me), unseen = tilesNotSeen(game, me), known = game.noMatch || {};
+    return {
+      chanceAfter(m) {
+        const myMarkerAfter = m.trainId === me.id ? false : game.trains[me.id].marker;
+        let total = 0;
+        for (const o of others) {
+          const ends = [m.trainId === o.id ? m.newEnd : game.trains[o.id].end, m.trainId === 'mexican' ? m.newEnd : game.trains.mexican.end];
+          if (myMarkerAfter) ends.push(game.trains[me.id].end);
+          for (const t of others) if (t !== o && game.trains[t.id].marker) ends.push(m.trainId === t.id ? m.newEnd : game.trains[t.id].end);
+          total += chanceHolds(o.hand.length, ends, unseen, known[o.id]);
+        }
+        return total / others.length;
+      },
+    };
+  }
+
+  /* ----- the Expert: look ahead by trying each good move out against guesses at what the others hold ----- */
+  const NULL_UI = { onNeedDraw() {}, onDraw() {}, onPass() {}, onPlay() {}, onBuildPlay() {}, onBuildUndo() {}, onBuildDraw() {}, onBuildPass() {}, onBuildDone() {}, onOpeningDone() {} };
+  /* One guess at who holds the unseen tiles: each other player gets a hand of the size they have (honouring what their passes showed),
+   * and the rest make up the boneyard in a random order. null if the numbers do not add up. */
+  function guessHiddenTiles(game, me, rnd) {
+    const others = game.players.filter(p => p !== me), unseen = tilesNotSeen(game, me), known = game.noMatch || {};
+    if (unseen.length !== others.reduce((n, o) => n + o.hand.length, 0) + game.boneyard.length) return null;
+    const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = arr[i]; arr[i] = arr[j]; arr[j] = t; } return arr; };
+    let pool = unseen.slice();
+    const hands = {};
+    for (const o of others.slice().sort((a, b) => (known[b.id] ? 1 : 0) - (known[a.id] ? 1 : 0))) {     // the most constrained player first
+      let allowed = pool;
+      if (known[o.id]) { const ruledOut = new Set(known[o.id]); const a = pool.filter(t => !ruledOut.has(t[0]) && !ruledOut.has(t[1])); if (a.length >= o.hand.length) allowed = a; }
+      const take = shuffle(allowed.slice()).slice(0, o.hand.length);
+      const taken = new Set(take.map(tileId));
+      hands[o.id] = take;
+      pool = pool.filter(t => !taken.has(tileId(t)));
+    }
+    return { hands, boneyard: shuffle(pool) };
+  }
+  function cloneForRollout(game, world, seed) {
+    const players = game.players.map(p => ({ id: p.id, name: p.name, hand: (world.hands[p.id] || p.hand).map(t => t.slice()) }));
+    const trains = {};
+    for (const id in game.trains) { const t = game.trains[id]; trains[id] = { id: t.id, tiles: t.tiles.map(x => x.slice()), end: t.end, marker: t.marker }; }
+    const noMatch = {};
+    for (const id in (game.noMatch || {})) noMatch[id] = game.noMatch[id] ? game.noMatch[id].slice() : null;
+    return { engine: game.engine, players, boneyard: world.boneyard.map(t => t.slice()), trains, openDouble: game.openDouble ? Object.assign({}, game.openDouble) : null, winner: null, rng: mulberry32(seed), opening: null, noMatch };
+  }
+  /* Play `move` and then the rest of the round out with Hard on every side; the result is how far ahead of the others' average this player ends. */
+  async function playOut(game, meIndex, move, world, seed) {
+    const g = cloneForRollout(game, world, seed), me = g.players[meIndex];
+    const hard = { choose: async (gg, p, ms) => cpuChoose(gg, p, ms, 'hard') };
+    let first = true;
+    const opener = { choose: async (gg, p, ms) => {
+      if (first) { first = false; const same = ms.find(x => sameTile(x.tile, move.tile) && x.trainId === move.trainId); if (same) return same; }
+      return cpuChoose(gg, p, ms, 'hard');
+    } };
+    await playTurn(g, me, opener, NULL_UI);
+    if (!g.winner && !isBlocked(g)) {
+      const controllers = {};
+      g.players.forEach(p => { controllers[p.id] = hard; });
+      await playRound(g, (meIndex + 1) % g.players.length, controllers, NULL_UI, {});
+    }
+    const others = g.players.filter(p => p !== me);
+    return others.reduce((n, o) => n + handPips(o), 0) / others.length - handPips(me);
+  }
+  async function cpuChooseExpert(game, player, moves) {
+    const meIndex = game.players.indexOf(player);
+    const denial = denialContext(game, player);
+    const candidates = moves.map(m => ({ m, s: cpuMoveScore(game, player, m) - DENIAL_WEIGHT * denial.chanceAfter(m) }))
+      .sort((a, b) => b.s - a.s).slice(0, EXPERT_CANDIDATES).map(x => x.m);
+    if (candidates.length === 1) return candidates[0];
+    const rnd = mulberry32(((game.rng() * 1e9) | 0) + 17);              // its own random numbers, seeded from the game's once
+    const totals = new Array(candidates.length).fill(0);
+    let worlds = 0;
+    for (let i = 0; i < EXPERT_SAMPLES; i++) {
+      const world = guessHiddenTiles(game, player, rnd);
+      if (!world) break;
+      const seed = (rnd() * 1e9) | 0;
+      for (let c = 0; c < candidates.length; c++) totals[c] += await playOut(game, meIndex, candidates[c], world, seed);
+      worlds++;
+    }
+    if (!worlds) return cpuChoose(game, player, moves, 'hard');          // (could not make a guess: play as Hard)
+    let best = 0;
+    for (let c = 1; c < candidates.length; c++) if (totals[c] > totals[best] + 1e-9) best = c;
+    return candidates[best];
+  }
+  /* The move for a computer player of any level. Only the Expert needs to be waited for. Its look-ahead was measured to help when it plays
+   * ONE other player (it beats Hard about 53 to 46); at a table of three it did not help (about a fair share of the rounds), so there it
+   * plays as Hard does. */
+  async function cpuChooseAsync(game, player, moves, level) {
+    if (level === 'expert' && moves.length > 1 && game.players.length === 2) return cpuChooseExpert(game, player, moves);
+    return cpuChoose(game, player, moves, level);
+  }
+  /* Hard's evaluation of a move without the random tie-break (used to pick the Expert's candidates). */
+  function cpuMoveScore(game, player, m) {
+    const rest = player.hand.filter(t => !sameTile(t, m.tile));
+    let score = tilePips(m.tile);
+    if (rest.length === 0 && !isDouble(m.tile)) score += 1000;
+    if (isDouble(m.tile)) { const canFollowUp = rest.length > 0 && rest.some(t => t[0] === m.tile[0] || t[1] === m.tile[0]); score += canFollowUp ? 12 : -25; }
+    if (m.trainId === player.id) { score += 3; if (game.trains[player.id].marker) score += 8; }
+    score += 2 * rest.filter(t => t[0] === m.newEnd || t[1] === m.newEnd).length;
+    score += HARD_LOOKAHEAD * longestChain(rest, m.newEnd, isDouble(m.tile)).length;
+    return score;
   }
 
   /* How good is a move? The same evaluation the Hard computer plays by (true pip counts, the
@@ -1272,7 +1425,7 @@
   };
 
   // Every level has its own full set: the lines each computer player says depend on how good it is.
-  const LINES = { easy: LINES_EASY, normal: LINES_NORMAL, hard: LINES_HARD };
+  const LINES = { easy: LINES_EASY, normal: LINES_NORMAL, hard: LINES_HARD, expert: LINES_HARD };
   const linesFor = level => LINES[level] || LINES.normal;
 
   // NATIVE-LANGUAGE COMMENTS. A computer player whose name comes from a language written in another
@@ -1510,7 +1663,8 @@
       players: {
         easy: ['Pippin', 'Merry', 'Gollum', 'Treebeard'],
         normal: ['Frodo', 'Sam', 'Gimli', 'Legolas', 'Boromir'],
-        hard: ['Gandalf', 'Aragorn', 'Galadriel', 'Elrond', 'Saruman'],
+        hard: ['Aragorn', 'Elrond'],
+        expert: ['Gandalf', 'Galadriel', 'Saruman'],
       },
       food: {
         Pippin: { c: 'the Shire', d: ['bacon and eggs', 'apple pie', 'sausages'] },
@@ -2062,13 +2216,9 @@
     else if (tr.marker) {
       note = `<span class="lamp"><span>${id === 'human' ? `Open: ${tableIds(S).slice(1).map(x => nameOf(S, x)).join(' and ')} can play here` : 'Open: you can play here'}</span></span>`;
     }
-    const need = tr.end;
-    const needs = hidden
-      ? '<span class="needs">Needs <b class="num unknown">?</b></span>'
-      : `<span class="needs">Needs <b class="num" style="--c:${PIP_COLORS[need]}">${need}</b></span>`;
     const label = `<div class="track-label">
         <div class="track-name">${trainName(S, id)}</div>
-        <div class="track-info">${note}${id === 'mexican' ? needs : ''}</div>
+        <div class="track-info">${note}</div>
         ${must ? '<div class="cover">Cover the double here</div>' : ''}
       </div>`;
 
@@ -2187,7 +2337,8 @@
     return values.map(v => `<option value="${v}"${String(v) === String(current) ? ' selected' : ''}>${labeler(v)}</option>`).join('');
   }
 
-  const LEVEL_TEXT = { easy: 'Easy: plays casually', normal: 'Medium: plays sensibly', hard: 'Hard: plans ahead' };
+  const aOrAn = w => (/^[aeiou]/i.test(w) ? 'an ' : 'a ') + w;                  // "an Easy", "an Expert", "a Medium", "a Hard"
+  const LEVEL_TEXT = { easy: 'Easy: plays casually', normal: 'Medium: plays sensibly', hard: 'Hard: plans ahead and blocks you', expert: 'Expert: thinks several moves ahead' };
 
   function viewSetup(S) {
     const o = S.opts;
@@ -2202,13 +2353,13 @@
         <select id="opt-cpus">${optionList([1, 2], o.cpus === 2 ? 2 : 1, v => v === 1 ? 'One computer player' : 'Two computer players')}</select></div>
       <div class="field"><label for="opt-level">Computer skill</label>
         <select id="opt-level">${optionList(LEVELS, o.level, v => LEVEL_TEXT[v])}</select>
-        <p class="field-note">Easy often plays at random and builds short trains. Hard plans ahead and keeps long chains available so it can go out sooner. Each level has its own computer players, who talk differently too.</p></div>
+        <p class="field-note">Easy often plays at random and builds short trains. Hard plans ahead, keeps long chains available so it can go out sooner, and avoids leaving you a play when it can. Expert also thinks several moves ahead about what you might be holding (it does that when it plays one other player: with two computers at the table it plays like Hard). Each level has its own computer players, who talk differently too.</p></div>
       <div class="field" id="field-level2"${o.cpus === 2 ? '' : ' hidden'}><label for="opt-level2">Second computer's skill</label>
         <select id="opt-level2">${optionList(LEVELS, o.level2, v => LEVEL_TEXT[v])}</select>
         <p class="field-note">Each computer player has its own skill, so you can mix them: an easy one and a hard one, say.</p></div>
       <div class="field"><label for="opt-theme">Theme</label>
         <select id="opt-theme">${optionList(THEME_IDS, o.theme || 'classic', v => THEME_LABEL[v])}</select>
-        <p class="field-note">The Lord of the Rings: your opponents are characters from Middle-earth (Pippin and Gollum are Easy, Sam and Gimli Medium, Gandalf and Galadriel Hard), each talking in their own way, and an open train is marked with a golden ring instead of a toy train.</p></div>
+        <p class="field-note">The Lord of the Rings: your opponents are characters from Middle-earth (Pippin and Gollum are Easy, Sam and Gimli Medium, Aragorn and Elrond Hard, Gandalf and Galadriel Expert), each talking in their own way, and an open train is marked with a golden ring instead of a toy train.</p></div>
       <div class="field"><label for="opt-hints">Hints</label>
         <button type="button" id="opt-hints" class="btn toggle" data-action="toggleAllowHints" aria-pressed="${o.allowHints !== false ? 'true' : 'false'}">Allow hints: ${o.allowHints !== false ? 'on' : 'off'}</button>
         <p class="field-note">On: the tiles you can play and the trains they can go on are highlighted, and your hand gets a Show hints button to switch that off or on. Off: nothing is highlighted and nothing is played for you: you pick the tile and then the train.</p></div>
@@ -2304,18 +2455,9 @@
     return `<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
       <h2 id="dlg-title">${host ? 'Host an online game' : 'Join an online game'}</h2>
       ${host
-        ? '<p>This page must be opened from the game server on this computer (<code>node server.js</code>). You will get a join code to give to the other player, together with this computer\'s network address.</p>'
+        ? '<p>This page must be opened from the game server on this computer (<code>node server.js</code>). You will get a join code to give to the other player, with the address they join at (chosen below).</p>'
         : '<p>Ask the host for the server address and the join code.</p>'}
-      ${host ? (() => {
-        const hi = S.hostInfo || { state: 'none', address: '', addresses: [] };
-        const note = hi.state === 'ready'
-          ? 'This computer\'s address on your network. The server sets it, so it cannot be changed here; the other player uses it to join.' + (hi.addresses.length > 1 ? ' (This computer has other addresses too: ' + hi.addresses.slice(1).map(esc).join(', ') + '.)' : '')
-          : hi.state === 'loading' ? 'Looking up this computer\'s address...'
-            : 'The game server did not give its address. Open this page from the server: start it with node server.js and open the address it prints.';
-        return `<div class="field"><label for="net-server">Server address</label>
-        <input id="net-server" type="text" value="${esc(hi.address)}" readonly aria-readonly="true" class="fixed" placeholder="${hi.state === 'loading' ? 'Looking up...' : 'Not available'}" autocomplete="off" spellcheck="false">
-        <p class="field-note">${note}</p></div>`;
-      })() : `<div class="field"><label for="net-server">Server address</label>
+      ${host ? viewJoinChoices(S) : `<div class="field"><label for="net-server">Server address</label>
         <input id="net-server" type="text" value="${esc(f.server || '')}" placeholder="192.168.1.23:8080" autocomplete="off" spellcheck="false" autocapitalize="off"></div>`}
       ${host ? '' : `<div class="field"><label for="net-code">Join code</label>
         <input id="net-code" type="text" value="${esc(f.code || '')}" placeholder="ABC-DEF" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12"></div>`}
@@ -2326,8 +2468,8 @@
       <div class="field"><label for="net-hand">Tiles dealt to each player</label>
         <select id="net-hand">${optionList([8, 12, 15], Number(f.hand) || 15, v => v === 15 ? '15 (standard)' : String(v))}</select></div>
       <div class="field"><label for="net-computer">Computer player</label>
-        <select id="net-computer">${optionList(['none', 'easy', 'normal', 'hard'], f.computer || 'none', v => v === 'none' ? 'None' : 'Add a ' + LEVEL_LABEL[v] + ' computer as a third player')}</select>
-        <p class="field-note">With a computer player, all three are at the table from the start.</p></div>
+        <select id="net-computer">${optionList(['none'].concat(LEVELS), f.computer || 'none', v => v === 'none' ? 'None' : 'Add ' + aOrAn(LEVEL_LABEL[v]) + ' computer as a third player')}</select>
+        <p class="field-note">With a computer player, all three are at the table from the start. (At a table of three the Expert plays like Hard: its looking ahead works against one other player.)</p></div>
       <div class="field"><label for="net-theme">Theme</label>
         <select id="net-theme">${optionList(THEME_IDS, THEME_IDS.includes(f.theme) ? f.theme : 'classic', v => THEME_LABEL[v])}</select>
         <p class="field-note">The Lord of the Rings: the computer player is a character from Middle-earth, and an open train is marked with a golden ring on everyone's screen.</p></div>
@@ -2345,19 +2487,23 @@
       const p = o.players[i];
       return `<li class="${p ? (p.connected ? 'up' : 'down') : 'empty'}"><i class="net-dot ${p ? (p.connected ? 'up' : 'down') : ''}"></i><span>${p ? p.name + (i === o.seat ? ' (you)' : '') + (i === 0 ? ', host' : '') + (p.computer ? `, computer, ${LEVEL_LABEL[p.level || o.settings.computer]}` : '') : 'Waiting for a player...'}</span></li>`;
     }).join('');
-    const qi = Math.min(Math.max(0, S.qrIndex || 0), Math.max(0, o.addresses.length - 1));
-    const link = o.addresses.length ? `http://${o.addresses[qi]}/?join=${o.code}` : '';
+    const list = host ? joinList(S) : [];
+    const qi = Math.min(Math.max(0, S.qrIndex || 0), Math.max(0, list.length - 1));
+    const shown = list[qi];
+    const link = shown ? `http://${shown.addr}/?join=${o.code}` : '';
+    const scanNote = !shown ? '' : shown.kind === 'public' ? `Scan with a phone to join over the internet. Your router must forward port ${esc(portOf(shown.addr))} to this computer.`
+      : shown.kind === 'manual' ? 'Scan with a phone to join using the address you typed.' : 'Scan with a phone on the same network to join.';
     const qr = host && link
       ? `<div class="qrbox">${qrSvg(link, 'QR code: scan it to join the game')}
-          <div class="qrtext"><p>Scan with a phone on the same network to join.</p><p class="field-note"><code>${esc(link)}</code></p>
+          <div class="qrtext"><p>${scanNote}</p><p class="field-note"><code>${esc(link)}</code></p>
           <button class="btn" data-action="copyLink" data-key="${esc(link)}">${S.copied === 'link' ? 'Copied' : S.copied === 'failed' ? 'Not copied: select the link above and copy it' : 'Copy link'}</button></div></div>` : '';
     const addrs = host
-      ? (o.addresses.length
-        ? `${qr}<p>Or the other player opens one of these addresses in a browser, or enters it under <b>Join online game</b>:</p><ul class="addrs">${o.addresses.map((a, i) => `<li><code>${esc(a)}</code>${o.addresses.length > 1 ? ` <button class="btn small" data-action="selectQr" data-key="${i}" aria-pressed="${i === qi ? 'true' : 'false'}">${i === qi ? 'QR shown' : 'Show QR'}</button>` : ''}</li>`).join('')}</ul>`
+      ? (list.length
+        ? `${qr}<p>Or the other player opens one of these addresses in a browser, or enters it under <b>Join online game</b>:</p><ul class="addrs">${list.map((x, i) => `<li><code>${esc(x.addr)}</code> <span class="field-note">${JOIN_KIND[x.kind]}</span>${list.length > 1 ? ` <button class="btn small" data-action="selectQr" data-key="${i}" aria-pressed="${i === qi ? 'true' : 'false'}">${i === qi ? 'QR shown' : 'Show QR'}</button>` : ''}</li>`).join('')}</ul>`
         : '<p>This server is only reachable from this computer (it was started with <code>--local-only</code>, or has no network address).</p>')
       : '';
     // Nothing to set on this screen: the game was set up on the Host screen, and now the host is only waiting for the other player to join.
-    const summary = `${o.settings.rounds === 1 ? 'One round' : o.settings.rounds + ' rounds'}, ${o.settings.hand} tiles each${o.settings.computer ? `, with a ${LEVEL_LABEL[o.settings.computer]} computer player` : ''}${o.settings.theme && o.settings.theme !== 'classic' ? `, theme: ${THEME_LABEL[o.settings.theme]}` : ''}.`;
+    const summary = `${o.settings.rounds === 1 ? 'One round' : o.settings.rounds + ' rounds'}, ${o.settings.hand} tiles each${o.settings.computer ? `, with ${aOrAn(LEVEL_LABEL[o.settings.computer])} computer player` : ''}${o.settings.theme && o.settings.theme !== 'classic' ? `, theme: ${THEME_LABEL[o.settings.theme]}` : ''}.`;
     const hintsNote = o.settings.allowHints === false ? (host ? 'Hints are off.' : 'Hints are off (the host\'s choice).') : (host ? 'Hints are allowed.' : 'Hints are allowed: you can switch them off for yourself in the game.');
     const settings = `<p>${summary} ${hintsNote}${host ? '' : ` ${o.players[0] ? o.players[0].name : 'The host'} will start the game.`}</p>`;
     return `<div class="overlay"><div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
@@ -2680,6 +2826,55 @@
     if (/^\d+\.\d+\.\d+\.\d+$/.test(host) && host.split('.').some(n => Number(n) > 255)) return null;
     return host + ':' + port;
   }
+  /* What the host typed under "Type an address": an IP address or a name, and a port. With no port, the server's own port is used. null if it is not an address. */
+  function parseJoinAddress(raw, defaultPort) {
+    const stripped = String(raw === undefined || raw === null ? '' : raw).trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/[/?#].*$/, '');
+    const parsed = parseServerAddress(stripped);
+    if (!parsed) return null;
+    const hasPort = /:\d{1,5}$/.test(stripped) && !/^\[[^\]]*\]$/.test(stripped);
+    return hasPort ? parsed : parsed.replace(/:\d+$/, ':' + String(defaultPort || 8080));
+  }
+  const JOIN_VIAS = ['local', 'public', 'manual'];
+  const portOf = addr => String(addr || '').replace(/^.*:/, '');
+  const publicInfo = S => (S.hostInfo && S.hostInfo.public) || { state: 'checking' };
+  const publicChoiceHTML = S => {
+    const pi = publicInfo(S);
+    if (pi.state === 'ok') return `Over the internet: <code>${esc(pi.address)}</code> <span class="field-note">for players on other networks (found with ${esc(pi.via || 'a lookup service')}). Your router must forward port ${esc(portOf(pi.address))} to this computer.</span>`;
+    if (pi.state === 'checking') return 'Over the internet: looking up this computer\'s public address...';
+    if (pi.state === 'off') return 'Over the internet: not offered <span class="field-note">(this server does not look its public address up: it was started with <code>--no-public-ip</code> or <code>--local-only</code>)</span>';
+    return 'Over the internet: this computer\'s public address could not be found <span class="field-note">(no internet connection, or the lookup was blocked). If you know it, type it below.</span>';
+  };
+  /* The Host screen's way of saying how the other player will join. */
+  function viewJoinChoices(S) {
+    const f = S.form || {}, hi = S.hostInfo || { state: 'none', address: '', addresses: [] }, pi = publicInfo(S);
+    const via = f.joinVia === 'public' && pi.state === 'ok' ? 'public' : f.joinVia === 'manual' ? 'manual' : 'local';
+    const localText = hi.state === 'ready'
+      ? `On this network: <code>${esc(hi.address)}</code> <span class="field-note">for players on the same Wi-Fi or network${hi.addresses.length > 1 ? ' (this computer has other addresses too: ' + hi.addresses.slice(1).map(esc).join(', ') + ')' : ''}</span>`
+      : hi.state === 'loading' ? 'On this network: looking up this computer\'s address...'
+        : 'On this network: the game server did not give its address. Open this page from the server: start it with <code>node server.js</code> and open the address it prints.';
+    return `<fieldset class="field join-choices" id="join-choices">
+        <legend>How will the other player join?</legend>
+        <label class="choice"><input type="radio" name="net-via" id="via-local" value="local"${via === 'local' ? ' checked' : ''}> <span id="via-local-text">${localText}</span></label>
+        <label class="choice"><input type="radio" name="net-via" id="via-public" value="public"${via === 'public' ? ' checked' : ''}${pi.state === 'ok' ? '' : ' disabled'}> <span id="via-public-text">${publicChoiceHTML(S)}</span></label>
+        <label class="choice"><input type="radio" name="net-via" id="via-manual" value="manual"${via === 'manual' ? ' checked' : ''}> <span>Type an address</span></label>
+        <div id="join-manual-box" class="manual-box"${via === 'manual' ? '' : ' hidden'}>
+          <input id="join-manual" type="text" value="${esc(f.joinManual || '')}" placeholder="203.0.113.9:8080" aria-label="Address to join with, as an IP address and a port" autocomplete="off" spellcheck="false" autocapitalize="off">
+          <p class="field-note">An IP address (or a name) and the port, like <code>203.0.113.9:8080</code>: for a router that forwards a different port, or a name for this computer. If you leave the port out, this server's own port is used.</p>
+        </div>
+      </fieldset>
+      <input id="net-server" type="hidden" value="${esc(hi.address)}">`;
+  }
+  /* The addresses the lobby offers, the one the host chose first: { addr, kind } with kind local, public or typed. */
+  function joinList(S) {
+    const o = S.online, pi = publicInfo(S), j = o.join || { via: 'local' };
+    const local = o.addresses.map(addr => ({ addr, kind: 'local' }));
+    const pub = pi.state === 'ok' ? [{ addr: pi.address, kind: 'public' }] : [];
+    const typed = j.manual ? [{ addr: j.manual, kind: 'manual' }] : [];
+    const ordered = j.via === 'public' ? pub.concat(local, typed) : j.via === 'manual' ? typed.concat(local, pub) : local.concat(pub, typed);
+    const seen = new Set();
+    return ordered.filter(x => !seen.has(x.addr) && seen.add(x.addr));
+  }
+  const JOIN_KIND = { local: 'on this network', public: 'over the internet', manual: 'typed by you' };
   const ONLINE_SESSION_KEY = 'mt-online';
 
   /* ================================= APP ================================== */
@@ -2693,9 +2888,10 @@
   const CPU_PLAYERS = {
     easy: ['Bea', 'Pablo', 'Mei', 'Rosa', 'Lucia', 'Felix', 'Greta', 'Noor', 'Anil', 'Tamsin', 'Wen', 'Imani', 'Sunita', 'Joon', 'Yara', 'Kofi'],
     normal: ['Marta', 'Ravi', 'Keiko', 'Omar', 'Lena', 'Mateo', 'Priya', 'Jonah', 'Aisha', 'Hiro', 'Sofia', 'Nadia', 'Freya', 'Bruno', 'Callum', 'Zainab'],
-    hard: ['Ingrid', 'Dmitri', 'Arjun', 'Kwame', 'Tariq', 'Elsa', 'Diego', 'Stefan', 'Chiara', 'Amara', 'Leon', 'Odile', 'Rafael', 'Kenji', 'Selam', 'Paloma'],
+    hard: ['Ingrid', 'Dmitri', 'Arjun', 'Kwame', 'Tariq', 'Elsa', 'Diego', 'Stefan'],
+    expert: ['Chiara', 'Amara', 'Leon', 'Odile', 'Rafael', 'Kenji', 'Selam', 'Paloma'],
   };
-  const CPU_NAMES = [].concat(CPU_PLAYERS.easy, CPU_PLAYERS.normal, CPU_PLAYERS.hard);
+  const CPU_NAMES = [].concat(CPU_PLAYERS.easy, CPU_PLAYERS.normal, CPU_PLAYERS.hard, CPU_PLAYERS.expert);
   const levelOfName = (name, theme) => { const pools = themeOf(theme) ? themeOf(theme).players : CPU_PLAYERS; return LEVELS.find(l => pools[l].includes(name)) || null; };
 
   function pickCpuName(level, rng, used, theme) {
@@ -3516,14 +3712,27 @@
       abortMatch();
       const hosting = kind === 'create';
       const server = hosting ? (S.hostInfo && S.hostInfo.state === 'ready' ? parseServerAddress(S.hostInfo.address) : null) : parseServerAddress(a.server);
-      S.form = { server: hosting && server ? server : String(a.server || ''), name: String(a.name || ''), code: String(a.code || ''), rounds: a.rounds, hand: a.hand, computer: a.computer, theme: a.theme, allowHints: a.allowHints !== false };
+      // how the other player will join: the host's choice on the Host screen
+      const via = hosting ? (JOIN_VIAS.includes(a.joinVia) ? a.joinVia : JOIN_VIAS.includes(S.form && S.form.joinVia) ? S.form.joinVia : 'local') : 'local';
+      const typed = hosting ? String(a.joinManual !== undefined ? a.joinManual : (S.form && S.form.joinManual) || '').trim() : '';
+      S.form = { server: hosting && server ? server : String(a.server || ''), name: String(a.name || ''), code: String(a.code || ''), rounds: a.rounds, hand: a.hand, computer: a.computer, theme: a.theme, allowHints: a.allowHints !== false, joinVia: via, joinManual: typed };
+      let join = null;
+      if (hosting && server) {
+        join = { via };
+        if (via === 'public' && publicInfo(S).state !== 'ok') { S.onlineError = 'This computer\'s public address is not known (yet). Choose another way for the other player to join, or wait a moment and try again.'; render(true); return; }
+        if (via === 'manual') {
+          const addr = parseJoinAddress(typed, portOf(server));
+          if (!addr) { S.onlineError = typed ? 'That is not an address. Type an IP address (or a name) and a port, like 203.0.113.9:8080.' : 'Type the address the other player will use, like 203.0.113.9:8080, or choose one of the other ways to join.'; render(true); return; }
+          join.manual = addr;
+        }
+      }
       if (!server) { S.onlineError = hosting ? 'This computer\'s address is not known. Open this page from the game server: start it with node server.js and open the address it prints.' : 'Enter the server address, like 192.168.1.23:8080.'; render(true); return; }
       if (kind === 'join' && !String(a.code || '').trim()) { S.onlineError = 'Enter the join code you were given.'; render(true); return; }
       const name = cleanPlayerName(a.name, kind === 'create' ? 'Host' : 'Guest');
       try { storage.set('mt-name', name); storage.set('mt-server', server); } catch (e) { /* ignore */ }
       S.onlineError = '';
       lastSeq = -1; tries = 0; S.qrIndex = 0; S.showHints = true;
-      S.online = { phase: 'connecting', kind, server, name, code: '', display: '', token: '', seat: kind === 'create' ? 0 : 1, host: kind === 'create', settings: { rounds: 4, hand: 15, computer: null, theme: 'classic', allowHints: true }, players: [null, null], canStart: false, addresses: [], conn: 'connecting', oppConnected: true, graceUntil: null, ended: null, rounds: 4, pending: null, round: -1, oppName: '', lastActor: null };
+      S.online = { phase: 'connecting', kind, server, name, join, code: '', display: '', token: '', seat: kind === 'create' ? 0 : 1, host: kind === 'create', settings: { rounds: 4, hand: 15, computer: null, theme: 'classic', allowHints: true }, players: [null, null], canStart: false, addresses: [], conn: 'connecting', oppConnected: true, graceUntil: null, ended: null, rounds: 4, pending: null, round: -1, oppName: '', lastActor: null };
       const first = kind === 'create' ? { t: 'create', name, rounds: Number(a.rounds), hand: Number(a.hand), computer: LEVELS.includes(a.computer) ? a.computer : null, theme: THEME_IDS.includes(a.theme) ? a.theme : 'classic', allowHints: a.allowHints !== false } : { t: 'join', code: String(a.code), name };
       netConnect(first);
     }
@@ -3552,8 +3761,8 @@
      * (a 192.168..., 10... or 172.16... address, not "localhost"), and the page shows it and uses it. */
     function loadHostInfo() {
       const mine = ++infoToken;
-      S.hostInfo = { state: 'loading', address: '', addresses: [] };
-      const fail = () => { if (mine === infoToken) { S.hostInfo = { state: 'none', address: '', addresses: [] }; if (S.overlay === 'online-host') render(true); } };
+      S.hostInfo = { state: 'loading', address: '', addresses: [], public: { state: 'checking' } };
+      const fail = () => { if (mine === infoToken) { S.hostInfo = { state: 'none', address: '', addresses: [], public: { state: 'unavailable' } }; if (S.overlay === 'online-host') render(true); } };
       if (!fetchImpl) { S.hostInfo.state = 'none'; return Promise.resolve(); }
       return Promise.resolve().then(() => fetchImpl(env.infoUrl || '/info', { cache: 'no-store' })).then(r => (r && r.ok ? r.json() : Promise.reject(new Error('no'))))
         .then(j => {
@@ -3561,9 +3770,29 @@
           const list = (Array.isArray(j && j.addresses) ? j.addresses : []).map(parseServerAddress).filter(Boolean);
           const best = parseServerAddress(j && j.preferred) || list[0] || null;
           if (!best) return fail();
-          S.hostInfo = { state: 'ready', address: best, addresses: list.length ? list : [best] };
+          S.hostInfo = { state: 'ready', address: best, addresses: list.length ? list : [best], public: { state: 'checking' } };
           if (S.overlay === 'online-host') render(true);
+          loadPublicIp(mine);
         }).catch(fail);
+    }
+    /* Ask the server what this computer's address on the internet is. It can take several seconds, so when the answer comes only that one
+     * choice on the Host screen is changed: what the host is typing (a name, an address) must not be touched. */
+    function patchJoinChoices() {
+      const pi = publicInfo(S), label = root.querySelector('#via-public-text'), radio = root.querySelector('#via-public');
+      if (label) label.innerHTML = publicChoiceHTML(S);
+      if (radio) radio.disabled = pi.state !== 'ok';
+      if (pi.state !== 'ok' && S.form && S.form.joinVia === 'public') { S.form.joinVia = 'local'; const local = root.querySelector('#via-local'); if (local) local.checked = true; }
+    }
+    function loadPublicIp(mine) {
+      const set = pub => { if (mine !== infoToken || !S.hostInfo) return; S.hostInfo.public = pub; patchJoinChoices(); };
+      if (!fetchImpl) return set({ state: 'unavailable' });
+      const slow = new Promise((resolve, reject) => later(() => reject(new Error('slow')), 12000));
+      Promise.race([Promise.resolve().then(() => fetchImpl(env.publicUrl || '/publicip', { cache: 'no-store' })).then(r => (r && r.ok ? r.json() : Promise.reject(new Error('no'))), e => Promise.reject(e)), slow])
+        .then(j => {
+          const addr = parseServerAddress(j && j.address);
+          if (j && j.state === 'ok' && addr && /^\d{1,3}(\.\d{1,3}){3}:\d+$/.test(addr)) set({ state: 'ok', address: addr, via: String(j.via || '').slice(0, 60) });
+          else set({ state: j && j.state === 'off' ? 'off' : 'unavailable' });
+        }).catch(() => set({ state: 'unavailable' }));
     }
     function openOnlineDialog(which, code) {
       if (S.online && S.online.phase === 'connecting') leaveOnline(true);
@@ -3586,11 +3815,11 @@
       act: cpuAct,
       async choose(game, player, moves) {
         const level = levelFor(S, id);
-        if (game.openDouble) return cpuChoose(game, player, moves, level);
+        if (game.openDouble) return cpuChooseAsync(game, player, moves, level);
         setBanner(`${nameOf(S, id)} is thinking...`);
         render();
         await pause(humanPace('place'));
-        return cpuChoose(game, player, moves, level);
+        return cpuChooseAsync(game, player, moves, level);
       },
     });
     const controllers = {
@@ -3910,6 +4139,7 @@
         case 'netNote': return netEvent('note', String(a.what || ''));
         case 'netDebug': S.debugNet = true; return render(true);
         case 'copyNetLog': return copyNetLog();
+        case 'setJoinVia': if (S.form) S.form.joinVia = JOIN_VIAS.includes(a.value) ? a.value : 'local'; return;                // (the Host screen's choice of how the other player joins: remembered, no redraw)
         case 'setNetHintsForm': if (S.form) S.form.allowHints = !!a.value; return;                  // (the Host screen's switch: remembered, no redraw)
         case 'toggleShowHints': S.showHints = S.showHints === false; S.hoverKey = null; S.notice = ''; return render(true);
         case 'setAllowHints': S.opts.allowHints = !!a.value; saveOpts(); S.hoverKey = null; S.notice = ''; return render();
@@ -3997,7 +4227,8 @@
           app.dispatch({ type: 'startGame', rounds: val('#opt-rounds'), hand: val('#opt-hand'), level: val('#opt-level'), cpus: val('#opt-cpus'), level2: val('#opt-level2'), theme: val('#opt-theme') });
         } else if (d.action === 'hostGame' || d.action === 'joinGame') {
           const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
-          app.dispatch({ type: d.action, server: val('#net-server'), name: val('#net-name'), code: val('#net-code'), rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer'), theme: val('#net-theme'), allowHints: !(app.state.form && app.state.form.allowHints === false) });
+          app.dispatch({ type: d.action, server: val('#net-server'), name: val('#net-name'), code: val('#net-code'), rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer'), theme: val('#net-theme'), allowHints: !(app.state.form && app.state.form.allowHints === false),
+            joinVia: (root.querySelector('input[name="net-via"]:checked') || {}).value, joinManual: val('#join-manual') });
         } else if (d.action === 'sendText') {                  // (the in-page box, used only when there is no separate one)
           const n = root.querySelector('#say-text');
           app.dispatch({ type: 'sendText', text: n ? n.value : '' });
@@ -4027,6 +4258,13 @@
       window.addEventListener('pageshow', e => { if (e && e.persisted) app.dispatch({ type: 'netWake', why: 'the page was restored from the back/forward cache' }); });
     }
     root.addEventListener('change', e => {
+      if (e.target && e.target.name === 'net-via') {                 // how the other player will join (Host screen)
+        app.dispatch({ type: 'setJoinVia', value: e.target.value });
+        const box = root.querySelector('#join-manual-box');
+        if (box) box.hidden = e.target.value !== 'manual';
+        if (e.target.value === 'manual') { const typed = root.querySelector('#join-manual'); if (typed && typed.focus) typed.focus(); }
+        return;
+      }
       const id = e.target && e.target.id;
       if (id === 'opt-cpus') {                           // the second computer's skill only matters with two computers
         const f = root.querySelector('#field-level2');
@@ -4072,13 +4310,13 @@
   global.MexicanTrainGame = {
     Engine: {
       newRound, legalMoves, applyMove, undoLast, playTurn, buildPhase, playRound, isBlocked, cpuChoose,
-      cpuBuildAction, longestChain, longestFullChain, buildSteps, handPips, tilePips, mulberry32, shuffle, key, LEVELS, LEVEL_LABEL,
+      cpuBuildAction, cpuChooseAsync, tilesNotSeen, chanceHolds, guessHiddenTiles, longestChain, longestFullChain, buildSteps, handPips, tilePips, mulberry32, shuffle, key, LEVELS, LEVEL_LABEL,
       moveValue, rateMove,
     },
     tileSVG, tileBackSVG, pipPoints, viewApp, createApp, pickCpuName, PIP_COLORS, PACE, CPU_NAMES, renderClack, clackGapMs, renderTurn, createSound,
     flightGeometry, flightRotation, flightStart, moveInOrder, slotAt, dropIndexAt, createFx, createDrag, orderedHand,
     RATING, CHAT, LINES, commentKindFor, pickLine, fillLine, composeComment, paceFor, soleTile, CPU_PLAYERS, levelOfName, NATIVE_LINES, NATIVE_LANG, nativeLangOf, FOOD, FOOD_ENGLISH, FOOD_NATIVE, foodComment,
-    PLAYER_IDS, toyTrainSVG, ringSVG, THEMES, THEME_IDS, voiceOf, foodOf, trainColor, ONLINE_PHRASES, cleanChatText, CHAT_MAX, cleanPlayerName, parseServerAddress, copyText, qrEncode, qrSvg, qrCodewords, rsEncode, QR_BLOCKS_M, QR_TOTAL_CODEWORDS,
+    PLAYER_IDS, toyTrainSVG, ringSVG, THEMES, THEME_IDS, voiceOf, foodOf, trainColor, ONLINE_PHRASES, cleanChatText, CHAT_MAX, cleanPlayerName, parseServerAddress, parseJoinAddress, viewJoinChoices, joinList, copyText, qrEncode, qrSvg, qrCodewords, rsEncode, QR_BLOCKS_M, QR_TOTAL_CODEWORDS,
   };
 
   if (typeof document !== 'undefined') {

@@ -93,7 +93,7 @@ async function waitFor(pred, label) {
   ok(repeats === 0, 'a new game never reuses the previous game\'s name');
   ok(bad === 0, 'every name comes from the pool for the level that was chosen, and is never "You"');
   ok(names.size >= 30, `names vary (${names.size} distinct in 90 games)`);
-  ok(Object.keys(G.CPU_PLAYERS).join() === 'easy,normal,hard' && Object.values(G.CPU_PLAYERS).every(p => p.length === 16), 'three pools of 16 names');
+  ok(Object.keys(G.CPU_PLAYERS).join() === 'easy,normal,hard,expert' && G.CPU_PLAYERS.easy.length === 16 && G.CPU_PLAYERS.normal.length === 16 && G.CPU_PLAYERS.hard.length === 8 && G.CPU_PLAYERS.expert.length === 8, 'four pools: 16 Easy, 16 Medium, 8 Hard and 8 Expert names (the old Hard pool of 16 shared out)');
   ok(new Set(G.CPU_NAMES).size === 48 && G.CPU_NAMES.every(n => G.levelOfName(n) !== null), 'every name belongs to exactly one level (48 different names)');
   ok(G.levelOfName('Ingrid') === 'hard' && G.levelOfName('Marta') === 'normal' && G.levelOfName('Bea') === 'easy' && G.levelOfName('Nobody') === null, 'a name tells you its level');
   const justOne = G.CPU_PLAYERS.hard.slice(1).map(n => n.toLowerCase());

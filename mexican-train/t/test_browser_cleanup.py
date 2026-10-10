@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Real Chromium, two people: the screen clean-ups. The Host screen's first computer choice is just "None"; after Create game the lobby has
-   no inputs (everyone is only waiting); in the game, the players' rows do not say "Needs N" (the Mexican train's still does) and the join code
+   no inputs (everyone is only waiting); in the game, the players' rows do not say "Needs N" and the join code
    is nowhere on either player's screen, in any dialog, from the moment the game starts."""
 import json, os, re, subprocess, sys, time
 from playwright.sync_api import sync_playwright
@@ -38,7 +38,7 @@ with sync_playwright() as pw:
     a.wait_for_function("() => document.querySelector('#net-server') && document.querySelector('#net-server').value !== ''")
     opts = a.evaluate("() => Array.from(document.querySelectorAll('#net-computer option')).map(o => [o.value, o.textContent])")
     ok(opts[0] == ['none', 'None'], f'the first computer choice is just "None": {opts[0]}')
-    ok(len(opts) == 4 and all('two players' not in t for _, t in opts) and 'Hard' in opts[3][1], f'and the other choices are as they were: {[t for _, t in opts[1:]]}')
+    ok([t for _, t in opts[1:]] == ['Add an Easy computer as a third player', 'Add a Medium computer as a third player', 'Add a Hard computer as a third player', 'Add an Expert computer as a third player'], f'followed by Easy, Medium, Hard and Expert, each worded properly (a / an): {[t for _, t in opts[1:]]}')
     ok(a.evaluate(INPUTS) >= 6, 'the Host screen is where the choices are made (it has the inputs: name, length, tiles, computer, theme, hints)')
     a.fill('#net-name', 'Ann'); a.select_option('#net-rounds', '1'); a.select_option('#net-hand', '8')
     a.click('[data-action="hostGame"]'); a.wait_for_selector('.code-big')
@@ -63,7 +63,7 @@ with sync_playwright() as pw:
     names = [r['name'] for r in rows]
     ok(len(rows) == 3 and any('Mexican' in n for n in names), f'three rows: {names}')
     ok(all(not r['needs'] for r in rows if 'Mexican' not in r['name']), 'the players\' rows have no "Needs N"')
-    ok(all(r['needs'] for r in rows if 'Mexican' in r['name']), 'the Mexican train\'s row still says what it needs')
+    ok(all(not r['needs'] for r in rows), 'and neither does the Mexican train\'s row: no row says "Needs"')
     hdr = a.inner_text('.round')
     ok('Online game' in hdr and code not in hdr and plain not in hdr, f'the header says "Online game" and not the join code: {re.sub(chr(10), " | ", hdr)}')
     a.screenshot(path='/tmp/shots/cleanup_game.png')
@@ -84,7 +84,7 @@ with sync_playwright() as pw:
     leaks = [(l, w) for l, w, t in seen if code in t or plain in t]
     ok(len(seen) >= 12 and not leaks, f'the join code {code} appears on neither screen in any of {len(seen)} samples (start, the Rules dialog, the Leave question, during play, round end, final score)' + (f': found at {leaks[:3]}' if leaks else ''))
     counts = sorted(set(len(re.findall(r'\bNeeds\b', t)) for l, w, t in seen if l in ('start', 'playing')))
-    ok(counts == [1], f'and on the whole screen "Needs" appears exactly once (the Mexican train\'s) at the start and all through play: {counts}')
+    ok(counts == [0], f'and the word "Needs" is nowhere on the screen, at the start or all through play: {counts}')
 
     ok(errors == [], 'no JavaScript errors' + (': ' + '; '.join(errors[:2]) if errors else ''))
     browser.close()

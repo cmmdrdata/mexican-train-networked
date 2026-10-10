@@ -103,7 +103,7 @@ async function playOut(h, pols, budget, hook) {
   console.log('2. whole matches: two people and a computer');
   let finished = 0, matches = 0, problems = [], pushes = 0, rounds = 0, thinking = 0, ties = 0, computerLines = 0;
   for (let seed = 1; seed <= 30; seed++) {
-    const level = ['easy', 'normal', 'hard'][seed % 3];
+    const level = ['easy', 'normal', 'hard', 'expert'][seed % 4];
     const h = harness({ rng: mulberry32(seed), hand: [8, 12, 15][seed % 3], rounds: seed % 5 === 0 ? 4 : 1, computer: { level } });
     const done = await playOut(h, [policy(mulberry32(seed + 100)), policy(mulberry32(seed + 200))]);
     matches++; pushes += h.pushes; rounds += h.match.rounds; if (done) finished++;

@@ -96,7 +96,8 @@ const silent = { onNeedDraw() {}, onDraw() {}, onPass() {}, onPlay() {} };
   console.log(`   random player: best ${pc(rnd.great)}, poor+awful ${pc(rnd.poor)}, awful ${pc(rnd.awful)} | Normal-level: best ${pc(nrm.great)}, poor+awful ${pc(nrm.poor)} | Hard-level: best ${pc(hrd.great)}, poor+awful ${pc(hrd.poor)}`);
   ok(hrd.great > nrm.great && nrm.great > rnd.great, 'the better the player, the more often they are rated best');
   ok(rnd.poor > nrm.poor && nrm.poor > hrd.poor - 0.001, 'the worse the player, the more often they are roasted');
-  ok(rnd.poor > 0.25 && nrm.poor < 0.2 && hrd.poor < 0.02, 'a random player is roasted on over a quarter of real choices; Normal-level under 20%; Hard-level almost never');
+  // (a move is rated by the plain evaluation; Hard now also weighs what a move leaves the other player to play, so it sometimes picks a move that evaluation likes a little less)
+  ok(rnd.poor > 0.25 && nrm.poor < 0.2 && hrd.poor < 0.06, 'a random player is roasted on over a quarter of real choices; Normal-level under 20%; Hard-level only rarely');
   ok(rnd.forced / rnd.n > 0.4, 'most decisions are forced, so forced-move remarks must be rare');
 
   console.log('3. which comment a rating earns');
@@ -112,9 +113,9 @@ const silent = { onNeedDraw() {}, onDraw() {}, onPass() {}, onPlay() {} };
   console.log('4. the lines themselves, for every level');
   const KINDS = ['great', 'good', 'poor', 'awful', 'forced', 'missedOut', 'slow1', 'slow2', 'slow3', 'draw', 'pass', 'openBest', 'openShort', 'openNone'];
   const blocked = /\b(fuck\w*|shit\w*|bitch\w*|cunt|nigg\w*|fag\w*|retard\w*|whore|slut|bastard|dick|cock|piss\w*|damn\w*|hell|crap|ass|asshole|kill|die|suicide|stupid|idiot|moron|ugly|fat)\b/i;
-  ok(Object.keys(G.LINES).join() === 'easy,normal,hard', 'three complete sets of comments: Easy, Medium, Hard');
+  ok(Object.keys(G.LINES).join() === 'easy,normal,hard,expert' && G.LINES.expert === G.LINES.hard, 'a complete set of comments for every level: Easy, Medium, Hard, and Expert (who talks like Hard)');
   const everyLine = [];
-  for (const lvl of ['easy', 'normal', 'hard']) {
+  for (const lvl of ['easy', 'normal', 'hard', 'expert']) {
     const L = G.LINES[lvl];
     ok(KINDS.every(k => Array.isArray(L[k]) && L[k].length >= 2) && Object.keys(L).length === KINDS.length, `${lvl}: every kind of comment has lines`);
     ok(['great', 'good', 'poor', 'awful'].every(k => L[k].length >= 8) && L.slow1.length >= 5 && L.slow2.length >= 5 && L.slow3.length >= 5, `${lvl}: enough variety that repeats are rare`);
@@ -133,8 +134,8 @@ const silent = { onNeedDraw() {}, onDraw() {}, onPass() {}, onPlay() {} };
   ok(odd.length === 0, 'plain text only' + (odd[0] ? ': ' + odd[0][2] : ''));
   // each level has its OWN comments: no line is shared
   const owner = new Map(); let shared = 0;
-  everyLine.forEach(([lvl, k, l]) => { if (owner.has(l) && owner.get(l) !== lvl) shared++; owner.set(l, lvl); });
-  ok(shared === 0, 'no line is shared between levels: each has its own set');
+  everyLine.forEach(([lvl, k, l]) => { if (lvl === 'expert') return; if (owner.has(l) && owner.get(l) !== lvl) shared++; owner.set(l, lvl); });     // (the Expert talks like Hard: the same lines)
+  ok(shared === 0, 'no line is shared between Easy, Medium and Hard: each has its own set (and the Expert talks like Hard)');
   ok(['great', 'poor', 'slow1', 'openShort'].every(k => ['easy', 'normal', 'hard'].every(lv => G.LINES[lv][k].length >= 5)), 'and every level can react to everything');
   // the voices are different: Easy is a beginner, Hard is smug (spot-checked by the words each one leans on)
   const words = lvl => everyLine.filter(([l]) => l === lvl).map(x => x[2]).join(' ').toLowerCase();

@@ -15,7 +15,7 @@ const isDbl = t => t[0] === t[1];
 
 const ctl = (E, level, check) => ({
   act: async (g, p, i) => E.cpuBuildAction(g, p, i, level),
-  choose: async (g, p, moves) => { const c = E.cpuChoose(g, p, moves, level); if (check) check(moves, c); return c; },
+  choose: async (g, p, moves) => { const c = E.cpuChooseAsync ? await E.cpuChooseAsync(g, p, moves, level) : E.cpuChoose(g, p, moves, level); if (check) check(moves, c); return c; },
 });
 const total = g => g.players.reduce((s, p) => s + p.hand.length, 0) + g.boneyard.length + Object.values(g.trains).reduce((s, t) => s + t.tiles.length, 0);
 const chainOk = (g, id) => { let end = g.engine; for (const t of g.trains[id].tiles) { if (t[0] !== end) return false; end = t[1]; } return g.trains[id].end === end; };
@@ -49,10 +49,10 @@ async function duplicate(E, A, B, deals, seedBase) {
   ok(differ === 0, `400 whole rounds played identically move-for-move (${same} same, ${differ} differ)`);
   console.log(`   ${same}/400 rounds identical`);
 
-  console.log('2. every level plays legally and keeps the board valid (all 9 pairings)');
+  console.log('2. every level plays legally and keeps the board valid (all 16 pairings; the Expert, which thinks for longer, in fewer rounds)');
   let rounds = 0;
   for (const la of NEW.LEVELS) for (const lb of NEW.LEVELS) {
-    for (let i = 0; i < 150; i++) {
+    for (let i = 0; i < (la === 'expert' || lb === 'expert' ? 30 : 150); i++) {
       const g = NEW.newRound({ engine: 12 - (i % 13), handSize: 8 + (i % 8), rng: NEW.mulberry32(11000 + i), simultaneousOpening: true });
       const legal = (moves, c) => ok(moves.includes(c), `${la}/${lb}: chosen play is one of the legal moves`);
       let snap = null;
@@ -68,16 +68,17 @@ async function duplicate(E, A, B, deals, seedBase) {
   console.log(`   ${rounds} rounds`);
 
   console.log('3. openings by level');
-  const lens = { easy: [], normal: [], hard: [] };
+  const lens = { easy: [], normal: [], hard: [], expert: [] };
   for (const lv of NEW.LEVELS) for (let i = 0; i < 800; i++) {
     const g = NEW.newRound({ engine: 12 - (i % 13), handSize: 15, rng: NEW.mulberry32(21000 + i), simultaneousOpening: true });
     let n = null;
-    await NEW.playRound(g, 0, { human: ctl(NEW, lv), cpu: ctl(NEW, lv) }, { ...silent, onOpeningDone: gm => { n = gm.trains.human.tiles.length; } });
+    const opening = l => ({ act: async (gg, p, info) => NEW.cpuBuildAction(gg, p, info, l), choose: async (gg, p, moves) => NEW.cpuChoose(gg, p, moves, l) });      // (only the opening is measured: the Expert's look-ahead is not needed for that)
+    await NEW.playRound(g, 0, { human: opening(lv), cpu: opening(lv) }, { ...silent, onOpeningDone: gm => { n = gm.trains.human.tiles.length; } });
     lens[lv].push(n);
   }
   const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
-  console.log(`   average opening length: easy ${avg(lens.easy).toFixed(2)} | normal ${avg(lens.normal).toFixed(2)} | hard ${avg(lens.hard).toFixed(2)}`);
-  ok(JSON.stringify(lens.normal) === JSON.stringify(lens.hard), 'Normal and Hard both build the true longest train');
+  console.log(`   average opening length: easy ${avg(lens.easy).toFixed(2)} | normal ${avg(lens.normal).toFixed(2)} | hard ${avg(lens.hard).toFixed(2)} | expert ${avg(lens.expert).toFixed(2)}`);
+  ok(JSON.stringify(lens.normal) === JSON.stringify(lens.hard) && JSON.stringify(lens.hard) === JSON.stringify(lens.expert), 'Normal, Hard and Expert all build the true longest train');
   ok(avg(lens.easy) < avg(lens.normal) - 2, 'Easy builds clearly shorter trains');
   ok(avg(lens.easy) > 1.5, 'but still builds something');
 

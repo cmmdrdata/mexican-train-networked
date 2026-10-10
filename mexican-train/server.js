@@ -23,6 +23,7 @@
  *    ZeroTier...) or a tunnel service. The connection is plain HTTP/WebSocket, not encrypted.
  */
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -62,6 +63,46 @@ function lanAddresses(port, localOnly) {
   return sortAddresses(ips).map(ip => `${ip}:${port}`);
 }
 
+/* ------------------------------ this computer's address on the internet ------------------------------ */
+/* Is this text an address that could be this computer's public one? Only a plain IPv4 address qualifies, and not one that is private,
+ * loopback, link-local, carrier-grade-NAT, multicast or reserved: a service that answers with one of those has told us nothing useful. */
+function isPublicIPv4(text) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(text));
+  if (!m) return false;
+  const o = m.slice(1).map(Number);
+  if (o.some(n => n > 255)) return false;
+  const a = o[0], b = o[1];
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return false;
+  if (a === 169 && b === 254) return false;
+  if (a === 172 && b >= 16 && b <= 31) return false;
+  if (a === 192 && b === 168) return false;
+  if (a === 100 && b >= 64 && b <= 127) return false;
+  if (a === 192 && b === 0 && o[2] === 0) return false;
+  return true;
+}
+/* GET a small plain-text reply: IPv4 only, no redirects followed, a time limit, and the reply cut off at maxBytes (a service that sends more is refused). */
+function fetchSmallText(urlString, timeoutMs, maxBytes) {
+  return new Promise((resolve, reject) => {
+    let u;
+    try { u = new URL(urlString); } catch (e) { return reject(new Error('bad address')); }
+    const mod = u.protocol === 'https:' ? https : u.protocol === 'http:' ? http : null;
+    if (!mod) return reject(new Error('unsupported protocol'));
+    let done = false, req = null;
+    const finish = (err, value) => { if (done) return; done = true; clearTimeout(timer); try { if (req) req.destroy(); } catch (e) { /* ignore */ } if (err) reject(err); else resolve(value); };
+    const timer = setTimeout(() => finish(new Error('timed out')), timeoutMs);
+    if (timer.unref) timer.unref();
+    req = mod.get(u, { family: 4, timeout: timeoutMs, headers: { 'User-Agent': 'mexican-train-server', Accept: 'text/plain' } }, res => {
+      if (res.statusCode !== 200) { res.resume(); return finish(new Error('status ' + res.statusCode)); }
+      let size = 0; const chunks = [];
+      res.on('data', c => { size += c.length; if (size > maxBytes) return finish(new Error('reply too long')); chunks.push(c); });
+      res.on('end', () => finish(null, Buffer.concat(chunks).toString('utf8')));
+      res.on('error', e => finish(e));
+    });
+    req.on('error', e => finish(e));
+    req.on('timeout', () => finish(new Error('timed out')));
+  });
+}
+
 function createGameServer(options) {
   const opt = Object.assign({
     pagePath: path.join(__dirname, 'mexican-train.html'),
@@ -80,6 +121,12 @@ function createGameServer(options) {
     rng: null,                           // (room) => random source for the deal; tests use it to rig deals
     stepDelay: [500, 3000],              // the pause between the tiles of "Build my longest train": random, between these (milliseconds)
     maxMessage: 8192,
+    publicIp: true,                      // may the server ask a public service what this computer's address on the internet is? (node server.js --no-public-ip turns it off)
+    publicIpUrls: ['https://api.ipify.org', 'https://checkip.amazonaws.com', 'https://icanhazip.com'],     // asked in turn, only when the Host screen asks (plain text reply)
+    publicIpTimeoutMs: 2500,             // for each of them
+    publicIpCacheMs: 10 * 60 * 1000,     // a found address is remembered this long ...
+    publicIpFailMs: 30 * 1000,           // ... and a failure this long (so nobody can make the server ask over and over)
+    publicIpLookup: null,                // (tests) an async function returning { ip, via } instead of asking a service
     maxWrongCodes: 8,                    // wrong join codes from one address before it must wait a minute
     ratePerSecond: 30, burst: 60,        // messages a connection may send: far more than a person can click
   }, options || {});
@@ -94,6 +141,35 @@ function createGameServer(options) {
   const timers = new Set();
   const later = (fn, ms) => { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); if (t.unref) t.unref(); timers.add(t); return t; };
   const cancel = t => { if (t) { clearTimeout(t); timers.delete(t); } };
+
+  /* ------------------------------ the public address ------------------------------ */
+  const pub = { at: 0, result: null, promise: null };
+  function findPublicIp() {
+    if (opt.localOnly || opt.publicIp === false) return Promise.resolve({ state: 'off' });
+    const age = Date.now() - pub.at;
+    if (pub.result && age < (pub.result.state === 'ok' ? opt.publicIpCacheMs : opt.publicIpFailMs)) return Promise.resolve(pub.result);
+    if (pub.promise) return pub.promise;                          // one question at a time, however many are waiting for the answer
+    pub.promise = (async () => {
+      let result = { state: 'unavailable' };
+      try {
+        if (opt.publicIpLookup) {
+          const r = await opt.publicIpLookup();
+          if (r && isPublicIPv4(r.ip)) result = { state: 'ok', ip: r.ip, via: String(r.via || 'custom') };
+        } else {
+          for (const url of opt.publicIpUrls) {
+            try {
+              const text = (await fetchSmallText(url, opt.publicIpTimeoutMs, 128)).trim();
+              if (isPublicIPv4(text)) { result = { state: 'ok', ip: text, via: new URL(url).host }; break; }
+            } catch (e) { /* try the next one */ }
+          }
+        }
+      } catch (e) { /* unavailable */ }
+      pub.result = result; pub.at = Date.now(); pub.promise = null;
+      opt.log(result.state === 'ok' ? `this computer's public address is ${result.ip} (asked ${result.via})` : 'could not find this computer\'s public address (no internet access, or the lookup services did not answer)');
+      return result;
+    })();
+    return pub.promise;
+  }
 
   /* ------------------------------ the page ------------------------------ */
   function readPage() {
@@ -118,6 +194,16 @@ function createGameServer(options) {
       const body = JSON.stringify({ game: 'mexican-train', addresses: list, preferred: list[0] || `127.0.0.1:${boundPort}` });
       res.writeHead(200, Object.assign({ 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) }, headers));
       return res.end(req.method === 'HEAD' ? undefined : body);
+    }
+    if (url === '/publicip') {                                // what this computer's address on the internet is, if a public service can tell (asked only now, remembered for a while)
+      findPublicIp().then(r => {
+        const out = { game: 'mexican-train', state: r.state };
+        if (r.state === 'ok') Object.assign(out, { ip: r.ip, address: `${r.ip}:${boundPort}`, via: r.via });
+        const body = JSON.stringify(out);
+        res.writeHead(200, Object.assign({ 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) }, headers));
+        res.end(req.method === 'HEAD' ? undefined : body);
+      });
+      return;
     }
     if (url === '/netstats' && opt.netStats) {                // who is connected and how healthy the connections are (no secrets in it)
       const body = JSON.stringify(netStats(), null, 2);
@@ -514,7 +600,7 @@ function createGameServer(options) {
 
 /* ------------------------------ command line ------------------------------ */
 function main(argv) {
-  const args = { port: Number(process.env.PORT) || 8080, localOnly: false, page: null, grace: 180, help: false, quiet: false };
+  const args = { port: Number(process.env.PORT) || 8080, localOnly: false, page: null, grace: 180, help: false, quiet: false, publicIp: true };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') args.help = true;
@@ -523,6 +609,7 @@ function main(argv) {
     else if (a === '--page') args.page = argv[++i];
     else if (a === '--grace') args.grace = Number(argv[++i]);
     else if (a === '--quiet') args.quiet = true;
+    else if (a === '--no-public-ip') args.publicIp = false;
     else { console.error(`Unknown option: ${a}`); args.help = true; args.bad = true; }
   }
   if (!Number.isInteger(args.port) || args.port < 0 || args.port > 65535) { console.error('--port must be a number from 0 to 65535'); args.help = args.bad = true; }
@@ -537,6 +624,8 @@ Usage: node server.js [options]
   --page FILE      the game page to serve (default: mexican-train.html next to this file)
   --grace SECONDS  how long a dropped player has to come back (default 180)
   --quiet          do not print what happens in games
+  --no-public-ip   never ask an internet service (api.ipify.org and others) what this computer's public address is
+                   (by default it is asked, only when you open the Host screen, to offer it as a way to join)
   -h, --help       this help
 
 Listening on the whole network means other computers can connect to YOUR-IP:PORT.
@@ -544,7 +633,7 @@ Your firewall may ask whether to allow Node.js: say yes for private networks.`);
     process.exit(args.bad ? 1 : 0);
   }
   const server = createGameServer({
-    localOnly: args.localOnly, graceMs: Math.round(args.grace * 1000),
+    localOnly: args.localOnly, publicIp: args.publicIp, graceMs: Math.round(args.grace * 1000),
     pagePath: args.page ? path.resolve(args.page) : path.join(__dirname, 'mexican-train.html'),
     log: args.quiet ? () => {} : msg => console.log(`[${new Date().toLocaleTimeString()}] ${msg}`),
   });
@@ -577,4 +666,4 @@ Your firewall may ask whether to allow Node.js: say yes for private networks.`);
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { createGameServer, lanAddresses, addressRank, sortAddresses, normalizeCode, showCode, CODE_ALPHABET };
+module.exports = { createGameServer, isPublicIPv4, lanAddresses, addressRank, sortAddresses, normalizeCode, showCode, CODE_ALPHABET };

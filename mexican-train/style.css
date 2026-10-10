@@ -172,14 +172,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px
 .track-name { font: 700 1.05rem/1.2 var(--display); }
 .track-info { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
 .lamp { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--text); }
-.needs { display: inline-flex; align-items: center; gap: 0.4rem; }
-.num {
-  display: inline-grid; place-items: center; min-width: 1.7em; height: 1.7em; padding: 0 0.15em;
-  border-radius: 50%; background: var(--bone); color: var(--c, #222);
-  font: 700 0.95rem/1 var(--display);
-}
 .cover { color: var(--brass); font-weight: 700; font-size: 0.85rem; }
-.num.unknown { color: #5b6a67; }
 
 .scroller { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; }
 .scroller::-webkit-scrollbar { display: none; }
@@ -321,6 +314,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .tag-easy { background: #2f7d4f; color: #fff; }
 .tag-normal { background: #e0a83a; color: #2b1d03; }
 .tag-hard { background: #a23b3b; color: #fff; }
+.tag-expert { background: #4b2a78; color: #fff; }
 
 /* a comment in the computer player's own language, with its translation underneath */
 .bubble [lang]:not([lang="en"]) { font-size: 1.08rem; font-family: "Segoe UI", "Noto Sans", "Noto Sans CJK SC", "Hiragino Sans", "Yu Gothic", "Microsoft YaHei", "Malgun Gothic", "Nirmala UI", Arial, sans-serif; }
@@ -433,3 +427,15 @@ select option { color: #1b2523; background: #fff; }
 .say-dock .say-quick .btn { padding: 5px 11px; font-size: 0.85rem; }
 .say-panel .say-form { flex-basis: 100%; margin-bottom: 6px; }
 .you-said.not-sent { color: #f2c06b; font-style: italic; }
+
+/* How the other player will join (the Host screen): three choices, the last with a box for an address typed by hand */
+.join-choices { border: 1px solid rgba(0, 0, 0, 0.18); border-radius: 10px; padding: 0.6rem 0.8rem 0.7rem; margin: 0 0 1rem; }
+.join-choices legend { font-weight: 700; padding: 0 0.35rem; }
+.join-choices .choice { display: flex; gap: 0.55rem; align-items: flex-start; padding: 0.3rem 0; cursor: pointer; }
+.join-choices .choice input { margin-top: 0.25rem; flex: 0 0 auto; }
+.join-choices .choice input:disabled + span { opacity: 0.65; }
+.join-choices .choice { font-weight: 600; }
+.join-choices .choice .field-note { display: block; margin-top: 0.15rem; font-weight: 400; }
+.join-choices .manual-box { margin: 0.15rem 0 0.2rem 1.7rem; }
+.join-choices .manual-box[hidden] { display: none; }
+.join-choices .manual-box input { width: 100%; box-sizing: border-box; }

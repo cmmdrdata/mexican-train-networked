@@ -8,18 +8,19 @@ const tick = () => new Promise(r => setImmediate(r));
 const unesc = s => String(s).replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
 const T = G.THEMES.lotr;
-const LEVELS = ['easy', 'normal', 'hard'];
+const LEVELS = G.Engine.LEVELS;                         // (all the levels the game has)
 const cast = [].concat(...LEVELS.map(l => T.players[l]));
 const KINDS = Object.keys(G.LINES.normal);
 
 (async () => {
   console.log('the cast');
   ok(G.THEME_IDS.join() === 'classic,lotr', 'two themes: classic and The Lord of the Rings');
-  ok(LEVELS.every(l => T.players[l].length >= 4), 'at least four characters per level (so two computers of one level still get different ones)');
+  ok(LEVELS.every(l => T.players[l].length >= 2), 'at least two characters per level (so two computers of one level still get different ones: no more than two can be at one table)');
+  ok(LEVELS.join() === 'easy,normal,hard,expert' && T.players.expert.join() === 'Gandalf,Galadriel,Saruman' && T.players.hard.join() === 'Aragorn,Elrond', 'the cast: Aragorn and Elrond are Hard; Gandalf, Galadriel and Saruman are the Experts');
   ok(new Set(cast).size === cast.length, 'nobody plays at two levels');
   ok(cast.every(n => !G.CPU_NAMES.includes(n)), 'no character shares a name with a classic player');
   ok(cast.every(n => !G.nativeLangOf(n)), 'no character is mistaken for a native-language speaker');
-  ok(T.players.easy.includes('Pippin') && T.players.easy.includes('Gollum') && T.players.normal.includes('Sam') && T.players.hard.includes('Gandalf'), 'Pippin and Gollum are Easy, Sam Medium, Gandalf Hard');
+  ok(T.players.easy.includes('Pippin') && T.players.easy.includes('Gollum') && T.players.normal.includes('Sam') && T.players.hard.includes('Aragorn') && T.players.expert.includes('Gandalf'), 'Pippin and Gollum are Easy, Sam Medium, Aragorn Hard, Gandalf Expert');
   ok(Object.keys(T.voices).sort().join() === cast.slice().sort().join() && Object.keys(T.food).sort().join() === cast.slice().sort().join(), 'every character has a voice and food, and nobody else does');
 
   console.log('their voices');

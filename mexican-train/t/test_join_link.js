@@ -87,8 +87,8 @@ function boot(href, store, extra) {
   p.setForm({ '#net-server': 'localhost:8080', '#net-name': 'Ann', '#net-rounds': '4', '#net-hand': '15' });
   p.click({ action: 'openHost' });
   await wait(20);
-  ok(p.sandbox.fetched.length === 1 && p.sandbox.fetched[0] === '/info', 'opening the Host screen asks the page\'s own server for its address (/info)');
-  ok(/id="net-server" type="text" value="192\.168\.1\.23:8080" readonly/.test(p.html()) && !/value="localhost/.test(p.html()), 'the Host screen shows the network address (192.168.1.23:8080), not localhost, in a read-only field, even though the page was opened as localhost');
+  ok(p.sandbox.fetched.length === 2 && p.sandbox.fetched[0] === '/info' && p.sandbox.fetched[1] === '/publicip', 'opening the Host screen asks the page\'s own server for its address (/info), and then for its public address (/publicip)');
+  ok(/On this network: <code>192\.168\.1\.23:8080<\/code>/.test(p.html()) && /id="net-server" type="hidden" value="192\.168\.1\.23:8080"/.test(p.html()) && !/value="localhost/.test(p.html()), 'the Host screen offers the network address (192.168.1.23:8080), not localhost, even though the page was opened as localhost');
   p.click({ action: 'hostGame' });
   await wait(20);
   ok(p.sockets.length === 1 && p.sockets[0].url === 'ws://192.168.1.23:8080/ws', 'Create connects to that address, not to the "localhost:8080" that was in the form');

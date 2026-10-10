@@ -21,7 +21,7 @@
 require('./game.js');
 const G = globalThis.MexicanTrainGame;
 const E = G.Engine;
-const { newRound, playRound, longestFullChain, buildSteps, handPips, key, legalMoves, cpuChoose, cpuBuildAction, rateMove } = E;
+const { newRound, playRound, longestFullChain, buildSteps, handPips, key, legalMoves, cpuChoose, cpuChooseAsync, cpuBuildAction, rateMove } = E;
 const CHAT = G.CHAT;
 
 const MAX_PIP = 12;
@@ -198,11 +198,11 @@ class OnlineMatch {
           return action;
         },
         choose: async (game, player, moves) => {
-          if (game.openDouble) return cpuChoose(game, player, moves, cpu.level);     // a cover is played at once, with no thinking time
+          if (game.openDouble) return cpuChooseAsync(game, player, moves, cpu.level);     // a cover is played at once, with no thinking time
           this.humans.forEach(s => { this.banners[s] = `${this.names[seat]} is thinking...`; });
           this._broadcast(this.noEvents());
           await this._think('place');
-          return cpuChoose(game, player, moves, cpu.level);
+          return cpuChooseAsync(game, player, moves, cpu.level);
         },
       };
     }

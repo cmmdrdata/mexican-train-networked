@@ -1,5 +1,5 @@
 'use strict';
-// Screen clean-ups: no "Needs N" on the players' rows (the shared Mexican train keeps it), no join code in a playing game's header,
+// Screen clean-ups: no "Needs N" on any train's row (the players' rows and the shared Mexican train), no join code in a playing game's header,
 // "None" as the first computer choice on the Host screen, and nothing to fill in once a game has been created.
 require('./game.js');
 const G = globalThis.MexicanTrainGame, E = G.Engine;
@@ -22,7 +22,7 @@ function makeLocal(seed, extra) {
 }
 
 (async () => {
-  console.log('1. players\' rows have no "Needs N"; the Mexican train keeps it');
+  console.log('1. no train row says "Needs N", the shared Mexican train included');
   for (const cpus of [1, 2]) {
     const c = makeLocal(5 + cpus);
     c.d({ type: 'startGame', rounds: 1, hand: 12, style: 'pips', level: 'easy', cpus, level2: 'hard' });
@@ -31,12 +31,12 @@ function makeLocal(seed, extra) {
     const ids = cpus === 2 ? ['human', 'cpu', 'cpu2'] : ['human', 'cpu'];
     ok(ids.every(id => id in L) && 'mexican' in L, `${cpus} computer${cpus > 1 ? 's' : ''}: every row is found (${Object.keys(L).join(', ')})`);
     ok(ids.every(id => !hasNeeds(L[id])), `${cpus} computer${cpus > 1 ? 's' : ''}, while building (the computers' trains face down): no player's row says "Needs"`);
-    ok(/Needs <b class="num"[^>]*>12<\/b>/.test(L.mexican), '...but the Mexican train still says what it needs');
+    ok(!hasNeeds(L.mexican) && !/Needs/.test(c.html()), '...nor does the Mexican train, and the word "Needs" is nowhere on the screen');
     c.d({ type: 'autoBuild' });
     await until(() => c.S.game.opening.human.finished);
     await until(() => c.S.game.players.every(p => c.S.game.opening[p.id].finished) && c.S.awaiting && c.S.awaiting.kind !== 'build', 6000);
     L = labels(c.html());
-    ok(ids.every(id => !hasNeeds(L[id])) && hasNeeds(L.mexican), `${cpus} computer${cpus > 1 ? 's' : ''}, after the opening (every train face up): the same`);
+    ok(ids.every(id => !hasNeeds(L[id])) && !hasNeeds(L.mexican), `${cpus} computer${cpus > 1 ? 's' : ''}, after the opening (every train face up): the same`);
     ok(ids.every(id => /track-name/.test(L[id])), '(the rows still have their names)');
     const open = ids.filter(id => c.S.game.trains[id].marker);
     ok(open.every(id => /class="lamp"/.test(L[id]) && !hasNeeds(L[id])), `an open train still says so ("Open: ... can play here"), without Needs${open.length ? '' : ' (none were open here)'}`);
@@ -49,6 +49,7 @@ function makeLocal(seed, extra) {
     c.d({ type: 'openHost' }); await wait(5);
     const form = c.html();
     ok(/<option value="none" selected>None<\/option>/.test(form) && !/two players/i.test(form) && /Add a Hard computer as a third player/.test(form), 'the Host screen\'s first computer choice is just "None" (the others are unchanged)');
+    ok(/>Add an Easy computer as a third player</.test(form) && />Add a Medium computer as a third player</.test(form) && />Add a Hard computer as a third player</.test(form) && />Add an Expert computer as a third player</.test(form) && !/Add an? (a|an) /.test(form), 'all four levels are worded properly (an Easy, a Medium, a Hard, an Expert)');
     c.d({ type: 'hostGame', server: 'x', name: 'Ann', rounds: 4, hand: 15 }); await wait(10);
     const ws = FakeWS.last;
     ws.say({ t: 'created', code: 'K7QF2M', display: 'K7Q-F2M', token: 't', seat: 0, settings: { rounds: 4, hand: 15, allowHints: true }, addresses: ['127.0.0.1:8080'] });
@@ -63,7 +64,7 @@ function makeLocal(seed, extra) {
       game: { engine: 12, players: [{ id: 'human', name: 'You', hand: [T(1, 2)] }, { id: 'cpu', name: 'Ben', hand: [T(-1, -1)] }], boneyard: [T(-1, -1)], trains: { human: tr('human'), cpu: tr('cpu', true), mexican: tr('mexican') }, openDouble: null, opening: null } } });
     const game = c.html(), L = labels(game);
     ok(/<span>Online game<\/span>/.test(game) && !/Online game [A-Z0-9]{3}-?[A-Z0-9]{3}/.test(game) && !/K7Q/.test(game.split('class="tracks"')[0]), 'in the game, the header says "Online game" and no longer shows the join code');
-    ok(!hasNeeds(L.human) && !hasNeeds(L.cpu) && hasNeeds(L.mexican) && /Open: you can play here/.test(L.cpu), 'a hosted game\'s rows: no "Needs" on the players\' rows (an open train still says it is open), "Needs" on the Mexican train');
+    ok(!hasNeeds(L.human) && !hasNeeds(L.cpu) && !hasNeeds(L.mexican) && !/Needs/.test(game) && /Open: you can play here/.test(L.cpu), 'a hosted game\'s rows: no "Needs" on any row, or anywhere on the screen (an open train still says it is open)');
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

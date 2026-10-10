@@ -72,7 +72,7 @@ with sync_playwright() as pw:
         tiles: [...document.querySelectorAll('.tile-btn')].map(b => ({ op: parseFloat(getComputedStyle(b).opacity), playable: b.classList.contains('playable'), idle: b.classList.contains('idle') })) }; }"""
 
     print('1. the hand is dimmed when it is not your turn (a game against the computer)')
-    port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet']); time.sleep(1.2)
+    port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet', '--no-public-ip']); time.sleep(1.2)
     ctx = browser.new_context(viewport={'width': 1100, 'height': 900}); page = new_page(ctx)
     seed, first = find_deal(page, port, 12, lambda f: f['moves'] > 0)
     ok(seed is not None, f'a deal with real choices was found (seed {seed})')
@@ -105,7 +105,7 @@ with sync_playwright() as pw:
     # ============================================================================
     print('2. room for two more dominoes after the last tile of every train')
     for label, vw in [('wide screen', 1200), ('phone', 420)]:
-        port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet']); time.sleep(1.2)
+        port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet', '--no-public-ip']); time.sleep(1.2)
         ctx = browser.new_context(viewport={'width': vw, 'height': 900}); page = new_page(ctx)
         seed, first = find_deal(page, port, 15, lambda f: f['canBuild'] and f['n'] >= 8)
         ok(seed is not None, f'{label}: a deal with a long train to build was found (seed {seed}, {first and first["n"]} tiles)')
@@ -133,7 +133,7 @@ with sync_playwright() as pw:
 
     # ============================================================================
     print('2b. hints: the main-screen toggle, and playing with hints off using the real mouse')
-    port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet']); time.sleep(1.2)
+    port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet', '--no-public-ip']); time.sleep(1.2)
     ctx = browser.new_context(viewport={'width': 1100, 'height': 900}); page = new_page(ctx)
     page.goto(f'http://127.0.0.1:{port}/?seed=3')
     ok(page.inner_text('#opt-hints') == 'Allow hints: on' and page.get_attribute('#opt-hints', 'aria-pressed') == 'true', 'the main screen has an Allow hints toggle, on by default')
@@ -210,7 +210,7 @@ with sync_playwright() as pw:
 
     # ============================================================================
     print('2c. the toy train that marks an open train')
-    port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet']); time.sleep(1.2)
+    port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet', '--no-public-ip']); time.sleep(1.2)
     ctx = browser.new_context(viewport={'width': 1000, 'height': 760}); page = new_page(ctx)
     page.goto(f'http://127.0.0.1:{port}/?seed=4'); page.select_option('#opt-rounds', '1'); page.select_option('#opt-hand', '15'); page.select_option('#opt-level', 'easy')
     page.click('[data-action="startGame"]'); page.wait_for_function("() => window.MexicanTrainApp.state.awaiting"); time.sleep(0.5)
@@ -274,7 +274,7 @@ with sync_playwright() as pw:
 
     # ============================================================================
     print('2d. one person against two computers, in the real browser')
-    port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet']); time.sleep(1.2)
+    port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet', '--no-public-ip']); time.sleep(1.2)
     ctx = browser.new_context(viewport={'width': 1100, 'height': 900}); page = new_page(ctx)
     page.goto(f'http://127.0.0.1:{port}/?seed=6')
     ok(page.is_visible('#opt-cpus') and not page.is_visible('#field-level2'), 'the setup form has a Computer players choice, and the second skill is not shown while there is one computer')
@@ -310,7 +310,7 @@ with sync_playwright() as pw:
 
     # ============================================================================
     print('2e. a speech bubble does not flash when the page is redrawn')
-    port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet']); time.sleep(1.2)
+    port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet', '--no-public-ip']); time.sleep(1.2)
     ctx = browser.new_context(viewport={'width': 1000, 'height': 760}); page = new_page(ctx)
     page.goto(f'http://127.0.0.1:{port}/?seed=4'); page.select_option('#opt-rounds', '1'); page.select_option('#opt-hand', '12')
     page.click('[data-action="startGame"]'); page.wait_for_function("() => window.MexicanTrainApp.state.awaiting"); time.sleep(0.5)
@@ -338,30 +338,23 @@ with sync_playwright() as pw:
     ctx.close(); srv.terminate()
 
     # ============================================================================
-    print('3. the host address: a network IP address, and it cannot be edited')
-    port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet']); time.sleep(1.2)
+    print('3. the host address: a network IP address, offered as a choice, and not something to edit')
+    port = free_port(); srv = start_server(['node', '../server.js', '--port', str(port), '--quiet', '--no-public-ip']); time.sleep(1.2)
     info = json.loads(__import__('urllib.request').request.urlopen(f'http://127.0.0.1:{port}/info').read())
     ctx = browser.new_context(viewport={'width': 1100, 'height': 900}); page = new_page(ctx)
     page.goto(f'http://localhost:{port}/')                        # the host opens the page as "localhost"
     page.click('[data-action="openHost"]')
     page.wait_for_function("() => document.querySelector('#net-server') && document.querySelector('#net-server').value !== ''")
     val = page.input_value('#net-server')
-    ok(re.match(r'^\d+\.\d+\.\d+\.\d+:%d$' % port, val) is not None, f'the field shows an IP address and the port: {val}')
+    shown = page.inner_text('#via-local-text')
+    ok(re.match(r'^\d+\.\d+\.\d+\.\d+:%d$' % port, val) is not None and val in shown, f'the Host screen offers an IP address and the port as the way to join on this network: {val}')
     ok('localhost' not in val and not val.startswith('127.') or info['addresses'] == [], 'it is the computer\'s network address, not localhost, although the page was opened as localhost')
     ok(val == info['preferred'], 'and it is the address the server prefers (a 192.168.x.x or 10.x.x.x address when the computer has one)')
     page.screenshot(path=f'{SHOTS}/host_dialog.png')
-    ok(page.eval_on_selector('#net-server', 'e => e.readOnly') is True, 'the field is read-only in the browser')
-    st = page.eval_on_selector('#net-server', 'e => { const c = getComputedStyle(e); return { bg: c.backgroundColor, cursor: c.cursor, border: c.borderTopStyle }; }')
-    ok(st['cursor'] == 'not-allowed' and st['border'] == 'dashed' and st['bg'] not in ('rgba(0, 0, 0, 0)', 'transparent'), f'and it looks locked: shaded, dashed border, not-allowed cursor ({st})')
+    ok(page.eval_on_selector('#net-server', 'e => e.type') == 'hidden', 'the address the page itself connects with is not a field at all: a hidden value, nothing to edit')
+    ok(page.is_checked('#via-local') and page.is_disabled('#via-public') and not page.is_disabled('#via-manual'), 'this network is chosen; the internet choice cannot be made (this server was started with --no-public-ip); a typed address can')
     nm = page.eval_on_selector('#net-name', 'e => { const c = getComputedStyle(e); return { bg: c.backgroundColor, border: c.borderTopStyle }; }')
-    ok(nm['border'] == 'solid' and nm['bg'] in ('rgba(0, 0, 0, 0)', 'transparent'), 'while the name field next to it still looks editable')
-    page.click('#net-server'); page.keyboard.type('hacked.example.com'); page.keyboard.press('Backspace'); page.keyboard.press('Control+A'); page.keyboard.type('x')
-    ok(page.input_value('#net-server') == val, 'clicking in it and typing does nothing')
-    try:
-        page.fill('#net-server', 'evil:1', timeout=1500); filled = True
-    except Exception:
-        filled = False
-    ok(not filled and page.input_value('#net-server') == val, 'the browser itself refuses to fill it in (not editable)')
+    ok(nm['border'] == 'solid' and nm['bg'] in ('rgba(0, 0, 0, 0)', 'transparent'), 'and the name field looks editable')
     page.evaluate("() => { const f = document.getElementById('net-server'); f.removeAttribute('readonly'); f.value = 'evil.example.com:1'; }")   # even if someone edits the page...
     page.fill('#net-name', 'Ann'); page.click('[data-action="hostGame"]')
     page.wait_for_selector('.code-big')
