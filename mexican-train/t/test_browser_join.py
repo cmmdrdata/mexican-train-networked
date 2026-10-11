@@ -91,6 +91,7 @@ with sync_playwright() as pw:
     print('3. a typed address, and the keyboard')
     srv, port = start('off')
     a = host_page(f'http://127.0.0.1:{port}/')
+    a.wait_for_function("() => !document.getElementById('via-public-text').textContent.includes('looking up')", timeout=8000)     # (the answer comes a moment after the screen)
     st = a.evaluate(STATE)
     ok(st['pub']['disabled'] and 'not offered' in st['pub']['text'] and '--no-public-ip' in st['pub']['text'], f"with the lookup switched off the internet choice says so: {st['pub']['text'][:90]}")
     a.focus('#via-local'); a.keyboard.press('ArrowDown'); time.sleep(0.2)
@@ -117,6 +118,48 @@ with sync_playwright() as pw:
     st = a.evaluate(STATE)
     ok(st['pub']['disabled'] and 'type it below' in st['pub']['text'], f"a lookup that fails is reported, with what to do: {st['pub']['text'][:100]}")
     a.close(); srv.terminate()
+
+    print('5. the public address changes between two clicks of "Host online game"')
+    srv, port = start('seq:203.0.113.9,203.0.113.77')
+    a = host_page(f'http://127.0.0.1:{port}/')
+    a.wait_for_function("() => !document.getElementById('via-public').disabled", timeout=8000)
+    first = a.evaluate(STATE)['pub']['text']
+    ok(f'203.0.113.9:{port}' in first, f'the first click finds the first address: {first[:70]}')
+    a.keyboard.press('Escape'); a.wait_for_selector('[data-action="openHost"]')
+    a.click('[data-action="openHost"]')                                         # clicked again at once: the same answer, not another question
+    a.wait_for_function("() => !document.getElementById('via-public').disabled", timeout=8000)
+    ok(f'203.0.113.9:{port}' in a.evaluate(STATE)['pub']['text'], 'clicked again straight away it shows the same address (a quick second click does not ask the service again)')
+    a.keyboard.press('Escape'); a.wait_for_selector('[data-action="openHost"]')
+    time.sleep(5.6)                                                             # the server's memory of an answer is 5 seconds
+    a.click('[data-action="openHost"]')
+    a.wait_for_function("() => document.getElementById('via-public-text').textContent.includes('203.0.113.77')", timeout=8000)
+    st = a.evaluate(STATE)
+    ok(f'203.0.113.77:{port}' in st['pub']['text'] and '203.0.113.9:' not in st['pub']['text'], f"clicked again a little later it asks again and shows the NEW address: {st['pub']['text'][:70]}")
+    a.click('#via-public'); a.fill('#net-name', 'Ann'); a.click('[data-action="hostGame"]'); a.wait_for_selector('.code-big')
+    ok((a.evaluate("() => document.querySelector('.qrtext code').textContent") or '').startswith(f'http://203.0.113.77:{port}/?join='), 'and the lobby\'s link uses the new address')
+    a.close(); srv.terminate()
+
+    print('6. the local address cannot be reached from this window, and the host chose the internet')
+    srv, port = start('203.0.113.9')
+    pg = ctx.new_page(); pg.on('pageerror', lambda e: errors.append(str(e)))
+    sockets = []; pg.on('websocket', lambda ws: sockets.append(ws.url))
+    fake = f'10.255.255.1:{port}'                                              # an address nothing in this window can reach
+    pg.route('**/info', lambda route: route.fulfill(content_type='application/json', body=json.dumps({'game': 'mexican-train', 'addresses': [fake], 'preferred': fake})))
+    pg.goto(f'http://127.0.0.1:{port}/'); pg.click('[data-action="openHost"]')
+    pg.wait_for_function("() => document.querySelector('#net-server') && document.querySelector('#net-server').value !== ''")
+    pg.wait_for_function("() => !document.getElementById('via-public').disabled", timeout=8000)
+    st = pg.evaluate(STATE)
+    ok(fake in st['local']['text'] and f'203.0.113.9:{port}' in st['pub']['text'], f"the Host screen is told the local address is {fake} (unreachable from here) and finds the public one")
+    pg.click('#via-public'); pg.fill('#net-name', 'Ann'); pg.click('[data-action="hostGame"]')
+    try:
+        pg.wait_for_selector('.code-big', timeout=8000); reached = True
+    except Exception:
+        reached = False
+    err = pg.inner_text('[role="alert"]') if pg.query_selector('[role="alert"]') else ''
+    ok(reached and 'Could not reach' not in err, f'creating the game works, with no "Could not reach" message ({err[:90]!r})')
+    ok(sockets == [f'ws://127.0.0.1:{port}/ws'], f'the window connected only to the address it was loaded from, never to the unreachable one: {sockets}')
+    ok((pg.evaluate(LINK) or '').startswith(f'http://203.0.113.9:{port}/?join='), 'and the lobby offers the others the public address, as chosen')
+    pg.close(); srv.terminate()
 
     ok(errors == [], 'no JavaScript errors' + (': ' + '; '.join(errors[:2]) if errors else ''))
     browser.close()

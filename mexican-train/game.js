@@ -2082,7 +2082,7 @@
       const who = on
         ? (info && info.computer
           ? `<span class="tag tag-${info.level}" title="${LEVEL_LABEL[info.level]} computer player">${LEVEL_LABEL[info.level]}</span>`
-          : `<span class="net-dot ${on.oppConnected !== false ? 'up' : 'down'}" title="${on.oppConnected !== false ? 'connected' : 'disconnected'}"></span>`)
+          : (() => { const pr = info && on.presenceBySeat && on.presenceBySeat[info.seat]; const up = pr ? pr.connected : on.oppConnected !== false; return `<span class="net-dot ${up ? 'up' : 'down'}" title="${up ? 'connected' : 'disconnected'}"></span>`; })())
         : `<span class="tag tag-${levelFor(S, id)}" title="${LEVEL_LABEL[levelFor(S, id)]} computer player">${LEVEL_LABEL[levelFor(S, id)]}</span>`;
       const talkToggle = on && info && info.computer
         ? `<button class="btn chat-toggle" data-action="toggleChat" aria-pressed="${S.opts.chat ? 'true' : 'false'}" data-focus-id="chat">Comments: ${S.opts.chat ? 'on' : 'off'}</button>` : '';
@@ -2211,7 +2211,7 @@
     const hidden = id !== 'human' && id !== 'mexican' && !!g.opening && !!g.opening[id] && !g.opening[id].finished;
 
     let note = '';
-    if (id === 'mexican') note = '<span class="shared">Open to both players</span>';
+    if (id === 'mexican') note = `<span class="shared">Open to ${tableIds(S).length === 3 ? 'all players' : 'both players'}</span>`;
     else if (hidden) note = '<span class="shared">Building, tiles face down</span>';
     else if (tr.marker) {
       note = `<span class="lamp"><span>${id === 'human' ? `Open: ${tableIds(S).slice(1).map(x => nameOf(S, x)).join(' and ')} can play here` : 'Open: you can play here'}</span></span>`;
@@ -2455,7 +2455,7 @@
     return `<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
       <h2 id="dlg-title">${host ? 'Host an online game' : 'Join an online game'}</h2>
       ${host
-        ? '<p>This page must be opened from the game server on this computer (<code>node server.js</code>). You will get a join code to give to the other player, with the address they join at (chosen below).</p>'
+        ? '<p>This page must be opened from the game server on this computer (<code>node server.js</code>). You will get a join code to give to the others, with the address they join at (chosen below).</p>'
         : '<p>Ask the host for the server address and the join code.</p>'}
       ${host ? viewJoinChoices(S) : `<div class="field"><label for="net-server">Server address</label>
         <input id="net-server" type="text" value="${esc(f.server || '')}" placeholder="192.168.1.23:8080" autocomplete="off" spellcheck="false" autocapitalize="off"></div>`}
@@ -2467,9 +2467,9 @@
         <select id="net-rounds">${optionList([1, 4, 13], Number(f.rounds) || 4, v => v === 1 ? 'One round' : v === 4 ? 'Short game, 4 rounds' : 'Full game, 13 rounds')}</select></div>
       <div class="field"><label for="net-hand">Tiles dealt to each player</label>
         <select id="net-hand">${optionList([8, 12, 15], Number(f.hand) || 15, v => v === 15 ? '15 (standard)' : String(v))}</select></div>
-      <div class="field"><label for="net-computer">Computer player</label>
-        <select id="net-computer">${optionList(['none'].concat(LEVELS), f.computer || 'none', v => v === 'none' ? 'None' : 'Add ' + aOrAn(LEVEL_LABEL[v]) + ' computer as a third player')}</select>
-        <p class="field-note">With a computer player, all three are at the table from the start. (At a table of three the Expert plays like Hard: its looking ahead works against one other player.)</p></div>
+      <div class="field"><label for="net-computer">Third player</label>
+        <select id="net-computer">${optionList(['none'].concat(LEVELS, ['person']), f.computer || 'none', v => v === 'none' ? 'None' : v === 'person' ? 'Add a third person' : 'Add ' + aOrAn(LEVEL_LABEL[v]) + ' computer as a third player')}</select>
+        <p class="field-note">With a computer player, all three are at the table from the start. (At a table of three the Expert plays like Hard: its looking ahead works against one other player.) With a third person, three people play, everyone joins with the same code, and the game starts when all three are in.</p></div>
       <div class="field"><label for="net-theme">Theme</label>
         <select id="net-theme">${optionList(THEME_IDS, THEME_IDS.includes(f.theme) ? f.theme : 'classic', v => THEME_LABEL[v])}</select>
         <p class="field-note">The Lord of the Rings: the computer player is a character from Middle-earth, and an open train is marked with a golden ring on everyone's screen.</p></div>
@@ -2483,7 +2483,7 @@
   }
   function viewOnlineLobby(S) {
     const o = S.online, host = o.host;
-    const players = (o.settings.computer ? [0, 1, 2] : [0, 1]).map(i => {
+    const players = (o.settings.computer || o.settings.humans === 3 ? [0, 1, 2] : [0, 1]).map(i => {
       const p = o.players[i];
       return `<li class="${p ? (p.connected ? 'up' : 'down') : 'empty'}"><i class="net-dot ${p ? (p.connected ? 'up' : 'down') : ''}"></i><span>${p ? p.name + (i === o.seat ? ' (you)' : '') + (i === 0 ? ', host' : '') + (p.computer ? `, computer, ${LEVEL_LABEL[p.level || o.settings.computer]}` : '') : 'Waiting for a player...'}</span></li>`;
     }).join('');
@@ -2499,11 +2499,11 @@
           <button class="btn" data-action="copyLink" data-key="${esc(link)}">${S.copied === 'link' ? 'Copied' : S.copied === 'failed' ? 'Not copied: select the link above and copy it' : 'Copy link'}</button></div></div>` : '';
     const addrs = host
       ? (list.length
-        ? `${qr}<p>Or the other player opens one of these addresses in a browser, or enters it under <b>Join online game</b>:</p><ul class="addrs">${list.map((x, i) => `<li><code>${esc(x.addr)}</code> <span class="field-note">${JOIN_KIND[x.kind]}</span>${list.length > 1 ? ` <button class="btn small" data-action="selectQr" data-key="${i}" aria-pressed="${i === qi ? 'true' : 'false'}">${i === qi ? 'QR shown' : 'Show QR'}</button>` : ''}</li>`).join('')}</ul>`
+        ? `${qr}<p>${o.settings.humans === 3 ? 'Or the other players open' : 'Or the other player opens'} one of these addresses in a browser, or ${o.settings.humans === 3 ? 'enter it' : 'enters it'} under <b>Join online game</b>:</p><ul class="addrs">${list.map((x, i) => `<li><code>${esc(x.addr)}</code> <span class="field-note">${JOIN_KIND[x.kind]}</span>${list.length > 1 ? ` <button class="btn small" data-action="selectQr" data-key="${i}" aria-pressed="${i === qi ? 'true' : 'false'}">${i === qi ? 'QR shown' : 'Show QR'}</button>` : ''}</li>`).join('')}</ul>`
         : '<p>This server is only reachable from this computer (it was started with <code>--local-only</code>, or has no network address).</p>')
       : '';
     // Nothing to set on this screen: the game was set up on the Host screen, and now the host is only waiting for the other player to join.
-    const summary = `${o.settings.rounds === 1 ? 'One round' : o.settings.rounds + ' rounds'}, ${o.settings.hand} tiles each${o.settings.computer ? `, with ${aOrAn(LEVEL_LABEL[o.settings.computer])} computer player` : ''}${o.settings.theme && o.settings.theme !== 'classic' ? `, theme: ${THEME_LABEL[o.settings.theme]}` : ''}.`;
+    const summary = `${o.settings.rounds === 1 ? 'One round' : o.settings.rounds + ' rounds'}, ${o.settings.hand} tiles each${o.settings.computer ? `, with ${aOrAn(LEVEL_LABEL[o.settings.computer])} computer player` : o.settings.humans === 3 ? ', three people' : ''}${o.settings.theme && o.settings.theme !== 'classic' ? `, theme: ${THEME_LABEL[o.settings.theme]}` : ''}.`;
     const hintsNote = o.settings.allowHints === false ? (host ? 'Hints are off.' : 'Hints are off (the host\'s choice).') : (host ? 'Hints are allowed.' : 'Hints are allowed: you can switch them off for yourself in the game.');
     const settings = `<p>${summary} ${hintsNote}${host ? '' : ` ${o.players[0] ? o.players[0].name : 'The host'} will start the game.`}</p>`;
     return `<div class="overlay"><div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
@@ -2515,11 +2515,13 @@
       ${settings}
       <div class="actions">
         <button class="btn" data-action="confirmLeave">Leave</button>
-        ${host ? `<button class="btn primary" data-action="startOnline" data-primary="1"${o.canStart ? '' : ' disabled'}>${o.canStart ? 'Start game' : 'Waiting for a player...'}</button>` : ''}
+        ${host ? `<button class="btn primary" data-action="startOnline" data-primary="1"${o.canStart ? '' : ' disabled'}>${o.canStart ? 'Start game' : (o.settings.humans - o.players.filter(pl => pl && !pl.computer).length > 1 ? `Waiting for ${o.settings.humans - o.players.filter(pl => pl && !pl.computer).length} players...` : 'Waiting for a player...')}</button>` : ''}
       </div></div></div>`;
   }
   function viewOnlineWait(S) {
-    const o = S.online, opp = o.oppName || S.cpuName || 'The other player';
+    const o = S.online;
+    const lost = (S.opps || []).filter(x => !x.computer && o.presenceBySeat && o.presenceBySeat[x.seat] && o.presenceBySeat[x.seat].connected === false).map(x => x.name);
+    const opp = lost.length ? lost.join(' and ') : (o.oppName || S.cpuName || 'The other player');
     let title, body;
     if (o.phase === 'resuming' && o.conn === 'open') { title = 'Rejoining your game'; body = '<p>Asking the server for your game...</p>'; }
     else if (o.conn !== 'open') {
@@ -2547,7 +2549,7 @@
   function viewOnlineLeave(S) {
     return `<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
       <h2 id="dlg-title">Leave the game?</h2>
-      <p>This ends the game for both players. (To take a break instead, just close the page: you have a few minutes to come back.)</p>
+      <p>This ends the game for ${S.online && S.online.settings && S.online.settings.humans === 3 ? 'all three players' : 'both players'}. (To take a break instead, just close the page: you have a few minutes to come back.)</p>
       <div class="actions"><button class="btn" data-action="closeOverlay" data-primary="1">Keep playing</button><button class="btn primary" data-action="confirmLeave">Leave game</button></div>
     </div></div>`;
   }
@@ -2853,7 +2855,7 @@
       : hi.state === 'loading' ? 'On this network: looking up this computer\'s address...'
         : 'On this network: the game server did not give its address. Open this page from the server: start it with <code>node server.js</code> and open the address it prints.';
     return `<fieldset class="field join-choices" id="join-choices">
-        <legend>How will the other player join?</legend>
+        <legend>How will the others join?</legend>
         <label class="choice"><input type="radio" name="net-via" id="via-local" value="local"${via === 'local' ? ' checked' : ''}> <span id="via-local-text">${localText}</span></label>
         <label class="choice"><input type="radio" name="net-via" id="via-public" value="public"${via === 'public' ? ' checked' : ''}${pi.state === 'ok' ? '' : ' disabled'}> <span id="via-public-text">${publicChoiceHTML(S)}</span></label>
         <label class="choice"><input type="radio" name="net-via" id="via-manual" value="manual"${via === 'manual' ? ' checked' : ''}> <span>Type an address</span></label>
@@ -3482,12 +3484,12 @@
         case 'created':
         case 'joined':
         case 'resumed': {
-          o.code = String(m.code || o.code); o.display = clean(m.display || ''); o.seat = m.seat === 1 ? 1 : 0; o.host = o.seat === 0;
+          o.code = String(m.code || o.code); o.display = clean(m.display || ''); o.seat = m.seat === 1 || m.seat === 2 ? m.seat : 0; o.host = o.seat === 0;
           if (m.token) o.token = String(m.token);
           if (m.settings) o.settings = readOnlineSettings(m.settings);
           if (Array.isArray(m.addresses)) o.addresses = m.addresses.map(String).slice(0, 8);
           o.phase = m.t === 'resumed' && m.state === 'playing' ? 'playing' : 'lobby';
-          o.resuming = false; o.oppConnected = true; o.graceUntil = null;
+          o.resuming = false; o.oppConnected = true; o.graceUntil = null; o.presenceBySeat = {};
           S.overlay = null; S.onlineError = '';
           saveSession();
           render(true);
@@ -3501,18 +3503,19 @@
           if (m.settings) o.settings = readOnlineSettings(m.settings);
           if (Array.isArray(m.addresses)) o.addresses = m.addresses.map(String).slice(0, 8);
           if (m.state === 'playing') o.phase = 'playing';
-          const other = o.players[1 - o.seat];
-          o.oppName = other ? other.name : '';
+          o.oppName = o.players.filter((pl, i) => pl && !pl.computer && i !== o.seat).map(pl => pl.name).join(' and ');      // (the other people: one, or two)
           render();
           return;
         }
         case 'state': applyOnlineState(m); return;
         case 'presence':
           o.oppConnected = !!m.oppConnected; o.graceUntil = typeof m.graceUntil === 'number' ? m.graceUntil : null;
+          o.presenceBySeat = {};                                                    // and, with three people, about each of the others
+          if (Array.isArray(m.opps)) m.opps.forEach(x => { if (x && Number.isInteger(x.seat)) o.presenceBySeat[x.seat] = { connected: x.connected !== false, graceUntil: typeof x.graceUntil === 'number' ? x.graceUntil : null }; });
           if (!o.oppConnected) startTick();
           render();
           return;
-        case 'chat': { const said = cleanChatText(m.text); if (said) showChat(said); return; }
+        case 'chat': { const said = cleanChatText(m.text); if (said) showChat(said, m.from); return; }
         case 'say': if (typeof m.text === 'string') showSay(m); return;
         case 'ack':
           if (o.pending && o.pending.id === m.id) { if (m.ok) o.pending.ackSeq = Number(m.seq); else o.pending = null; }
@@ -3665,11 +3668,11 @@
 
     // the room's settings as the server sends them (anything missing or odd gets the usual value)
     function readOnlineSettings(m) {
-      return { rounds: Number(m.rounds) || 4, hand: Number(m.hand) || 15, computer: LEVELS.includes(m.computer) ? m.computer : null, theme: THEME_IDS.includes(m.theme) ? m.theme : 'classic', allowHints: m.allowHints !== false };
+      return { rounds: Number(m.rounds) || 4, hand: Number(m.hand) || 15, computer: LEVELS.includes(m.computer) ? m.computer : null, theme: THEME_IDS.includes(m.theme) ? m.theme : 'classic', allowHints: m.allowHints !== false, humans: Number(m.humans) === 3 ? 3 : 2 };
     }
-    function showChat(text) {
+    function showChat(text, from) {
       const id = ++commentId;
-      const person = S.opps && S.opps.find(x => !x.computer);
+      const person = S.opps && ((Number.isInteger(from) && S.opps.find(x => !x.computer && x.seat === from)) || S.opps.find(x => !x.computer));       // (with three people, the one who said it)
       S.comment = { id, kind: 'chat', text: String(text), from: person ? person.name : null };
       if (render()) popBubble();
       later(() => { if (S.comment && S.comment.id === id) { S.comment = null; render(); } }, Math.min(12000, CHAT.showMs + 45 * String(text).length));      // a longer message stays up longer
@@ -3711,7 +3714,9 @@
       if (S.online) leaveOnline(true);
       abortMatch();
       const hosting = kind === 'create';
-      const server = hosting ? (S.hostInfo && S.hostInfo.state === 'ready' ? parseServerAddress(S.hostInfo.address) : null) : parseServerAddress(a.server);
+      // The host's OWN page connects to the address it was loaded from: that works, whichever way the host got here (the local address, the public
+      // one, a forwarded port, a name). The addresses the server reports are for the OTHER players to use, and may not be reachable from here.
+      const server = hosting ? (S.hostInfo && S.hostInfo.state === 'ready' ? (parseServerAddress(defaultServer) || parseServerAddress(S.hostInfo.address)) : null) : parseServerAddress(a.server);
       // how the other player will join: the host's choice on the Host screen
       const via = hosting ? (JOIN_VIAS.includes(a.joinVia) ? a.joinVia : JOIN_VIAS.includes(S.form && S.form.joinVia) ? S.form.joinVia : 'local') : 'local';
       const typed = hosting ? String(a.joinManual !== undefined ? a.joinManual : (S.form && S.form.joinManual) || '').trim() : '';
@@ -3719,10 +3724,10 @@
       let join = null;
       if (hosting && server) {
         join = { via };
-        if (via === 'public' && publicInfo(S).state !== 'ok') { S.onlineError = 'This computer\'s public address is not known (yet). Choose another way for the other player to join, or wait a moment and try again.'; render(true); return; }
+        if (via === 'public' && publicInfo(S).state !== 'ok') { S.onlineError = 'This computer\'s public address is not known (yet). Choose another way for the others to join, or wait a moment and try again.'; render(true); return; }
         if (via === 'manual') {
-          const addr = parseJoinAddress(typed, portOf(server));
-          if (!addr) { S.onlineError = typed ? 'That is not an address. Type an IP address (or a name) and a port, like 203.0.113.9:8080.' : 'Type the address the other player will use, like 203.0.113.9:8080, or choose one of the other ways to join.'; render(true); return; }
+          const addr = parseJoinAddress(typed, portOf(S.hostInfo.address));          // (the port the server really listens on: the page's own address may be a forwarded one)
+          if (!addr) { S.onlineError = typed ? 'That is not an address. Type an IP address (or a name) and a port, like 203.0.113.9:8080.' : 'Type the address the others will use, like 203.0.113.9:8080, or choose one of the other ways to join.'; render(true); return; }
           join.manual = addr;
         }
       }
@@ -3733,7 +3738,7 @@
       S.onlineError = '';
       lastSeq = -1; tries = 0; S.qrIndex = 0; S.showHints = true;
       S.online = { phase: 'connecting', kind, server, name, join, code: '', display: '', token: '', seat: kind === 'create' ? 0 : 1, host: kind === 'create', settings: { rounds: 4, hand: 15, computer: null, theme: 'classic', allowHints: true }, players: [null, null], canStart: false, addresses: [], conn: 'connecting', oppConnected: true, graceUntil: null, ended: null, rounds: 4, pending: null, round: -1, oppName: '', lastActor: null };
-      const first = kind === 'create' ? { t: 'create', name, rounds: Number(a.rounds), hand: Number(a.hand), computer: LEVELS.includes(a.computer) ? a.computer : null, theme: THEME_IDS.includes(a.theme) ? a.theme : 'classic', allowHints: a.allowHints !== false } : { t: 'join', code: String(a.code), name };
+      const first = kind === 'create' ? { t: 'create', name, rounds: Number(a.rounds), hand: Number(a.hand), computer: LEVELS.includes(a.computer) ? a.computer : null, humans: a.computer === 'person' ? 3 : 2, theme: THEME_IDS.includes(a.theme) ? a.theme : 'classic', allowHints: a.allowHints !== false } : { t: 'join', code: String(a.code), name };
       netConnect(first);
     }
     function resumeOnline() {
@@ -4183,7 +4188,7 @@
       if (!(document.createElement && document.body && document.body.appendChild)) throw new Error('no document');
       const box = document.createElement('div');
       box.id = 'say-dock'; box.className = 'say-dock'; box.hidden = true;
-      box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Say something to the other player');
+      box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Say something to the others at the table');
       box.innerHTML = `<form class="say-form" autocomplete="off"><input id="say-text" type="text" maxlength="${CHAT_MAX}" placeholder="Type a message, then press Enter" aria-label="Your message" autocomplete="off" autocapitalize="sentences" enterkeyhint="send"><button class="btn primary" type="submit">Send</button><button class="btn" type="button" data-dock="close">Close</button></form>`
         + `<div class="say-quick" role="group" aria-label="Quick phrases">${ONLINE_PHRASES.map((ph, i) => `<button class="btn say" type="button" data-phrase="${i}">${esc(ph)}</button>`).join('')}</div>`;
       document.body.appendChild(box);

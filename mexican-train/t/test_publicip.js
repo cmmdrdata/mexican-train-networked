@@ -140,6 +140,37 @@ async function serverWith(urls, extra) {
     await srv.close(); await a.close();
   }
 
+  console.log('5b. a public address can change: every click of "Host online game" is a fresh question');
+  {
+    const d = createGameServer({ log: () => {} });
+    ok(d.options.publicIpCacheMs <= 5000 && d.options.publicIpFailMs <= 5000 && d.options.publicIpCacheMs > 0, `by default an answer is reused for no more than 5 seconds, a failure too (${d.options.publicIpCacheMs} ms, ${d.options.publicIpFailMs} ms), not for minutes`);
+  }
+  {
+    let n = 0;
+    const a = await provider((q, r) => { n++; r.writeHead(200); r.end(n === 1 ? '203.0.113.10' : '203.0.113.77'); });
+    const { srv, port } = await serverWith([a.url], { publicIpCacheMs: 250, publicIpFailMs: 250 });
+    const first = await get(port, '/publicip');
+    const again = await get(port, '/publicip');
+    ok(first.json.ip === '203.0.113.10' && again.json.ip === '203.0.113.10' && a.hits === 1, 'two clicks right after each other get the same answer from one question (a double click does not ask twice)');
+    await wait(330);
+    const later = await get(port, '/publicip');
+    ok(later.json.ip === '203.0.113.77' && later.json.address === `203.0.113.77:${port}` && a.hits === 2, 'but the next click after that asks again, and so notices that the address has changed: ' + later.body);
+    await wait(330);
+    const third = await get(port, '/publicip');
+    ok(a.hits === 3 && third.json.ip === '203.0.113.77', 'and again, each time (asked ' + a.hits + ' times for three clicks spread out)');
+    await srv.close(); await a.close();
+  }
+  {
+    // the service is reachable at first and then is not: the old address is not kept as if it were still true
+    let up = true;
+    const a = await provider((q, r) => { if (up) { r.writeHead(200); r.end('203.0.113.10'); } else { r.writeHead(503); r.end(); } });
+    const { srv, port } = await serverWith([a.url], { publicIpCacheMs: 200, publicIpFailMs: 200 });
+    const first = await get(port, '/publicip'); up = false; await wait(280);
+    const second = await get(port, '/publicip');
+    ok(first.json.state === 'ok' && second.json.state === 'unavailable' && !('ip' in second.json), 'when the next click cannot find the address, the old one is not offered any more (it may have changed)');
+    await srv.close(); await a.close();
+  }
+
   console.log('6. when it must not ask');
   {
     const a = await provider(say('203.0.113.7'));

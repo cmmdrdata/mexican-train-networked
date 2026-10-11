@@ -38,7 +38,7 @@ with sync_playwright() as pw:
     a.wait_for_function("() => document.querySelector('#net-server') && document.querySelector('#net-server').value !== ''")
     opts = a.evaluate("() => Array.from(document.querySelectorAll('#net-computer option')).map(o => [o.value, o.textContent])")
     ok(opts[0] == ['none', 'None'], f'the first computer choice is just "None": {opts[0]}')
-    ok([t for _, t in opts[1:]] == ['Add an Easy computer as a third player', 'Add a Medium computer as a third player', 'Add a Hard computer as a third player', 'Add an Expert computer as a third player'], f'followed by Easy, Medium, Hard and Expert, each worded properly (a / an): {[t for _, t in opts[1:]]}')
+    ok([t for _, t in opts[1:]] == ['Add an Easy computer as a third player', 'Add a Medium computer as a third player', 'Add a Hard computer as a third player', 'Add an Expert computer as a third player', 'Add a third person'], f'followed by Easy, Medium, Hard and Expert, each worded properly (a / an), and a third person: {[t for _, t in opts[1:]]}')
     ok(a.evaluate(INPUTS) >= 6, 'the Host screen is where the choices are made (it has the inputs: name, length, tiles, computer, theme, hints)')
     a.fill('#net-name', 'Ann'); a.select_option('#net-rounds', '1'); a.select_option('#net-hand', '8')
     a.click('[data-action="hostGame"]'); a.wait_for_selector('.code-big')

@@ -124,8 +124,8 @@ function createGameServer(options) {
     publicIp: true,                      // may the server ask a public service what this computer's address on the internet is? (node server.js --no-public-ip turns it off)
     publicIpUrls: ['https://api.ipify.org', 'https://checkip.amazonaws.com', 'https://icanhazip.com'],     // asked in turn, only when the Host screen asks (plain text reply)
     publicIpTimeoutMs: 2500,             // for each of them
-    publicIpCacheMs: 10 * 60 * 1000,     // a found address is remembered this long ...
-    publicIpFailMs: 30 * 1000,           // ... and a failure this long (so nobody can make the server ask over and over)
+    publicIpCacheMs: 5 * 1000,           // a found address is reused this long (a public address can change, so every time the Host screen is opened it is asked again) ...
+    publicIpFailMs: 5 * 1000,            // ... and so is a failure: it is not asked more often than this, however many clicks or clients there are
     publicIpLookup: null,                // (tests) an async function returning { ip, via } instead of asking a service
     maxWrongCodes: 8,                    // wrong join codes from one address before it must wait a minute
     ratePerSecond: 30, burst: 60,        // messages a connection may send: far more than a person can click
@@ -265,28 +265,29 @@ function createGameServer(options) {
   function newRoom(c, name, settings) {
     let code; do { code = randomCode(); } while (rooms.has(code));
     const room = {
-      code, settings: { rounds: [1, 4, 13].includes(Number(settings.rounds)) ? Number(settings.rounds) : 4, hand: [8, 12, 15].includes(Number(settings.hand)) ? Number(settings.hand) : 15, computer: cleanComputer(settings.computer), theme: cleanTheme(settings.theme), allowHints: !(settings.allowHints === false || settings.allowHints === 'false') },
+      code, settings: { rounds: [1, 4, 13].includes(Number(settings.rounds)) ? Number(settings.rounds) : 4, hand: [8, 12, 15].includes(Number(settings.hand)) ? Number(settings.hand) : 15, computer: cleanHumans(settings.humans) === 3 ? null : cleanComputer(settings.computer), theme: cleanTheme(settings.theme), allowHints: !(settings.allowHints === false || settings.allowHints === 'false'), humans: cleanHumans(settings.humans) },
       computerName: null,
-      players: [{ name, token: crypto.randomBytes(16).toString('hex'), conn: null, lostAt: null, timer: null }, null],
-      state: 'lobby', match: null, chatAt: [0, 0], chatLog: [[], []], lastActivity: Date.now(), over: null,
+      players: [{ name, token: crypto.randomBytes(16).toString('hex'), conn: null, lostAt: null, timer: null }, null, null],
+      state: 'lobby', match: null, chatAt: [0, 0, 0], chatLog: [[], [], []], lastActivity: Date.now(), over: null,
     };
     rooms.set(code, room);
     return room;
   }
   const seatOf = c => (c.session ? c.session.seat : -1);
-  const connectedSeats = room => room.players.map(p => !!(p && p.conn && p.conn.ws.open));
+  const seatsOf = room => Array.from({ length: room.settings.humans }, (_, i) => i);          // the seats people sit in: two or three
+  const connectedSeats = room => seatsOf(room).map(i => { const p = room.players[i]; return !!(p && p.conn && p.conn.ws.open); });
 
   function sendSeat(room, seat, msg) { const p = room.players[seat]; if (p && p.conn) send(p.conn, msg); }
   function lobbyMessage(room, seat) {
     return {
       t: 'lobby', code: room.code, display: showCode(room.code), seat, settings: room.settings,
-      players: room.players.map(p => (p ? { name: p.name, connected: !!(p.conn && p.conn.ws.open) } : null))
+      players: seatsOf(room).map(i => room.players[i]).map(p => (p ? { name: p.name, connected: !!(p.conn && p.conn.ws.open) } : null))
         .concat(room.settings.computer ? [{ name: room.computerName, connected: true, computer: true, level: room.settings.computer }] : []),
-      canStart: !!(room.state === 'lobby' && room.players[0] && room.players[1] && connectedSeats(room).every(Boolean)),
+      canStart: !!(room.state === 'lobby' && seatsOf(room).every(i => room.players[i]) && connectedSeats(room).every(Boolean)),
       addresses: lanAddresses(boundPort, opt.localOnly), state: room.state,
     };
   }
-  function sendLobby(room) { for (const seat of [0, 1]) sendSeat(room, seat, lobbyMessage(room, seat)); }
+  function sendLobby(room) { for (const seat of seatsOf(room)) sendSeat(room, seat, lobbyMessage(room, seat)); }
   /* ------------------------------ what happened to a connection ------------------------------ */
   const deviceOf = ua => {
     ua = String(ua || '');
@@ -337,10 +338,13 @@ function createGameServer(options) {
     };
   }
   function presence(room) {
-    for (const seat of [0, 1]) {
-      const other = room.players[1 - seat];
+    for (const seat of seatsOf(room)) {
       // a player in the first few seconds after a drop still counts as there: most blips mend themselves, and nobody needs to hear about those
-      sendSeat(room, seat, { t: 'presence', oppConnected: !!(other && ((other.conn && other.conn.ws.open) || other.soft)), graceUntil: other && other.lostAt && !other.soft ? other.lostAt + opt.graceMs : null });
+      const others = seatsOf(room).filter(i => i !== seat).map(i => ({ seat: i, p: room.players[i] }));
+      const state = others.map(({ seat: i, p }) => ({ seat: i, connected: !!(p && ((p.conn && p.conn.ws.open) || p.soft)), graceUntil: p && p.lostAt && !p.soft ? p.lostAt + opt.graceMs : null }));
+      const gone = state.filter(x => !x.connected && x.graceUntil !== null).map(x => x.graceUntil);
+      // oppConnected / graceUntil say it for everyone else at once (as they always did with one other person); opps says it for each
+      sendSeat(room, seat, { t: 'presence', oppConnected: state.every(x => x.connected), graceUntil: gone.length ? Math.min.apply(null, gone) : null, opps: state });
     }
   }
   function attach(room, seat, c) {
@@ -354,8 +358,8 @@ function createGameServer(options) {
     if (room.state === 'over' && room.over) return;
     room.state = 'over'; room.over = reason;
     if (room.match) room.match.abort();
-    for (const seat of [0, 1]) { const p = room.players[seat]; if (p) { cancel(p.timer); p.timer = null; cancel(p.soft); p.soft = null; } }
-    for (const seat of [0, 1]) sendSeat(room, seat, { t: 'ended', reason, message });
+    for (const seat of seatsOf(room)) { const p = room.players[seat]; if (p) { cancel(p.timer); p.timer = null; cancel(p.soft); p.soft = null; } }
+    for (const seat of seatsOf(room)) sendSeat(room, seat, { t: 'ended', reason, message });
     opt.log(`game ${showCode(room.code)} ended: ${reason}`);
   }
   function dropRoom(room) {
@@ -365,7 +369,8 @@ function createGameServer(options) {
   }
 
   /* ------------------------------ messages ------------------------------ */
-  const cleanSettings = msg => ({ rounds: msg.rounds, hand: msg.hand, computer: msg.computer, theme: msg.theme, allowHints: msg.allowHints });
+  const cleanSettings = msg => ({ rounds: msg.rounds, hand: msg.hand, computer: msg.computer, theme: msg.theme, allowHints: msg.allowHints, humans: msg.humans });
+  const cleanHumans = v => (Number(v) === 3 ? 3 : 2);                              // people at the table: two, or three (then there is no computer player: that would be four)
   const cleanComputer = v => (G.Engine.LEVELS.includes(v) ? v : null);       // 'easy', 'normal' or 'hard'; anything else means no computer player
   const cleanTheme = v => (G.THEME_IDS.includes(v) ? v : 'classic');            // who the computer player is, and the ring or toy train markers
   /* A name for the computer player, from the computer players of its level (and theme), not one a person at the table has. */
@@ -387,6 +392,14 @@ function createGameServer(options) {
     sendLobby(room);
   }
   function guessBlocked(c) { const f = failures.get(c.ip); return f && f.n >= opt.maxWrongCodes && Date.now() < f.until; }
+  /* A name nobody at the table already has (compared without regard to capitals, the computer player's name included): a second "Ann" is "Ann 2". */
+  function uniqueName(room, wanted) {
+    const taken = new Set(room.players.filter(Boolean).map(p => p.name.toLowerCase()));
+    if (room.computerName) taken.add(room.computerName.toLowerCase());
+    let name = wanted;
+    for (let n = 2; taken.has(name.toLowerCase()); n++) name = cleanName(wanted.slice(0, 20 - (' ' + n).length) + ' ' + n);      // (kept within 20 characters)
+    return name;
+  }
   function onJoin(c, msg) {
     if (c.session) return reply(c, 'already_in_game', 'You are already in a game.');
     if (guessBlocked(c)) return reply(c, 'too_many_tries', 'Too many wrong codes. Wait a minute and try again.');
@@ -396,14 +409,13 @@ function createGameServer(options) {
       const f = failures.get(c.ip) || { n: 0, until: 0 }; f.n++; f.until = Date.now() + 60000; failures.set(c.ip, f);
       return reply(c, 'no_such_game', 'There is no game with that code. Check the code and the address.');
     }
-    if (room.state !== 'lobby' || room.players[1]) return reply(c, 'game_full', 'That game already has two players.');
+    const seat = room.state === 'lobby' ? seatsOf(room).find(i => i > 0 && !room.players[i]) : undefined;
+    if (seat === undefined) return reply(c, 'game_full', room.settings.humans === 3 ? 'That game already has three players.' : 'That game already has two players.');
     failures.delete(c.ip);
-    room.players[1] = { name: cleanName(msg.name, 'Guest'), token: crypto.randomBytes(16).toString('hex'), conn: null, lostAt: null, timer: null };
-    const sameName = n => n === room.players[0].name || (room.computerName && n.toLowerCase() === room.computerName.toLowerCase());
-    if (sameName(room.players[1].name)) room.players[1].name = cleanName(room.players[1].name.slice(0, 17) + ' 2');   // keep it within 20 characters
-    attach(room, 1, c);
-    opt.log(`${room.players[1].name} joined game ${showCode(room.code)}`);
-    send(c, { t: 'joined', code: room.code, display: showCode(room.code), token: room.players[1].token, seat: 1, settings: room.settings, addresses: lanAddresses(boundPort, opt.localOnly) });
+    room.players[seat] = { name: uniqueName(room, cleanName(msg.name, 'Guest')), token: crypto.randomBytes(16).toString('hex'), conn: null, lostAt: null, timer: null };
+    attach(room, seat, c);
+    opt.log(`${room.players[seat].name} joined game ${showCode(room.code)}`);
+    send(c, { t: 'joined', code: room.code, display: showCode(room.code), token: room.players[seat].token, seat, settings: room.settings, addresses: lanAddresses(boundPort, opt.localOnly) });
     sendLobby(room);
   }
   function onResume(c, msg) {
@@ -435,24 +447,30 @@ function createGameServer(options) {
     }
     if (s.theme !== undefined && G.THEME_IDS.includes(s.theme)) { room.settings.theme = s.theme; nameComputer(room); }   // an unknown theme is ignored
     if (typeof s.allowHints === 'boolean') room.settings.allowHints = s.allowHints;                                       // the host's choice about hints, for everyone at the table
+    if (Object.prototype.hasOwnProperty.call(msg, 'humans') && [2, 3, '2', '3'].includes(msg.humans)) {                    // two people or three
+      const want = cleanHumans(msg.humans);
+      if (want === 2 && room.players[2]) return reply(c, 'not_allowed', 'Someone has already joined the third seat.');
+      room.settings.humans = want;
+      if (want === 3) { room.settings.computer = null; nameComputer(room); }
+    }
     sendLobby(room);
   }
   function onStart(c) {
     const room = c.session && c.session.room;
     if (!room || c.session.seat !== 0) return reply(c, 'not_allowed', 'Only the host can start the game.');
     if (room.state !== 'lobby') return reply(c, 'not_allowed', 'The game has already started.');
-    if (!room.players[1] || !connectedSeats(room).every(Boolean)) return reply(c, 'not_ready', 'Wait for the other player to join.');
+    if (!seatsOf(room).every(i => room.players[i]) || !connectedSeats(room).every(Boolean)) return reply(c, 'not_ready', room.settings.humans === 3 ? 'Wait for the other players to join.' : 'Wait for the other player to join.');
     room.state = 'playing';
     nameComputer(room);
     room.match = new OnlineMatch({
       rounds: room.settings.rounds, hand: room.settings.hand, allowHints: room.settings.allowHints !== false,
-      names: room.settings.computer ? [room.players[0].name, room.players[1].name, room.computerName] : [room.players[0].name, room.players[1].name],
+      names: seatsOf(room).map(i => room.players[i].name).concat(room.settings.computer ? [room.computerName] : []),
       computer: room.settings.computer ? { level: room.settings.computer } : undefined, theme: room.settings.theme,
       rng: opt.rng ? opt.rng(room) : undefined, stepDelay: opt.stepDelay, sleep: opt.sleep,
       chatRng: opt.chatRng || undefined, timer: opt.timer || undefined, now: opt.now || undefined, nativeChance: opt.nativeChance, foodChance: opt.foodChance,
       push: (seat, msg) => sendSeat(room, seat, msg),
     });
-    opt.log(`game ${showCode(room.code)} started: ${room.players[0].name} vs ${room.players[1].name}${room.settings.computer ? ' vs ' + room.computerName + ' (computer, ' + room.settings.computer + ')' : ''}${room.settings.theme !== 'classic' ? ' [' + room.settings.theme + ']' : ''}`);
+    opt.log(`game ${showCode(room.code)} started: ${seatsOf(room).map(i => room.players[i].name).join(' vs ')}${room.settings.computer ? ' vs ' + room.computerName + ' (computer, ' + room.settings.computer + ')' : ''}${room.settings.theme !== 'classic' ? ' [' + room.settings.theme + ']' : ''}`);
     sendLobby(room);
     room.match.start().then(() => {
       room.lastActivity = Date.now();
@@ -483,7 +501,7 @@ function createGameServer(options) {
     const recent = (room.chatLog[seat] || []).filter(t => now - t < 60000);
     if (recent.length >= 10) { room.chatLog[seat] = recent; return reply(c, 'slow_down', 'That is a lot of messages. Wait a little: that one was not sent.'); }
     room.chatAt[seat] = now; recent.push(now); room.chatLog[seat] = recent;
-    sendSeat(room, 1 - seat, Object.assign({ t: 'chat', text }, id !== null ? { id } : {}));
+    for (const other of seatsOf(room)) if (other !== seat) sendSeat(room, other, Object.assign({ t: 'chat', text, from: seat }, id !== null ? { id } : {}));       // (the server says who: a sender cannot claim to be someone else)
   }
   // Someone who has pressed "See the final score" has seen everything there is to see. If they leave (or close the page) before the
   // other person has pressed it, the game is not abandoned: the other person still gets their final score.
@@ -497,7 +515,7 @@ function createGameServer(options) {
     if (p) { p.conn = null; cancel(p.timer); cancel(p.soft); p.soft = null; }
     if (room.state === 'lobby') {
       if (seat === 0) { endRoom(room, 'left', `${p ? p.name : 'The host'} closed the game.`); rooms.delete(room.code); }
-      else { room.players[1] = null; sendLobby(room); }
+      else { room.players[seat] = null; sendLobby(room); }
     } else if (room.state === 'playing') {
       if (sawEverything(room, seat)) { opt.log(`${p ? p.name : 'A player'} left game ${showCode(room.code)} after seeing the final score; the other player has not yet`); room.match.seatLeft(seat); }
       else endRoom(room, 'left', `${p ? p.name : 'The other player'} left the game.`);
@@ -520,7 +538,7 @@ function createGameServer(options) {
     p.conn = null; p.lostAt = Date.now();
     room.lastActivity = Date.now();
     if (room.state === 'over') { if (room.players.every(x => !x || !x.conn)) later(() => { if (rooms.get(room.code) === room && room.players.every(x => !x || !x.conn)) rooms.delete(room.code); }, opt.overRoomMs); return; }
-    if (room.state === 'lobby' && seat === 1) { room.players[1] = null; sendLobby(room); return; }     // a guest who drops from the lobby just frees the seat
+    if (room.state === 'lobby' && seat !== 0) { room.players[seat] = null; sendLobby(room); return; }     // a guest who drops from the lobby just frees the seat
     if (sawEverything(room, seat)) { opt.log(`${p.name} closed the page of game ${showCode(room.code)} after seeing the final score; the other player has not yet: no pause, no waiting for them`); room.match.seatLeft(seat); return; }
     opt.log(`${p.name} lost the connection to game ${showCode(room.code)}: ${why}. (${span(Date.now() - c.since)} connected; heard from them ${span(heard)} before it ended; ${rttText(c.ws)}; ${lagText()}) [${deviceOf(c.ua)}]`);
     cancel(p.timer); cancel(p.soft);

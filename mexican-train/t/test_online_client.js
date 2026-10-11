@@ -147,6 +147,17 @@ const hostile = /<(script|img|svg|iframe|b|i)\b[^>]*>/i;
     await until(() => c.S.online && c.S.online.phase === 'lobby');
     ok(c.sockets[0].url === `ws://127.0.0.1:${A.port}/ws` && c.S.online.server === `127.0.0.1:${A.port}`, 'even if a different address is sent along with Create, the game is hosted at the address the server gave (the field cannot be used to change it)');
     c.dispatch({ type: 'confirmLeave' });
+    // the server's local-network address is not reachable from where this page is (the page was loaded another way, say through a forwarded
+    // public address): the host's own page connects to where it was loaded from, so hosting works all the same
+    {
+      const far = makeClient(A.port, { fetch: async () => ({ ok: true, json: async () => ({ addresses: ['10.255.255.1:' + A.port], preferred: '10.255.255.1:' + A.port }) }) });
+      far.dispatch({ type: 'openHost' }); await until(() => far.S.hostInfo.state === 'ready');
+      ok(/On this network: <code>10\.255\.255\.1:/.test(far.html()), '(the Host screen is told an address this page cannot reach: 10.255.255.1)');
+      far.dispatch({ type: 'hostGame', server: '10.255.255.1:' + A.port, name: 'Ann', rounds: 1, hand: 8, joinVia: 'local' });
+      const reached = await until(() => far.S.online && far.S.online.phase === 'lobby' && far.S.online.code, 3000);
+      ok(!!reached && !far.S.onlineError && far.S.online.server === `127.0.0.1:${A.port}` && far.sockets[0].url === `ws://127.0.0.1:${A.port}/ws` && !far.sockets.some(w => /10\.255\.255\.1/.test(w.url)), 'the game is created over the address the page was loaded from, and no connection is ever tried to the unreachable one');
+      far.dispatch({ type: 'confirmLeave' });
+    }
     // a page that is not served by a game server (no way to ask it)
     const nf = makeClient(A.port, { fetch: null, noDefault: true });
     nf.dispatch({ type: 'openHost' });

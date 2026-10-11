@@ -588,7 +588,7 @@ const structuralLeaks = c => {                                // no real tile of
     a.send({ t: 'chat', text: 'Good luck, Ben!' });
     const m = await b.next(x => x.t === 'chat', 2000);
     ok(m.text === 'Good luck, Ben!' && !('id' in m) && !a.of('chat').length, 'a typed message reaches the other player, as typed, and is not echoed back to the sender');
-    ok(!('from' in m) && Object.keys(m).sort().join() === 't,text', 'and carries nothing else (the other page uses the name it already knows: a sender cannot claim to be someone else)');
+    ok(m.from === 0 && Object.keys(m).sort().join() === 'from,t,text', 'and carries who said it, which the server fills in from the connection (a sender cannot claim to be someone else) and nothing else');
     clear(); a.send({ t: 'chat', text: '<img src=x onerror=alert(1)> & "quotes" \'too\'' });
     ok((await b.next(x => x.t === 'chat' && /img/.test(x.text), 2000)).text === '<img src=x onerror=alert(1)> & "quotes" \'too\'', 'markup is just text: it is passed on unchanged for the page to show as text (never as HTML)');
     clear(); a.send({ t: 'chat', text: '  two   spaces,\nnew line\tand a tab\u0000 \u202e(flipped)\u200b ' });

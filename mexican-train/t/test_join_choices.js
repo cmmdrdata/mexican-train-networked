@@ -1,12 +1,12 @@
 'use strict';
-// The Host screen's "How will the other player join?" (this network / over the internet / type an address) and what the lobby then offers.
+// The Host screen's "How will the others join?" (this network / over the internet / type an address) and what the lobby then offers.
 require('./game.js');
 const G = globalThis.MexicanTrainGame;
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL:', m); } };
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
-class FakeWS { constructor() { this.readyState = 0; this.sent = []; FakeWS.all.push(this); FakeWS.last = this; setTimeout(() => { this.readyState = 1; this.onopen && this.onopen(); }, 1); } send(d) { this.sent.push(JSON.parse(d)); } close() {} say(o) { this.onmessage && this.onmessage({ data: JSON.stringify(o) }); } }
+class FakeWS { constructor(url) { this.url = url; this.readyState = 0; this.sent = []; FakeWS.all.push(this); FakeWS.last = this; setTimeout(() => { if (FakeWS.unreachable && String(url).includes(FakeWS.unreachable)) { this.readyState = 3; this.onerror && this.onerror({}); this.onclose && this.onclose({ code: 1006 }); return; } this.readyState = 1; this.onopen && this.onopen(); }, 1); } send(d) { this.sent.push(JSON.parse(d)); } close() {} say(o) { this.onmessage && this.onmessage({ data: JSON.stringify(o) }); } }
 FakeWS.all = [];
 
 function make(opts) {
@@ -24,7 +24,7 @@ function make(opts) {
     c.fetches.push(rec);
     if (url === '/info' && !opts.manualInfo) rec.resolve({ addresses: opts.addresses || ['192.168.1.23:8080'], preferred: (opts.addresses || ['192.168.1.23:8080'])[0] });
   });
-  c.app = G.createApp({ root, sleep: async () => {}, reducedMotion: true, timer: c.timer, now: () => clock.t, storage: { get: k => (k in store ? store[k] : null), set: (k, v) => { store[k] = v; } }, WebSocket: FakeWS, fetch, defaultServer: '192.168.1.23:8080' });
+  c.app = G.createApp({ root, sleep: async () => {}, reducedMotion: true, timer: c.timer, now: () => clock.t, storage: { get: k => (k in store ? store[k] : null), set: (k, v) => { store[k] = v; } }, WebSocket: FakeWS, fetch, defaultServer: opts.origin !== undefined ? opts.origin : '192.168.1.23:8080' });
   c.S = c.app.state; c.d = a => c.app.dispatch(a);
   c.d({ type: 'boot' });
   c.publicReq = () => c.fetches.find(f => f.url === '/publicip');
@@ -57,7 +57,7 @@ const linkOf = c => (c.html.match(/<p class="field-note"><code>(http[^<]+)<\/cod
     const c = make({ manualInfo: true });
     c.d({ type: 'openHost' });
     let h = c.html;
-    ok(/<legend>How will the other player join\?<\/legend>/.test(h) && /name="net-via" id="via-local" value="local" checked/.test(h) && /id="via-public" value="public" disabled/.test(h) && /id="via-manual" value="manual"/.test(h), 'three choices: this network (chosen), over the internet (not yet usable), and a typed address');
+    ok(/<legend>How will the others join\?<\/legend>/.test(h) && /name="net-via" id="via-local" value="local" checked/.test(h) && /id="via-public" value="public" disabled/.test(h) && /id="via-manual" value="manual"/.test(h), 'three choices: this network (chosen), over the internet (not yet usable), and a typed address');
     ok(/On this network: looking up/.test(h) && /Over the internet: looking up this computer's public address/.test(h) && /id="join-manual-box" class="manual-box" hidden/.test(h), 'while it looks: both say so, and the box for a typed address is hidden');
     ok(/id="net-server" type="hidden" value=""/.test(h) && !/id="net-server" type="text"/.test(h), '(the address the page itself connects with is no longer a field)');
     ok(/data-action="hostGame"[^>]*disabled/.test(h), 'and Create game waits');
@@ -196,10 +196,39 @@ const linkOf = c => (c.html.match(/<p class="field-note"><code>(http[^<]+)<\/cod
     ok(FakeWS.all.length - before === 5, `one connection for each of the five games that were created, none for the rejected ones (${FakeWS.all.length - before})`);
   }
 
-  console.log('6. the guest');
+  console.log('6. the host\'s own page connects to where it was loaded from');
+  {
+    // The page was loaded through the PUBLIC address (a forwarded port), while the server says its local-network address is 192.168.1.170:8081,
+    // which this page cannot reach (it is not on that network). Hosting must work all the same, whichever way the others are to join.
+    FakeWS.unreachable = '192.168.1.170';
+    for (const via of ['local', 'public', 'manual']) {
+      const c = make({ origin: '203.0.113.9:8081', addresses: ['192.168.1.170:8081'] });
+      c.d({ type: 'openHost' }); await wait(10); c.publicReq().resolve({ state: 'ok', ip: '203.0.113.9', address: '203.0.113.9:8081', via: 'api.ipify.org' }); await wait(10);
+      const n = FakeWS.all.length;
+      const made = await c.lobby({ joinVia: via, joinManual: '198.51.100.4:9000' }, { addresses: ['192.168.1.170:8081'] });
+      ok(made && FakeWS.all[n].url === 'ws://203.0.113.9:8081/ws' && FakeWS.all.slice(n).every(w => !String(w.url).includes('192.168.1.170')) && c.S.online.server === '203.0.113.9:8081' && !c.S.onlineError, `choosing "${via}": the page connects to the address it was loaded from (203.0.113.9:8081), never to the unreachable local one, and reaches the lobby (${made ? FakeWS.all[n].url : 'no game: ' + c.S.onlineError})`);
+      ok(!/Could not reach/.test(c.html), `(and there is no "Could not reach" message)`);
+      const want = { local: '192.168.1.170:8081', public: '203.0.113.9:8081', manual: '198.51.100.4:9000' }[via];
+      ok(linkOf(c) === `http://${want}/?join=K7QF2M`, `while the lobby still offers the others the address chosen: ${linkOf(c)}`);
+    }
+    FakeWS.unreachable = null;
+    // a page opened from a file (no address it came from) can only use the one the server reported
+    const f = make({ origin: '', addresses: ['192.168.1.170:8081'] });
+    f.d({ type: 'openHost' }); await wait(10);
+    const n2 = FakeWS.all.length;
+    await f.lobby({ joinVia: 'local' }, { addresses: ['192.168.1.170:8081'] });
+    ok(FakeWS.all[n2] && FakeWS.all[n2].url === 'ws://192.168.1.170:8081/ws', 'with no address it was loaded from, it uses the one the server reported');
+    // a typed address with no port gets the server's REAL port, not the port of a forwarded address the page was loaded through
+    const g = make({ origin: '203.0.113.9:80', addresses: ['192.168.1.170:8081'] });
+    g.d({ type: 'openHost' }); await wait(10);
+    await g.lobby({ joinVia: 'manual', joinManual: '198.51.100.4' }, { addresses: ['192.168.1.170:8081'] });
+    ok(linkOf(g) === 'http://198.51.100.4:8081/?join=K7QF2M', 'a typed address with no port gets the server\'s own port (8081), not the forwarded 80 this page came through: ' + linkOf(g));
+  }
+
+  console.log('7. the guest');
   {
     const c = make(); c.d({ type: 'openJoin' });
-    ok(!/join-choices|via-local|via-public|How will the other player join/.test(c.html) && /id="net-server" type="text"/.test(c.html), 'the Join screen has none of this: the guest types the host\'s address as before');
+    ok(!/join-choices|via-local|via-public|How will the others join/.test(c.html) && /id="net-server" type="text"/.test(c.html), 'the Join screen has none of this: the guest types the host\'s address as before');
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

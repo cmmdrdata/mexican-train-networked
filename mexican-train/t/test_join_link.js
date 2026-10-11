@@ -91,7 +91,7 @@ function boot(href, store, extra) {
   ok(/On this network: <code>192\.168\.1\.23:8080<\/code>/.test(p.html()) && /id="net-server" type="hidden" value="192\.168\.1\.23:8080"/.test(p.html()) && !/value="localhost/.test(p.html()), 'the Host screen offers the network address (192.168.1.23:8080), not localhost, even though the page was opened as localhost');
   p.click({ action: 'hostGame' });
   await wait(20);
-  ok(p.sockets.length === 1 && p.sockets[0].url === 'ws://192.168.1.23:8080/ws', 'Create connects to that address, not to the "localhost:8080" that was in the form');
+  ok(p.sockets.length === 1 && p.sockets[0].url === 'ws://localhost:8080/ws', 'Create connects to the address this page was loaded from (localhost:8080), which always works; the network address (192.168.1.23:8080) is what the OTHER players are offered, not what this page connects with');
   const ws = p.sockets[0];
   const lobby = addresses => ({ t: 'lobby', code: 'K7QF2M', seat: 0, settings: { rounds: 4, hand: 15 }, players: [{ name: 'Ann', connected: true }, null], canStart: false, addresses, state: 'lobby' });
   ws.say({ t: 'created', code: 'K7QF2M', display: 'K7Q-F2M', token: 'tok', seat: 0, settings: { rounds: 4, hand: 15 }, addresses: ['192.168.1.23:8080'] });

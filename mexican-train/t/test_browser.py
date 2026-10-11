@@ -358,16 +358,20 @@ with sync_playwright() as pw:
     page.evaluate("() => { const f = document.getElementById('net-server'); f.removeAttribute('readonly'); f.value = 'evil.example.com:1'; }")   # even if someone edits the page...
     page.fill('#net-name', 'Ann'); page.click('[data-action="hostGame"]')
     page.wait_for_selector('.code-big')
-    ok(page.evaluate("() => window.MexicanTrainApp.state.online.server") == val, '...the game is still hosted at the server\'s address (the page ignores the field)')
+    ok(page.evaluate("() => window.MexicanTrainApp.state.online.server") == f'localhost:{port}', f'...the game is still hosted at the address this page was loaded from, localhost:{port} (the page ignores the field; the network address {val} is what the others are offered)')
     page.screenshot(path=f'{SHOTS}/lobby_with_qr.png')
     qr = page.query_selector('svg.qr')
     ok(qr is not None and qr.bounding_box()['width'] > 100, 'the QR code is drawn at a readable size by the real browser')
     link = page.eval_on_selector('.qrtext code', 'e => e.textContent')
     ok(link.startswith(f'http://{val}/?join='), f'its link uses the same address: {link}')
-    qr.screenshot(path=f'{SHOTS}/qr_element.png')
     try:
         import cv2
-        img = cv2.imread(f'{SHOTS}/qr_element.png'); text, _, _ = cv2.QRCodeDetector().detectAndDecode(img)
+        text = ''
+        for attempt in range(3):                          # (the dialog fades in: wait for it to finish, then look; a capture taken mid-fade is not a fair test)
+            page.wait_for_function("() => document.getAnimations().every(a => a.playState !== 'running')", timeout=5000); time.sleep(0.25)
+            page.query_selector('svg.qr').screenshot(path=f'{SHOTS}/qr_element.png')
+            img = cv2.imread(f'{SHOTS}/qr_element.png'); text, _, _ = cv2.QRCodeDetector().detectAndDecode(img)
+            if text == link: break
         ok(text == link, 'and a screenshot of the QR code, as the browser really drew it, is read back by OpenCV as exactly that link')
     except ImportError:
         print('   (OpenCV not installed: the QR screenshot was not decoded)')
