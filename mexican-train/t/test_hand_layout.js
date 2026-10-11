@@ -27,6 +27,7 @@ const handHtml = h => h.slice(h.indexOf('class="tray"'), h.indexOf('class="log"'
   for (const n of sizes) {
     const all = []; for (let x = 0; x <= 12 && all.length < n; x++) for (let y = x; y <= 12 && all.length < n; y++) all.push([x, y]);
     a.S.game.players[0].hand = all.slice(0, n).map(t => t.slice());
+    a.S.handOrder = null;                                         // (a different hand: as at the start of a round, the layout starts afresh)
     a.app.render(true);
     const h = handHtml(a.root.innerHTML);
     const cols = +(h.match(/--cols:(\d+)/) || [])[1];
@@ -126,7 +127,7 @@ const handHtml = h => h.slice(h.indexOf('class="tray"'), h.indexOf('class="log"'
   root.addEventListener = (ty, f) => { (listeners[ty] = listeners[ty] || []).push(f); };
   root.setPointerCapture = () => {}; root.releasePointerCapture = () => {};
   const tilesNow = () => G.orderedHand(t.S).map((tl, i) => { const e = new FakeEl(); e.dataset.key = key(tl); e.rect = R(20 + (i % 8) * 100, 600 + Math.floor(i / 8) * 70, 90, 46); const svg = new FakeEl(); svg.rect = e.rect; e.querySelector = () => svg; return e; });
-  root.querySelectorAll = sel => (sel === '.hand .tile-btn' ? tilesNow() : []);
+  root.querySelectorAll = sel => (sel === '.hand .tile-btn, .hand .slot-empty.hole' ? tilesNow() : []);      // (the page asks for every slot of the hand; this hand has no empty ones)
   G.createDrag(root, t.app, { createElement: () => new FakeEl(), body });
   const fire = (ty, ev) => (listeners[ty] || []).forEach(f => f(ev));
   const keys = () => G.orderedHand(t.S).map(key);
@@ -134,7 +135,7 @@ const handHtml = h => h.slice(h.indexOf('class="tray"'), h.indexOf('class="log"'
   fire('pointerdown', { pointerId: 1, button: 0, clientX: 65, clientY: 620, target: { closest: s => (s === '.tile-btn' ? tilesNow()[0] : null) } });
   fire('pointermove', { pointerId: 1, clientX: 90, clientY: 650 });
   fire('pointermove', { pointerId: 1, clientX: 20 + 8 * 100 - 60 + 40, clientY: 695 });   // over the last tile of the second row
-  ok(keys()[n - 1] === start[0] && keys().slice(0, n - 1).join() === start.slice(1).join(), 'dragged from the first row to the second row\'s last place');
+  ok(keys()[n - 1] === start[0] && keys()[0] === start[n - 1] && keys().slice(1, n - 1).join() === start.slice(1, n - 1).join(), 'dragged from the first row to the second row\'s last place: the two swap, and nothing else moves');
   fire('pointermove', { pointerId: 1, clientX: 65 + 3 * 100, clientY: 695 });             // over the 4th tile of row two
   ok(keys().indexOf(start[0]) === 8 + 3, 'moved along the second row to the fourth place of that row');
   fire('pointermove', { pointerId: 1, clientX: 20 + 7 * 100 + 45, clientY: 620 });         // over the last tile of the first row

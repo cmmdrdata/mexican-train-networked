@@ -190,6 +190,27 @@ const resume = async (port, code, token) => { const c = await connect(port); c.s
     [two.c, j2.c, x.c, comp.c].forEach(y => y.close());
     await T.srv.close();
   }
+  console.log('1b. being turned away: what the other person is told, and what the server says');
+  {
+    const logs = [];
+    const T = await startServer(Object.assign({ log: m => logs.push(m) }, BIG));
+    const info = await new Promise((resolve, reject) => require('http').get({ host: '127.0.0.1', port: T.port, path: '/info' }, res => { let b = ''; res.on('data', c => (b += c)); res.on('end', () => resolve(JSON.parse(b))); }).on('error', reject));
+    ok(info.maxHumans === 3 && Array.isArray(info.addresses), 'the server says it can seat three people (an older server says nothing, so the page can tell the difference)');
+    const g = await three(T.port, { rounds: 1, hand: 8 });
+    const d = await join(T.port, g.code, 'Dan');
+    ok(d.joined.code === 'game_full' && d.joined.message === 'That game already has three players (Ann, Ben and Cat).', 'a game for three that is full says who is in it: ' + d.joined.message);
+    ok(logs.some(l => /Dan could not join game .*: it is for 3 people and has Ann, Ben and Cat/.test(l)), 'and the server console says why a person was turned away: ' + logs.filter(l => /could not join/.test(l)).slice(-1)[0]);
+    const two = await host(T.port, 'Zoe', {}); const zb = await join(T.port, two.created.code, 'Yan');
+    const zc = await join(T.port, two.created.code, 'Xi');
+    ok(zc.joined.code === 'game_full' && zc.joined.message === 'That game already has two players (Zoe and Yan).', 'a game for two says who is in it: ' + zc.joined.message);
+    ok(logs.some(l => /Xi could not join game .*: it is for 2 people and has Zoe and Yan/.test(l)), '(and the console says it is a game for 2 people, which is how a host who expected three would find out)');
+    g.a.send({ t: 'start' }); await Promise.all([g.a, g.b, g.c].map(c => c.next(m => m.t === 'state')));
+    const late = await join(T.port, g.code, 'Eve');
+    ok(late.joined.code === 'game_started' && late.joined.message === 'That game has already started.', 'a game that has begun says it has begun (not that it is full): ' + late.joined.message);
+    ok(logs.some(l => /Eve could not join game .*: it has already started \(Ann, Ben and Cat\)/.test(l)), '...and so does the console');
+    [g.a, g.b, g.c, d.c, two.c, zb.c, zc.c, late.c].forEach(x => x.close()); await T.srv.close();
+  }
+
   console.log('2. names');
   {
     const T = await startServer(BIG);

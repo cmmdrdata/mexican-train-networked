@@ -377,7 +377,7 @@ const R = (left, top, width, height) => ({ left, top, width, height });
     ok(S.dragKey === k0 && eq(S.handOrder, base), 'dragStart records the current order');
     ok(new RegExp(`tile-btn[^"]*drag-src[^"]*"[^>]*data-key="${k0}"`).test(t.root.innerHTML.replace(/\s+/g, ' ')) || /drag-src/.test(t.root.innerHTML), 'the tile being dragged is marked so it can be dimmed');
     t.app.dispatch({ type: 'dragMove', index: 2 });
-    ok(eq(order(t.root.innerHTML).slice(0, 3), [k1, k2, k0]), 'dragging over the third tile moves it there');
+    ok(eq(order(t.root.innerHTML).slice(0, 3), [k2, k1, k0]), 'dragging over the third tile moves it there (the tile that was there takes its old place)');
     const r0 = t.root.renders;
     t.app.dispatch({ type: 'dragMove', index: 2 });
     ok(t.root.renders === r0, 'the same position again: no redraw');
@@ -418,9 +418,9 @@ const R = (left, top, width, height) => ({ left, top, width, height });
       ok(eq(order(t.root.innerHTML), custom), 'a tile taken back returns to its old spot in your arrangement');
     }
     ok(S.handOrder !== null && !/sort-btn|Sort hand/.test(t.root.innerHTML), 'there is no Sort button, and the arrangement stays');
-    S.handOrder = null; t.app.render(true);                 // (a new round or game clears it)
+    S.handOrder = null; S.handArranged = false; t.app.render(true);                 // (a new round or game clears it)
     const re = order(t.root.innerHTML);
-    ok(S.handOrder === null && re.every((k, i) => i === 0 || pips(re[i - 1]) >= pips(k)), 'a cleared arrangement shows the automatic order again (heaviest first)');
+    ok(S.handArranged === false && !S.handOrder.includes(null) && re.every((k, i) => i === 0 || pips(re[i - 1]) >= pips(k)), 'a cleared arrangement shows the automatic order again (heaviest first)');
 
     // stale keys in the saved order are ignored
     S.handOrder = ['99-99', ...order(t.root.innerHTML)];
@@ -445,7 +445,7 @@ const R = (left, top, width, height) => ({ left, top, width, height });
       const A = app.state.awaiting;
       if (!A) continue;
       if (app.state.roundIndex === 0 && !sawCustom && A.kind === 'build') { app.dispatch({ type: 'dragStart', key: app.state.game.players[0].hand[0].join('-') }); app.dispatch({ type: 'dragEnd' }); sawCustom = !!app.state.handOrder; }
-      if (A.kind === 'modal') { app.dispatch({ type: 'dialogOk' }); for (let i = 0; i < 40 && app.state.roundIndex < 1; i++) await tick(); if (app.state.roundIndex === 1) { resetOk = app.state.handOrder === null && app.state.dragKey === null; break; } continue; }
+      if (A.kind === 'modal') { app.dispatch({ type: 'dialogOk' }); for (let i = 0; i < 40 && app.state.roundIndex < 1; i++) await tick(); if (app.state.roundIndex === 1) { { const ho = app.state.handOrder; resetOk = app.state.handArranged === false && app.state.dragKey === null && (ho === null || (!ho.includes(null) && ho.length === app.state.game.players[0].hand.length)); } break; } continue; }
       if (A.kind === 'draw') app.dispatch({ type: 'draw' });
       else if (A.kind === 'build') { if (A.canDraw) app.dispatch({ type: 'draw' }); else if (A.moves.length) app.dispatch({ type: 'selectTile', key: key(A.moves[0].tile) }); else if (A.canDone) app.dispatch({ type: 'endBuild' }); else app.dispatch({ type: 'undoTile' }); }
       else { const m = A.moves[0]; app.dispatch({ type: 'selectTile', key: key(m.tile) }); if (app.state.awaiting === A) app.dispatch({ type: 'playOn', train: m.trainId }); }
@@ -466,7 +466,7 @@ const R = (left, top, width, height) => ({ left, top, width, height });
     fr.root.addEventListener = (t, f) => { (listeners[t] = listeners[t] || []).push(f); };
     fr.root.setPointerCapture = () => { fr.captured = true; }; fr.root.releasePointerCapture = () => { fr.captured = false; };
     const tiles = () => G.orderedHand(app.state).map((t, i) => { const e = new FakeEl('button'); e.dataset.key = key(t); e.rect = R(20 + i * 60, 600, 44, 86); const svg = new FakeEl('svg'); svg.rect = e.rect; e.querySelector = () => svg; e.svg = svg; return e; });
-    fr.root.querySelectorAll = sel => (sel === '.hand .tile-btn' ? (fr.cur = tiles()) : []);
+    fr.root.querySelectorAll = sel => (sel === '.hand .tile-btn, .hand .slot-empty.hole' ? (fr.cur = tiles()) : []);
     const drag = G.createDrag(fr.root, app, fr.doc);
     const fire = (type, ev) => (listeners[type] || []).forEach(f => f(ev));
     const targetOf = i => { const el = tiles()[i]; return { closest: sel => (sel === '.tile-btn' ? el : null) }; };
@@ -542,10 +542,10 @@ const R = (left, top, width, height) => ({ left, top, width, height });
     const click = (attrs) => ({ target: { closest: sel => (sel === '[data-action]' ? { dataset: attrs } : null) } });
     handlers.click(click({ action: 'startGame' }));
     for (let i = 0; i < 400 && !(app.state.awaiting); i++) await new Promise(r => setTimeout(r, 5));
-    rootEl.querySelectorAll = sel => (sel === '.hand .tile-btn' ? G.orderedHand(app.state).map((t, i) => { const e = new FakeEl('button'); e.dataset.key = key(t); e.rect = R(20 + i * 60, 600, 44, 86); const svg = new FakeEl('svg'); svg.rect = e.rect; e.querySelector = () => svg; return e; }) : []);
+    rootEl.querySelectorAll = sel => (sel === '.hand .tile-btn, .hand .slot-empty.hole' ? G.orderedHand(app.state).map((t, i) => { const e = new FakeEl('button'); e.dataset.key = key(t); e.rect = R(20 + i * 60, 600, 44, 86); const svg = new FakeEl('svg'); svg.rect = e.rect; e.querySelector = () => svg; return e; }) : []);
     const keysNow = () => G.orderedHand(app.state).map(key);
     const first = keysNow();
-    const tileTarget = i => { const el = rootEl.querySelectorAll('.hand .tile-btn')[i]; return { closest: sel => (sel === '.tile-btn' ? el : null) }; };
+    const tileTarget = i => { const el = rootEl.querySelectorAll('.hand .tile-btn, .hand .slot-empty.hole')[i]; return { closest: sel => (sel === '.tile-btn' ? el : null) }; };
     handlers.pointerdown({ pointerId: 1, button: 0, clientX: 40, clientY: 640, target: tileTarget(0) });
     handlers.pointermove({ pointerId: 1, clientX: 90, clientY: 650 });
     handlers.pointermove({ pointerId: 1, clientX: 20 + 3 * 60 + 20, clientY: 640 });
@@ -570,9 +570,9 @@ const R = (left, top, width, height) => ({ left, top, width, height });
     ok(prevented === 1, 'plain arrows and other keys are left alone');
     // no Sort button; a cleared arrangement is the automatic order
     ok(!/sort-btn|Sort hand/.test(rootEl.innerHTML), 'the page has no Sort hand button');
-    app.state.handOrder = null; app.render(true);
+    app.state.handOrder = null; app.state.handArranged = false; app.render(true);
     const sorted = keysNow();
-    ok(app.state.handOrder === null && sorted.every((k, i) => i === 0 || k.split('-').reduce((a, b) => a + +b, 0) <= sorted[i - 1].split('-').reduce((a, b) => a + +b, 0)), 'and the automatic order is heaviest first');
+    ok(app.state.handArranged === false && !app.state.handOrder.includes(null) && sorted.every((k, i) => i === 0 || k.split('-').reduce((a, b) => a + +b, 0) <= sorted[i - 1].split('-').reduce((a, b) => a + +b, 0)), 'and the automatic order is heaviest first');
     app.dispatch({ type: 'startGame', rounds: 1, hand: 8, style: 'pips' });
     // resizing the window: every train goes back to showing its newest domino
     const scrollers = ['human', 'cpu', 'mexican'].map(id => { const e = new FakeEl('div'); e.dataset.train = id; e.scrollLeft = 0; e.scrollWidth = 1800; return e; });

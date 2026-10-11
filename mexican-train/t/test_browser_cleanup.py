@@ -47,7 +47,7 @@ with sync_playwright() as pw:
     code = a.eval_on_selector('.code-big', 'e => e.textContent').strip(); plain = code.replace('-', '')
     ok(a.evaluate(INPUTS) == 0, 'the screen after Create game has no inputs at all: no boxes, no choices, no switches (the host is only waiting for the other player)')
     ok(code in a.inner_text('.dialog') and 'Waiting for a player' in a.inner_text('.dialog') and a.query_selector('[data-action="startOnline"][disabled]') is not None, 'it shows the join code and that it is waiting; Start game is there, not yet usable')
-    ok(re.search(r'One round, 8 tiles each\. Hints are allowed\.', a.inner_text('.dialog')) is not None, 'and a one-line summary of how the game was set up: ' + re.sub(r'\s+', ' ', a.inner_text('.dialog'))[-150:-60])
+    ok(re.search(r'One round, 8 tiles each, two people\. Hints are allowed\.', a.inner_text('.dialog')) is not None, 'and a one-line summary of how the game was set up: ' + re.sub(r'\s+', ' ', a.inner_text('.dialog'))[-150:-60])
     a.screenshot(path='/tmp/shots/cleanup_lobby.png')
     b.goto(base + '?join=' + plain); b.wait_for_selector('#net-code'); b.fill('#net-name', 'Ben'); b.click('[data-action="joinGame"]'); b.wait_for_selector('.code-big')
     a.wait_for_function("() => !document.querySelector('[data-action=\"startOnline\"]').disabled")

@@ -121,6 +121,7 @@ function createGameServer(options) {
     rng: null,                           // (room) => random source for the deal; tests use it to rig deals
     stepDelay: [500, 3000],              // the pause between the tiles of "Build my longest train": random, between these (milliseconds)
     maxMessage: 8192,
+    checkBuild: false,                   // turn away a page that is not the one this server serves (the command line turns this on; see pageBuild)
     publicIp: true,                      // may the server ask a public service what this computer's address on the internet is? (node server.js --no-public-ip turns it off)
     publicIpUrls: ['https://api.ipify.org', 'https://checkip.amazonaws.com', 'https://icanhazip.com'],     // asked in turn, only when the Host screen asks (plain text reply)
     publicIpTimeoutMs: 2500,             // for each of them
@@ -141,6 +142,27 @@ function createGameServer(options) {
   const timers = new Set();
   const later = (fn, ms) => { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); if (t.unref) t.unref(); timers.add(t); return t; };
   const cancel = t => { if (t) { clearTimeout(t); timers.delete(t); } };
+
+  /* ------------------------------ which version of the page ------------------------------ */
+  /* The stamp inside the page file this server serves (see build.py), looked up again whenever the file changes. */
+  let buildId = '', buildMtime = -1;
+  function pageBuild() {
+    try {
+      const st = fs.statSync(opt.pagePath);
+      if (st.mtimeMs !== buildMtime) { const m = /window\.MT_BUILD = "([0-9a-f]{6,64})"/.exec(fs.readFileSync(opt.pagePath, 'utf8')); buildId = m ? m[1] : ''; buildMtime = st.mtimeMs; }
+    } catch (e) { buildId = ''; }
+    return buildId;
+  }
+  /* A page that is not the one being served (an old tab, a saved copy) is told so, instead of being let in: it could ask for things this server
+   * would then do differently from what its screen promised (a game for three people, say). */
+  function outdatedPage(c, msg, who) {
+    if (!opt.checkBuild) return false;
+    const want = pageBuild();
+    if (!want || msg.build === want) return false;
+    opt.log(`${who} was refused (${msg.t}): the page in use is ${typeof msg.build === 'string' && msg.build ? 'build ' + msg.build : 'from before pages carried a version'}, this server's is build ${want}`);
+    reply(c, 'page_outdated', 'The game page you are using is out of date. Reload it (Ctrl+F5, or Cmd+Shift+R on a Mac) and try again. (If you opened a saved copy of the page, open the game server\'s address in your browser instead.)');
+    return true;
+  }
 
   /* ------------------------------ the public address ------------------------------ */
   const pub = { at: 0, result: null, promise: null };
@@ -191,7 +213,7 @@ function createGameServer(options) {
     }
     if (url === '/info') {                                    // the address(es) the host's page should show: this computer's network address, never "localhost"
       const list = lanAddresses(boundPort, opt.localOnly);
-      const body = JSON.stringify({ game: 'mexican-train', addresses: list, preferred: list[0] || `127.0.0.1:${boundPort}` });
+      const body = JSON.stringify({ game: 'mexican-train', addresses: list, preferred: list[0] || `127.0.0.1:${boundPort}`, maxHumans: 3, build: pageBuild() });         // (maxHumans: how many people this server can seat. An older server does not say, and the page knows it cannot do three.)
       res.writeHead(200, Object.assign({ 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) }, headers));
       return res.end(req.method === 'HEAD' ? undefined : body);
     }
@@ -256,6 +278,7 @@ function createGameServer(options) {
       case 'i': return onIntent(c, msg);
       case 'chat': return onChat(c, msg);
       case 'leave': return onLeave(c);
+      case 'rematch': return onRematch(c);
       default: return strike(c, 'unknown_type', 'Unknown message type.');
     }
   }
@@ -268,7 +291,7 @@ function createGameServer(options) {
       code, settings: { rounds: [1, 4, 13].includes(Number(settings.rounds)) ? Number(settings.rounds) : 4, hand: [8, 12, 15].includes(Number(settings.hand)) ? Number(settings.hand) : 15, computer: cleanHumans(settings.humans) === 3 ? null : cleanComputer(settings.computer), theme: cleanTheme(settings.theme), allowHints: !(settings.allowHints === false || settings.allowHints === 'false'), humans: cleanHumans(settings.humans) },
       computerName: null,
       players: [{ name, token: crypto.randomBytes(16).toString('hex'), conn: null, lostAt: null, timer: null }, null, null],
-      state: 'lobby', match: null, chatAt: [0, 0, 0], chatLog: [[], [], []], lastActivity: Date.now(), over: null,
+      state: 'lobby', match: null, again: new Set(), chatAt: [0, 0, 0], chatLog: [[], [], []], lastActivity: Date.now(), over: null,
     };
     rooms.set(code, room);
     return room;
@@ -383,11 +406,12 @@ function createGameServer(options) {
 
   function onCreate(c, msg) {
     if (c.session) return reply(c, 'already_in_game', 'You are already in a game.');
+    if (outdatedPage(c, msg, `${cleanName(msg.name, 'Host')} (hosting)`)) return;
     if (rooms.size >= opt.maxRooms) return reply(c, 'server_full', 'This server is hosting as many games as it can. Try again later.');
     const room = newRoom(c, cleanName(msg.name, 'Host'), cleanSettings(msg));
     nameComputer(room);
     attach(room, 0, c);
-    opt.log(`game ${showCode(room.code)} created by ${room.players[0].name}`);
+    opt.log(`game ${showCode(room.code)} created by ${room.players[0].name}: ${room.settings.humans === 3 ? 'three people' : room.settings.computer ? 'two people and ' + (room.settings.computer === 'easy' ? 'an' : 'a') + ' ' + room.settings.computer + ' computer' : 'two people'}, ${room.settings.rounds} round${room.settings.rounds === 1 ? '' : 's'} of ${room.settings.hand} tiles`);
     send(c, { t: 'created', code: room.code, display: showCode(room.code), token: room.players[0].token, seat: 0, settings: room.settings, addresses: lanAddresses(boundPort, opt.localOnly) });
     sendLobby(room);
   }
@@ -403,6 +427,7 @@ function createGameServer(options) {
   function onJoin(c, msg) {
     if (c.session) return reply(c, 'already_in_game', 'You are already in a game.');
     if (guessBlocked(c)) return reply(c, 'too_many_tries', 'Too many wrong codes. Wait a minute and try again.');
+    if (outdatedPage(c, msg, `${cleanName(msg.name, 'Guest')} (joining)`)) return;
     const code = normalizeCode(msg.code);
     const room = rooms.get(code);
     if (!room || room.state === 'over') {
@@ -410,7 +435,13 @@ function createGameServer(options) {
       return reply(c, 'no_such_game', 'There is no game with that code. Check the code and the address.');
     }
     const seat = room.state === 'lobby' ? seatsOf(room).find(i => i > 0 && !room.players[i]) : undefined;
-    if (seat === undefined) return reply(c, 'game_full', room.settings.humans === 3 ? 'That game already has three players.' : 'That game already has two players.');
+    if (seat === undefined) {
+      const inIt = seatsOf(room).map(i => room.players[i]).filter(Boolean).map(p => p.name);
+      const who = inIt.length > 1 ? inIt.slice(0, -1).join(', ') + ' and ' + inIt[inIt.length - 1] : inIt.join('');
+      if (room.state !== 'lobby') { opt.log(`${cleanName(msg.name, 'Guest')} could not join game ${showCode(room.code)}: it has already started (${who})`); return reply(c, 'game_started', 'That game has already started.'); }
+      opt.log(`${cleanName(msg.name, 'Guest')} could not join game ${showCode(room.code)}: it is for ${room.settings.humans} people and has ${who}`);
+      return reply(c, 'game_full', `That game already has ${room.settings.humans === 3 ? 'three' : 'two'} players (${who}).`);
+    }
     failures.delete(c.ip);
     room.players[seat] = { name: uniqueName(room, cleanName(msg.name, 'Guest')), token: crypto.randomBytes(16).toString('hex'), conn: null, lostAt: null, timer: null };
     attach(room, seat, c);
@@ -462,7 +493,13 @@ function createGameServer(options) {
     if (!seatsOf(room).every(i => room.players[i]) || !connectedSeats(room).every(Boolean)) return reply(c, 'not_ready', room.settings.humans === 3 ? 'Wait for the other players to join.' : 'Wait for the other player to join.');
     room.state = 'playing';
     nameComputer(room);
-    room.match = new OnlineMatch({
+    startMatch(room);
+    opt.log(`game ${showCode(room.code)} started: ${seatsOf(room).map(i => room.players[i].name).join(' vs ')}${room.settings.computer ? ' vs ' + room.computerName + ' (computer, ' + room.settings.computer + ')' : ''}${room.settings.theme !== 'classic' ? ' [' + room.settings.theme + ' theme]' : ''}`);
+    sendLobby(room);
+  }
+  /* Make the match for this room (its first game, or a rematch with the same people and settings) and run it. */
+  function startMatch(room) {
+    const match = room.match = new OnlineMatch({
       rounds: room.settings.rounds, hand: room.settings.hand, allowHints: room.settings.allowHints !== false,
       names: seatsOf(room).map(i => room.players[i].name).concat(room.settings.computer ? [room.computerName] : []),
       computer: room.settings.computer ? { level: room.settings.computer } : undefined, theme: room.settings.theme,
@@ -470,13 +507,42 @@ function createGameServer(options) {
       chatRng: opt.chatRng || undefined, timer: opt.timer || undefined, now: opt.now || undefined, nativeChance: opt.nativeChance, foodChance: opt.foodChance,
       push: (seat, msg) => sendSeat(room, seat, msg),
     });
-    opt.log(`game ${showCode(room.code)} started: ${seatsOf(room).map(i => room.players[i].name).join(' vs ')}${room.settings.computer ? ' vs ' + room.computerName + ' (computer, ' + room.settings.computer + ')' : ''}${room.settings.theme !== 'classic' ? ' [' + room.settings.theme + ']' : ''}`);
-    sendLobby(room);
-    room.match.start().then(() => {
+    match.start().then(() => {
+      if (room.match !== match) return;                            // (a newer match has taken this room over: this one must not change its state)
       room.lastActivity = Date.now();
-      if (room.match.over === 'error') { opt.log(`game ${showCode(room.code)} hit an error: ${room.match.error && room.match.error.message}`); endRoom(room, 'error', 'Something went wrong in the game, so it had to end.'); }
-      else if (room.match.over === 'finished') { room.state = 'over'; room.over = 'finished'; opt.log(`game ${showCode(room.code)} finished`); }
+      if (match.over === 'error') { opt.log(`game ${showCode(room.code)} hit an error: ${match.error && match.error.message}`); endRoom(room, 'error', 'Something went wrong in the game, so it had to end.'); }
+      else if (match.over === 'finished') { room.state = 'over'; room.over = 'finished'; opt.log(`game ${showCode(room.code)} finished`); }
     });
+  }
+  /* ------------------------------ playing again ------------------------------ */
+  /* Anyone who has seen the final score may ask to play again. The game starts again, with the same people, seats, settings and computer
+   * player, when EVERY person at the table has asked. If someone has left (or their page has closed) there is no one to play with, and
+   * the others are told who has gone. Everyone is told, after every change, who has asked and who has gone. */
+  const seenFinal = (room, seat) => (room.state === 'over' && room.over === 'finished') || sawEverything(room, seat);
+  const seatGone = (room, seat) => { const p = room.players[seat]; return !p || !!p.left || !(p.conn && p.conn.ws.open); };
+  function againState(room) { return { asked: Array.from(room.again).sort(), gone: seatsOf(room).filter(i => seatGone(room, i)) }; }
+  function sendAgain(room) { const st = againState(room); for (const seat of seatsOf(room)) sendSeat(room, seat, { t: 'again', asked: st.asked, gone: st.gone }); }
+  function someoneLeft(room, seat) {                       // a person has left, or closed their page, after the final score: nobody can play again
+    const p = room.players[seat];
+    if (p) p.left = true;
+    room.again.delete(seat);
+    sendAgain(room);
+  }
+  function onRematch(c) {
+    const room = c.session && c.session.room, seat = seatOf(c);
+    if (!room || (room.state !== 'over' && room.state !== 'playing')) return reply(c, 'not_now', 'There is no game to play again.');
+    if (room.state === 'over' && room.over !== 'finished') return reply(c, 'not_now', 'That game was not played to the end.');
+    if (!seenFinal(room, seat)) return reply(c, 'not_now', 'You can ask to play again once you have seen the final score.');
+    room.lastActivity = Date.now();
+    room.again.add(seat);
+    const st = againState(room);
+    opt.log(`${room.players[seat].name} asked to play game ${showCode(room.code)} again (${room.again.size} of ${room.settings.humans} asked${st.gone.length ? '; ' + st.gone.map(i => (room.players[i] || {}).name).join(' and ') + ' has gone' : ''})`);
+    sendAgain(room);
+    if (room.state !== 'over' || st.gone.length || !seatsOf(room).every(i => room.again.has(i))) return;      // not everyone yet (or someone has gone, or the others have not seen their final score)
+    room.again.clear(); room.state = 'playing'; room.over = null;
+    for (const i of seatsOf(room)) sendSeat(room, i, { t: 'rematch' });              // (told first, so a page forgets the finished game before the first state of the new one)
+    startMatch(room);
+    opt.log(`game ${showCode(room.code)} started again: ${seatsOf(room).map(i => room.players[i].name).join(' vs ')}${room.settings.computer ? ' vs ' + room.computerName + ' (computer, ' + room.settings.computer + ')' : ''}`);
   }
   function onIntent(c, msg) {
     const room = c.session && c.session.room;
@@ -517,9 +583,9 @@ function createGameServer(options) {
       if (seat === 0) { endRoom(room, 'left', `${p ? p.name : 'The host'} closed the game.`); rooms.delete(room.code); }
       else { room.players[seat] = null; sendLobby(room); }
     } else if (room.state === 'playing') {
-      if (sawEverything(room, seat)) { opt.log(`${p ? p.name : 'A player'} left game ${showCode(room.code)} after seeing the final score; the other player has not yet`); room.match.seatLeft(seat); }
+      if (sawEverything(room, seat)) { opt.log(`${p ? p.name : 'A player'} left game ${showCode(room.code)} after seeing the final score; the other player has not yet`); room.match.seatLeft(seat); someoneLeft(room, seat); }
       else endRoom(room, 'left', `${p ? p.name : 'The other player'} left the game.`);
-    }
+    } else if (room.state === 'over' && room.over === 'finished' && p) someoneLeft(room, seat);
     if (room.players.every(x => !x || !x.conn)) rooms.delete(room.code);
   }
 
@@ -537,9 +603,9 @@ function createGameServer(options) {
     if (!p || p.conn !== c) return;                          // already replaced by a newer connection
     p.conn = null; p.lostAt = Date.now();
     room.lastActivity = Date.now();
-    if (room.state === 'over') { if (room.players.every(x => !x || !x.conn)) later(() => { if (rooms.get(room.code) === room && room.players.every(x => !x || !x.conn)) rooms.delete(room.code); }, opt.overRoomMs); return; }
+    if (room.state === 'over') { if (room.over === 'finished') sendAgain(room); if (room.players.every(x => !x || !x.conn)) later(() => { if (rooms.get(room.code) === room && room.players.every(x => !x || !x.conn)) rooms.delete(room.code); }, opt.overRoomMs); return; }
     if (room.state === 'lobby' && seat !== 0) { room.players[seat] = null; sendLobby(room); return; }     // a guest who drops from the lobby just frees the seat
-    if (sawEverything(room, seat)) { opt.log(`${p.name} closed the page of game ${showCode(room.code)} after seeing the final score; the other player has not yet: no pause, no waiting for them`); room.match.seatLeft(seat); return; }
+    if (sawEverything(room, seat)) { opt.log(`${p.name} closed the page of game ${showCode(room.code)} after seeing the final score; the other player has not yet: no pause, no waiting for them`); room.match.seatLeft(seat); sendAgain(room); return; }
     opt.log(`${p.name} lost the connection to game ${showCode(room.code)}: ${why}. (${span(Date.now() - c.since)} connected; heard from them ${span(heard)} before it ended; ${rttText(c.ws)}; ${lagText()}) [${deviceOf(c.ua)}]`);
     cancel(p.timer); cancel(p.soft);
     const announce = () => {                                 // they have been gone long enough that it is worth telling the other player, and pausing
@@ -613,7 +679,7 @@ function createGameServer(options) {
     for (const c of Array.from(conns)) c.ws.terminate();
     return new Promise(res => http_.close(() => res()));
   }
-  return { listen, close, rooms, conns, http: http_, get port() { return boundPort; }, options: opt, heartbeat, netStats };
+  return { listen, close, rooms, conns, http: http_, get port() { return boundPort; }, options: opt, heartbeat, netStats, pageBuild };
 }
 
 /* ------------------------------ command line ------------------------------ */
@@ -651,13 +717,15 @@ Your firewall may ask whether to allow Node.js: say yes for private networks.`);
     process.exit(args.bad ? 1 : 0);
   }
   const server = createGameServer({
-    localOnly: args.localOnly, publicIp: args.publicIp, graceMs: Math.round(args.grace * 1000),
+    localOnly: args.localOnly, checkBuild: true, publicIp: args.publicIp, graceMs: Math.round(args.grace * 1000),
     pagePath: args.page ? path.resolve(args.page) : path.join(__dirname, 'mexican-train.html'),
     log: args.quiet ? () => {} : msg => console.log(`[${new Date().toLocaleTimeString()}] ${msg}`),
   });
   server.listen(args.port).then(port => {
     const addrs = lanAddresses(port, args.localOnly);
     console.log('\nMexican Train server is running.\n');
+    const served = server.pageBuild ? server.pageBuild() : '';
+    console.log(served ? `  Serving the game page, build ${served}. (A browser tab opened before the files were replaced has an older build: reload it.)\n` : '');
     if (args.localOnly) {
       console.log(`  Open  http://127.0.0.1:${port}  in a browser on this computer.`);
       console.log('  (local-only mode: only this computer can connect)');

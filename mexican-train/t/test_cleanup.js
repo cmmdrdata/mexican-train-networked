@@ -57,7 +57,7 @@ function makeLocal(seed, extra) {
     const page = c.html(), lobby = page.slice(page.indexOf('<div class="overlay">'));         // the dialog (the page behind it has its own header buttons)
     ok(lobby.length > 200 && /Online game<\/h2>/.test(lobby), '(the lobby dialog is found)');
     ok(!/<select|<input|<textarea|<option|aria-pressed|class="btn toggle"/.test(lobby), 'after Create game, the screen has no inputs: no choices, no switches (the host is only waiting for players)');
-    ok(/4 rounds, 15 tiles each\. Hints are allowed\./.test(lobby), '...it says how the game was set up');
+    ok(/4 rounds, 15 tiles each, two people\. Hints are allowed\./.test(lobby), '...it says how the game was set up, including that it is for two people');
     ok(/K7Q-F2M/.test(lobby) && /data-action="copyLink"/.test(lobby) && /data-action="confirmLeave"/.test(lobby) && /data-action="startOnline"[^>]*disabled/.test(lobby), '...and still shows the join code, the QR code\'s Copy link, Leave, and a Start that waits for a player');
     const T = (a, b) => [a, b], tr = (id, marker) => ({ id, marker: !!marker, tiles: [], end: 12 });
     ws.say({ t: 'state', seq: 1, events: [], view: { seq: 1, round: 0, rounds: 4, me: { name: 'Ann', seat: 0 }, opp: { name: 'Ben' }, opps: [{ id: 'cpu', name: 'Ben', seat: 1, computer: false }], totals: { human: 0, cpu: 0 }, paused: false, over: null, log: ['x'], banner: '', modal: null, awaiting: null,

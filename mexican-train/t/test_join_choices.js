@@ -22,9 +22,9 @@ function make(opts) {
   const fetch = async url => new Promise((resolve, reject) => {
     const rec = { url, resolve: j => resolve({ ok: true, json: async () => j }), fail: () => reject(new Error('offline')), http: status => resolve({ ok: false, status, json: async () => ({}) }) };
     c.fetches.push(rec);
-    if (url === '/info' && !opts.manualInfo) rec.resolve({ addresses: opts.addresses || ['192.168.1.23:8080'], preferred: (opts.addresses || ['192.168.1.23:8080'])[0] });
+    if (url === '/info' && !opts.manualInfo) rec.resolve(Object.assign({ addresses: opts.addresses || ['192.168.1.23:8080'], preferred: (opts.addresses || ['192.168.1.23:8080'])[0] }, opts.maxHumans === null ? {} : { maxHumans: opts.maxHumans || 3 }, opts.infoBuild !== undefined ? { build: opts.infoBuild } : {}));
   });
-  c.app = G.createApp({ root, sleep: async () => {}, reducedMotion: true, timer: c.timer, now: () => clock.t, storage: { get: k => (k in store ? store[k] : null), set: (k, v) => { store[k] = v; } }, WebSocket: FakeWS, fetch, defaultServer: opts.origin !== undefined ? opts.origin : '192.168.1.23:8080' });
+  c.app = G.createApp({ root, sleep: async () => {}, reducedMotion: true, timer: c.timer, now: () => clock.t, storage: { get: k => (k in store ? store[k] : null), set: (k, v) => { store[k] = v; } }, WebSocket: FakeWS, fetch, defaultServer: opts.origin !== undefined ? opts.origin : '192.168.1.23:8080', build: opts.pageBuild || '' });
   c.S = c.app.state; c.d = a => c.app.dispatch(a);
   c.d({ type: 'boot' });
   c.publicReq = () => c.fetches.find(f => f.url === '/publicip');
@@ -223,6 +223,62 @@ const linkOf = c => (c.html.match(/<p class="field-note"><code>(http[^<]+)<\/cod
     g.d({ type: 'openHost' }); await wait(10);
     await g.lobby({ joinVia: 'manual', joinManual: '198.51.100.4' }, { addresses: ['192.168.1.170:8081'] });
     ok(linkOf(g) === 'http://198.51.100.4:8081/?join=K7QF2M', 'a typed address with no port gets the server\'s own port (8081), not the forwarded 80 this page came through: ' + linkOf(g));
+  }
+
+  console.log('6b. a game for three people against a server that cannot seat three (an older server still running)');
+  {
+    const fresh = make(); fresh.d({ type: 'openHost' }); await wait(10);
+    ok(/<option value="person">Add a third person<\/option>/.test(fresh.html) && !/older version and cannot seat/.test(fresh.html), 'a server that says it can seat three: "Add a third person" is offered, with no warning');
+    const old = make({ maxHumans: null }); old.d({ type: 'openHost' }); await wait(10);
+    ok(/<option value="person" disabled>Add a third person \(this server must be restarted first\)<\/option>/.test(old.html) && /This game server is an older version and cannot seat a third person: stop it, start it again from the new files \(<code>node server\.js<\/code>\), and reload this page\./.test(old.html), 'an older server (it says nothing about it): the option cannot be chosen, and the Host screen says to restart the server');
+    old.S.form.computer = 'person'; old.d({ type: 'closeOverlay' }); old.d({ type: 'openHost' }); await wait(10);
+    ok(/<option value="none" selected>None<\/option>/.test(old.html) && !/<option value="person"[^>]*selected/.test(old.html), '(and "a third person" is not left selected from before)');
+    // the backstop: the page asked for three, the older server made a game for two without a word
+    const c = make({ maxHumans: 3 }); c.d({ type: 'openHost' }); await wait(10);
+    c.d({ type: 'hostGame', server: 'x', name: 'Ann', rounds: 4, hand: 15, computer: 'person' }); await wait(10);
+    const ws = FakeWS.last;
+    ok(ws.sent[0].t === 'create' && ws.sent[0].humans === 3, 'the page asks for a game for three people: ' + JSON.stringify(ws.sent[0]).slice(0, 120));
+    ws.say({ t: 'created', code: 'K7QF2M', display: 'K7Q-F2M', token: 't', seat: 0, settings: { rounds: 4, hand: 15 }, addresses: ['192.168.1.23:8080'] });      // an older server: no table size in the answer
+    await wait(10);
+    ok(c.S.online === null && c.S.overlay === 'online-host' && /made a game for two people, not three/.test(c.S.onlineError) && /older version/.test(c.S.onlineError) && /node server\.js/.test(c.S.onlineError), 'told at once, on the Host screen, that the server made a game for two and what to do: ' + c.S.onlineError.slice(0, 80));
+    ok(ws.sent.some(m => m.t === 'leave') && /role="alert"/.test(c.html) && /made a game for two people/.test(c.html), 'the game that was made is closed again (the host is not left waiting for a guest who could never join), and the message is on the screen');
+    // a server that does what was asked
+    const d = make(); d.d({ type: 'openHost' }); await wait(10);
+    d.d({ type: 'hostGame', server: 'x', name: 'Ann', rounds: 4, hand: 15, computer: 'person' }); await wait(10);
+    FakeWS.last.say({ t: 'created', code: 'K7QF2M', display: 'K7Q-F2M', token: 't', seat: 0, settings: { rounds: 4, hand: 15, humans: 3 }, addresses: ['192.168.1.23:8080'] });
+    await wait(10);
+    ok(d.S.online && d.S.online.phase === 'lobby' && d.S.online.settings.humans === 3 && !d.S.onlineError, 'when the server makes a game for three, the lobby opens as usual');
+    // a game for two is not affected
+    const e = make({ maxHumans: null }); e.d({ type: 'openHost' }); await wait(10);
+    e.d({ type: 'hostGame', server: 'x', name: 'Ann', rounds: 4, hand: 15, computer: 'none' }); await wait(10);
+    FakeWS.last.say({ t: 'created', code: 'K7QF2M', display: 'K7Q-F2M', token: 't', seat: 0, settings: { rounds: 4, hand: 15 }, addresses: ['192.168.1.23:8080'] });
+    await wait(10);
+    ok(e.S.online && e.S.online.phase === 'lobby' && !e.S.onlineError, 'and a game for two against an older server is exactly as it was');
+  }
+
+  console.log('6c. which version of the page this is');
+  {
+    const same = make({ pageBuild: 'abc123', infoBuild: 'abc123' }); same.d({ type: 'openHost' }); await wait(10);
+    ok(!/out of date/.test(same.html) && !/data-action="hostGame"[^>]*disabled/.test(same.html), 'a page that is the version its server has: no notice, and Create is available');
+    same.d({ type: 'hostGame', server: 'x', name: 'Ann', rounds: 4, hand: 15, computer: 'none' }); await wait(10);
+    ok(FakeWS.last.sent[0].t === 'create' && FakeWS.last.sent[0].build === 'abc123', 'creating a game sends which version of the page this is: ' + JSON.stringify(FakeWS.last.sent[0]).slice(-60));
+    const jn = make({ pageBuild: 'abc123' }); jn.d({ type: 'openJoin' }); jn.d({ type: 'joinGame', server: '192.168.1.23:8080', name: 'Ben', code: 'K7QF2M' }); await wait(10);
+    ok(FakeWS.last.sent[0].t === 'join' && FakeWS.last.sent[0].build === 'abc123', 'and so does joining one');
+    const behind = make({ pageBuild: 'abc123', infoBuild: 'fff999' }); behind.d({ type: 'openHost' }); await wait(10);
+    ok(/role="alert" class="notice"><b>This page is out of date: the game server now has a newer version\. Reload this page \(Ctrl\+F5, or Cmd\+Shift\+R on a Mac\), then host again\./.test(behind.html) && /data-action="hostGame"[^>]*disabled/.test(behind.html), 'a page that is older than the one its server now has: the Host screen says to reload it, and Create is not available');
+    const oldServer = make({ pageBuild: 'abc123' }); oldServer.d({ type: 'openHost' }); await wait(10);
+    ok(!/out of date/.test(oldServer.html) && !/data-action="hostGame"[^>]*disabled/.test(oldServer.html), 'against a server that does not say which version it serves, there is nothing to compare: no notice');
+    const unstamped = make({ infoBuild: 'fff999' }); unstamped.d({ type: 'openHost' }); await wait(10);
+    ok(!/out of date/.test(unstamped.html), '(and a page with no version of its own, such as one built by a test, cannot say it is behind)');
+    // the server's refusal is shown on the screen it came from
+    const refused = make({ pageBuild: '' }); refused.d({ type: 'openHost' }); await wait(10);
+    refused.d({ type: 'hostGame', server: 'x', name: 'Ann', rounds: 4, hand: 15, computer: 'person' }); await wait(10);
+    const msg = 'The game page you are using is out of date. Reload it (Ctrl+F5, or Cmd+Shift+R on a Mac) and try again. (If you opened a saved copy of the page, open the game server\'s address in your browser instead.)';
+    FakeWS.last.say({ t: 'error', code: 'page_outdated', message: msg }); await wait(10);
+    ok(refused.S.online === null && /out of date\. Reload it/.test(refused.S.onlineError || '') && /role="alert"/.test(refused.html) && /out of date\. Reload it \(Ctrl\+F5/.test(refused.html), 'a refusal for an old page is shown on the Host screen, saying to reload it');
+    const refusedJoin = make({ pageBuild: '' }); refusedJoin.d({ type: 'openJoin' }); refusedJoin.d({ type: 'joinGame', server: '192.168.1.23:8080', name: 'Ben', code: 'K7QF2M' }); await wait(10);
+    FakeWS.last.say({ t: 'error', code: 'page_outdated', message: msg }); await wait(10);
+    ok(refusedJoin.S.online === null && /out of date\. Reload it/.test(refusedJoin.html), 'and on the Join screen');
   }
 
   console.log('7. the guest');

@@ -45,7 +45,8 @@ const classOf = (h, id) => (h.match(new RegExp(`class="(track[^"]*)" data-train=
     const legal = trainsOf(A, k), illegal = ['human', 'cpu', 'mexican'].filter(t => !legal.includes(t));
     ok(eq(a.app.legalTrains(k).sort(), legal.slice().sort()), `legalTrains: exactly the trains it fits (${legal.join(', ')})`);
     ok(a.app.legalTrains('99-99').length === 0, 'a tile that is not playable fits nowhere');
-    ok(a.S.handOrder === null && !/Sort hand/.test(a.root.innerHTML), 'before: the hand is in its automatic order');
+    ok(a.S.handArranged === false && !/Sort hand/.test(a.root.innerHTML), 'before: the hand is in its automatic order');
+    const slotsBefore = a.S.handOrder.slice();                      // (the layout of the hand's slots: a key, or null for an empty one)
     a.app.dispatch({ type: 'dragStart', key: k });
     const h = a.root.innerHTML;
     ok(['human', 'cpu', 'mexican'].every(t => /target|preview/.test(classOf(h, t)) === legal.includes(t)), 'while dragging, exactly the trains it can go on are lit');
@@ -59,7 +60,7 @@ const classOf = (h, id) => (h.match(new RegExp(`class="(track[^"]*)" data-train=
     if (illegal.length) {
       a.app.dispatch({ type: 'dropOnTrain', key: k, train: illegal[0] });
       ok(a.S.awaiting === A && a.S.game.players[0].hand.length === handBefore && a.S.dragKey === null && a.S.dropTrain === null, 'dropping on a train where it does not fit plays nothing and ends the drag');
-      ok(a.S.handOrder === null, '...and does not leave your hand rearranged');
+      ok(eq(a.S.handOrder, slotsBefore) && a.S.handArranged === false, '...and does not leave your hand rearranged');
     }
     a.app.dispatch({ type: 'dragStart', key: k });
     a.app.dispatch({ type: 'dropOnTrain', key: k, train: legal[legal.length - 1] });
@@ -69,7 +70,8 @@ const classOf = (h, id) => (h.match(new RegExp(`class="(track[^"]*)" data-train=
     ok(eq(tr.tiles[tr.tiles.length - 1], played.placed), 'dropping on a legal train plays the tile there, the right way round');
     ok(a.S.awaiting !== A && !a.S.game.players[0].hand.some(t => key(t) === k), 'it left your hand and the game moved on');
     ok(a.S.dragKey === null && a.S.dropTrain === null && a.S.hoverKey === null, 'the drag state is cleared');
-    ok(a.S.handOrder === null && !/Sort hand/.test(a.root.innerHTML), 'playing by dragging does not leave a custom arrangement behind');
+    ok(a.S.handArranged === false && !/Sort hand/.test(a.root.innerHTML), 'playing by dragging does not leave a custom arrangement behind');
+    ok(eq(a.S.handOrder, slotsBefore.map(x => (x === k ? null : x))), 'the tile\'s slot is left EMPTY and nothing else has moved: ' + slotsBefore.map(x => (x === k ? '_' : x ? '#' : '.')).join(''));
   }
   {
     // every legal train really works, one by one (fresh game each time)
@@ -96,7 +98,7 @@ const classOf = (h, id) => (h.match(new RegExp(`class="(track[^"]*)" data-train=
     a.app.dispatch({ type: 'dragStart', key: k }); a.app.dispatch({ type: 'dragMove', index: 0 });
     a.app.dispatch({ type: 'dropOnTrain', key: k, train: trainsOf(A, k)[0] });
     await tick(); await tick();
-    ok(eq(a.S.handOrder, arranged), 'an arrangement you made earlier survives playing a tile by dragging (even if the tile was moved around mid-drag)');
+    ok(eq(a.S.handOrder, arranged.map(x => (x === k ? null : x))), 'an arrangement you made earlier survives playing a tile by dragging (even if the tile was moved around mid-drag), with the played tile\'s slot empty');
   }
   {
     // not your turn / draw-only / the opening
@@ -187,7 +189,7 @@ const classOf = (h, id) => (h.match(new RegExp(`class="(track[^"]*)" data-train=
   const target = pa.S.game.trains[PL[PL.length - 1]];
   ok(target.tiles.some(p => key([Math.min(...p), Math.max(...p)]) === PK), 'letting go over a legal train plays the tile on it');
   ok(pa.S.game.players[0].hand.length === hand0 - 1 && pa.S.dragKey === null && pa.S.dropTrain === null, 'one tile fewer in your hand, drag over');
-  ok(pa.S.handOrder === null, 'and no leftover arrangement from the drag');
+  ok(pa.S.handArranged === false && eq(pa.S.handOrder.filter(Boolean), order0.filter(x => x !== PK)) && pa.S.handOrder.includes(null), 'and no leftover arrangement from the drag: the remaining tiles are in the order they were, and the played tile left an empty slot');
   ok(swallowed, 'the click that follows is swallowed once');
 
   // a second drag: let go on the table, and with the pointer cancelled over a train

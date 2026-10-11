@@ -454,6 +454,7 @@ select option { color: #1b2523; background: #fff; }
 <div id="app"></div>
 <noscript>Mexican Train needs JavaScript turned on to run.</noscript>
 <script>
+window.MT_BUILD = "60cf2fe3b5";
 (function (global) {
   'use strict';
 
@@ -1505,7 +1506,7 @@ select option { color: #1b2523; background: #fff; }
       if (hit) return;                                          // over a train: not rearranging the hand
       const tray = root.querySelector ? root.querySelector('.tray') : null;
       if (tray && tray.getBoundingClientRect && !inside(rectOf(tray), e.clientX, e.clientY)) return;   // out on the table: leave the hand alone
-      const els = Array.from(root.querySelectorAll('.hand .tile-btn'));
+      const els = Array.from(root.querySelectorAll('.hand .tile-btn, .hand .slot-empty.hole'));      // every slot of the hand: a tile, or an empty one
       if (els.length) app.dispatch({ type: 'dragMove', index: dropIndexAt(els.map(rectOf), e.clientX, e.clientY, els.findIndex(el => el.dataset.key === st.key)) });
     }
     function up(e, cancelled) {
@@ -2716,19 +2717,45 @@ select option { color: #1b2523; background: #fff; }
     return `<section class="status" role="status" aria-live="polite"><p class="msg">${bannerText(S)}</p>${controls}</section>`;
   }
 
-  // The hand in the order it is shown: the player's own arrangement if they have made one,
-  // otherwise heaviest first. A tile that was played and then taken back returns to its old spot;
-  // tiles drawn since the arrangement go at the end.
-  function orderedHand(S) {
+  // The hand as a row of SLOTS. Playing a tile leaves its slot empty: nothing else moves. A tile drawn goes into the first empty slot (else
+  // at the end), and a tile that is taken back goes back to the slot it came from. The layout is kept in S.handOrder: a tile's key, or null for
+  // an empty slot; a hand seen for the first time is laid out heaviest first. Returns the slots, a tile or null for each.
+  function handSlots(S) {
     const hand = S.game.players[0].hand;
     const byKey = {};
     hand.forEach(t => { byKey[key(t)] = t; });
     const dflt = hand.slice().sort((x, y) => (y[0] + y[1]) - (x[0] + x[1]) || y[0] - x[0]);
-    if (!S.handOrder) return dflt;
-    const seen = {}, out = [];
-    S.handOrder.forEach(k => { if (byKey[k] && !seen[k]) { out.push(byKey[k]); seen[k] = true; } });
-    dflt.forEach(t => { if (!seen[key(t)]) out.push(t); });
-    return out;
+    if (!S.handOrder) S.slotMemory = {};                         // a hand not seen before: no slot is remembered
+    const memory = S.slotMemory || (S.slotMemory = {});
+    const seen = {};
+    const slots = (S.handOrder || dflt.map(key)).map((k, i) => {
+      if (k && byKey[k] && !seen[k]) { seen[k] = true; return k; }
+      if (k && !byKey[k]) memory[k] = i;                         // it was played: its slot stays empty (and is remembered, in case it is taken back)
+      return null;
+    });
+    dflt.forEach(t => {                                          // a tile with no slot: the one it left, else the first empty one, else a new one at the end
+      const k = key(t);
+      if (seen[k]) return;
+      seen[k] = true;
+      const old = memory[k];
+      const at = old !== undefined && slots[old] === null ? old : slots.indexOf(null);
+      if (at >= 0) slots[at] = k; else slots.push(k);
+      delete memory[k];
+    });
+    S.handOrder = slots;
+    return slots.map(k => (k ? byKey[k] : null));
+  }
+  const orderedHand = S => handSlots(S).filter(Boolean);        // just the tiles, in the order they lie
+  /* Move a tile to another slot of the hand: into an empty slot, which leaves the slot it came from empty; or, onto a slot with a tile in it,
+   * the two swap places. (A drag passes over the slots one at a time, so a long drag slides the tile along; nothing else is ever disturbed.) */
+  function moveToSlot(slots, k, toIndex) {
+    const from = slots.indexOf(k);
+    if (from < 0) return slots.slice();
+    const to = Math.max(0, Math.min(slots.length - 1, toIndex));
+    const next = slots.slice();
+    next[from] = slots[to];                                   // an empty slot, or the tile that was there
+    next[to] = k;
+    return next;
   }
 
   function viewTray(S) {
@@ -2739,7 +2766,9 @@ select option { color: #1b2523; background: #fff; }
     const playable = {};
     if (moving && a.moves) a.moves.forEach(m => { playable[key(m.tile)] = true; });
     const style = S.opts.style;
-    const tiles = orderedHand(S).map(t => {
+    const slots = handSlots(S);
+    const tiles = slots.map(t => {
+      if (!t) return '<div class="slot-empty hole" aria-hidden="true"></div>';        // a tile was played from here: the slot stays empty
       const k = key(t);
       const mode = moving ? (hints ? (playable[k] ? 'playable' : 'dim') : 'plain') : 'idle';   // with hints off nothing says which tiles can be played
       const sel = S.selectedKey === k;
@@ -2749,13 +2778,13 @@ select option { color: #1b2523; background: #fff; }
         data-action="selectTile" data-key="${k}" data-focus-id="t${k}" aria-pressed="${sel}"
         aria-label="${label}"${mode === 'playable' || mode === 'plain' ? '' : ' aria-disabled="true"'}>${tileSVG(t[0], t[1], { orient: 'h', style })}</button>`;
     }).join('');
-    const tip = S.roundIndex === 0 && !S.handOrder ? '<span class="tip">Drag a tile onto a train to play it, or around your hand to rearrange</span>' : '';
+    const tip = S.roundIndex === 0 && !S.handArranged ? '<span class="tip">Drag a tile onto a train to play it, or around your hand to rearrange</span>' : '';
     // only when hints are allowed (main screen): a switch to show or hide them during the game
     const hintBtn = allowHintsNow(S) ? `<button class="btn hints-toggle" data-action="toggleShowHints" aria-pressed="${hints ? 'true' : 'false'}" data-focus-id="hints">Show hints: ${hints ? 'on' : 'off'}</button>` : '';
     // Two or more rows: half the tiles (plus one spare spot) per row, at most 10 across. On a narrow
     // screen the grid simply wraps into more rows.
     const n = me.hand.length;
-    const cols = Math.min(10, Math.max(1, Math.ceil((n + 1) / 2)));
+    const cols = Math.min(10, Math.max(1, Math.ceil((slots.length + 1) / 2)));      // (from the slots, not the tiles: the row does not re-wrap as tiles are played)
     const canDraw = drawOnly(S) && hints;                  // (with hints off, the boneyard is the only way to draw: no flashing spot)
     const myTurn = !!a && (a.kind === 'move' || a.kind === 'build' || a.kind === 'draw');
     const spot = canDraw
@@ -2771,9 +2800,9 @@ select option { color: #1b2523; background: #fff; }
   }
 
   function viewLog(S) {
-    const lines = S.log.slice(-5);
-    return `<section class="log" aria-label="Recent moves"><ol>${lines.map((l, i) =>
-      `<li${i === lines.length - 1 ? ' class="latest"' : ''}>${l}</li>`).join('')}</ol></section>`;
+    const lines = S.log.slice(-5).reverse();                 // the newest message on top, the oldest at the bottom
+    return `<section class="log" aria-label="Recent moves, newest first"><ol>${lines.map((l, i) =>
+      `<li${i === 0 ? ' class="latest"' : ''}>${l}</li>`).join('')}</ol></section>`;
   }
 
   const RULES_HTML = `
@@ -2872,8 +2901,23 @@ select option { color: #1b2523; background: #fff; }
       <h2 id="dlg-title">${title}</h2>
       <div class="final">${ids.map(id => `<div class="tot"><b>${score(id)}</b><span>${nameOf(S, id)}</span></div>`).join('')}</div>
       <p>Lowest score wins. ${S.online ? `You played ${rivals} online.` : tableIds(S).length === 3 ? `You played ${cpuName(S)} (${LEVEL_LABEL[S.opts.level]}) and ${nameOf(S, 'cpu2')} (${LEVEL_LABEL[S.opts.level2]}).` : `You played ${cpuName(S)} on ${LEVEL_LABEL[S.opts.level]}.`}</p>
-      <div class="actions">${S.online ? '<button class="btn primary" data-action="onlineBack" data-primary="1">Back to the menu</button>' : '<button class="btn primary" data-action="newGame" data-primary="1">Play again</button>'}</div>
+      ${S.online ? onlineAgainHTML(S) : '<div class="actions"><button class="btn primary" data-action="newGame" data-primary="1">Play again</button></div>'}
     </div></div>`;
+  }
+  /* Playing again, in a hosted game: anyone may ask once they have seen the final score, and the game starts when everyone has. The server says
+   * who has asked and who has gone; this says it on the dialog, and offers the buttons that make sense. */
+  function onlineAgainHTML(S) {
+    const o = S.online, ag = o.again || { asked: [], gone: [] };
+    const people = (S.opps || []).filter(x => !x.computer);                       // the other people (a computer player never needs asking)
+    const said = list => list.length > 1 ? list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1] : list.join('');
+    const asked = seat => (ag.asked || []).indexOf(seat) >= 0;
+    const gone = people.filter(x => (ag.gone || []).indexOf(x.seat) >= 0).map(x => x.name);
+    const asking = people.filter(x => asked(x.seat)).map(x => x.name), waiting = people.filter(x => !asked(x.seat)).map(x => x.name);
+    const iAsked = !!o.againSent || asked(o.seat);
+    const back = primary => `<button class="btn${primary ? ' primary' : ''}" data-action="onlineBack"${primary ? ' data-primary="1"' : ''}>Back to the menu</button>`;
+    if (gone.length) return `<p role="status">${esc(said(gone))} ${gone.length > 1 ? 'have' : 'has'} left, so there is nobody to play again with.</p><div class="actions">${back(true)}</div>`;
+    if (iAsked) return `<p role="status">${waiting.length ? `You would like to play again. Waiting for ${esc(said(waiting))}...` : 'Starting a new game...'}</p><div class="actions">${back(false)}<button class="btn primary" disabled>${waiting.length ? 'Waiting...' : 'Starting...'}</button></div>`;
+    return `${asking.length ? `<p role="status">${esc(said(asking))} ${asking.length === 1 ? 'wants' : 'want'} to play again.</p>` : ''}<div class="actions">${back(false)}<button class="btn primary" data-action="playAgainOnline" data-primary="1">Play again</button></div>`;
   }
 
   /* Which dialog is showing, if any: the player's own choice first, then what the online game needs. */
@@ -2911,7 +2955,7 @@ select option { color: #1b2523; background: #fff; }
     return `<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
       <h2 id="dlg-title">${host ? 'Host an online game' : 'Join an online game'}</h2>
       ${host
-        ? '<p>This page must be opened from the game server on this computer (<code>node server.js</code>). You will get a join code to give to the others, with the address they join at (chosen below).</p>'
+        ? `<p>This page must be opened from the game server on this computer (<code>node server.js</code>). You will get a join code to give to the others, with the address they join at (chosen below).</p>${pageBehind(S) ? '<p role="alert" class="notice"><b>This page is out of date: the game server now has a newer version. Reload this page (Ctrl+F5, or Cmd+Shift+R on a Mac), then host again.</b></p>' : ''}`
         : '<p>Ask the host for the server address and the join code.</p>'}
       ${host ? viewJoinChoices(S) : `<div class="field"><label for="net-server">Server address</label>
         <input id="net-server" type="text" value="${esc(f.server || '')}" placeholder="192.168.1.23:8080" autocomplete="off" spellcheck="false" autocapitalize="off"></div>`}
@@ -2924,8 +2968,8 @@ select option { color: #1b2523; background: #fff; }
       <div class="field"><label for="net-hand">Tiles dealt to each player</label>
         <select id="net-hand">${optionList([8, 12, 15], Number(f.hand) || 15, v => v === 15 ? '15 (standard)' : String(v))}</select></div>
       <div class="field"><label for="net-computer">Third player</label>
-        <select id="net-computer">${optionList(['none'].concat(LEVELS, ['person']), f.computer || 'none', v => v === 'none' ? 'None' : v === 'person' ? 'Add a third person' : 'Add ' + aOrAn(LEVEL_LABEL[v]) + ' computer as a third player')}</select>
-        <p class="field-note">With a computer player, all three are at the table from the start. (At a table of three the Expert plays like Hard: its looking ahead works against one other player.) With a third person, three people play, everyone joins with the same code, and the game starts when all three are in.</p></div>
+        <select id="net-computer">${(() => { const old = !!(S.hostInfo && S.hostInfo.state === 'ready' && S.hostInfo.maxHumans < 3); const o = optionList(['none'].concat(LEVELS, ['person']), old && f.computer === 'person' ? 'none' : f.computer || 'none', v => v === 'none' ? 'None' : v === 'person' ? 'Add a third person' : 'Add ' + aOrAn(LEVEL_LABEL[v]) + ' computer as a third player'); return old ? o.replace('<option value="person">Add a third person</option>', '<option value="person" disabled>Add a third person (this server must be restarted first)</option>') : o; })()}</select>
+        <p class="field-note">With a computer player, all three are at the table from the start. (At a table of three the Expert plays like Hard: its looking ahead works against one other player.) With a third person, three people play, everyone joins with the same code, and the game starts when all three are in.${S.hostInfo && S.hostInfo.state === 'ready' && S.hostInfo.maxHumans < 3 ? ' <b>This game server is an older version and cannot seat a third person: stop it, start it again from the new files (<code>node server.js</code>), and reload this page.</b>' : ''}</p></div>
       <div class="field"><label for="net-theme">Theme</label>
         <select id="net-theme">${optionList(THEME_IDS, THEME_IDS.includes(f.theme) ? f.theme : 'classic', v => THEME_LABEL[v])}</select>
         <p class="field-note">The Lord of the Rings: the computer player is a character from Middle-earth, and an open train is marked with a golden ring on everyone's screen.</p></div>
@@ -2934,7 +2978,7 @@ select option { color: #1b2523; background: #fff; }
       ${err}
       <div class="actions">
         <button class="btn" data-action="closeOverlay">Back</button>
-        <button class="btn primary" data-action="${host ? 'hostGame' : 'joinGame'}" data-primary="1"${busy || (host && !(S.hostInfo && S.hostInfo.state === 'ready')) ? ' disabled' : ''}>${busy ? 'Connecting...' : host ? 'Create game' : 'Join game'}</button>
+        <button class="btn primary" data-action="${host ? 'hostGame' : 'joinGame'}" data-primary="1"${busy || (host && !(S.hostInfo && S.hostInfo.state === 'ready')) || (host && pageBehind(S)) ? ' disabled' : ''}>${busy ? 'Connecting...' : host ? 'Create game' : 'Join game'}</button>
       </div></div></div>`;
   }
   function viewOnlineLobby(S) {
@@ -2959,7 +3003,7 @@ select option { color: #1b2523; background: #fff; }
         : '<p>This server is only reachable from this computer (it was started with <code>--local-only</code>, or has no network address).</p>')
       : '';
     // Nothing to set on this screen: the game was set up on the Host screen, and now the host is only waiting for the other player to join.
-    const summary = `${o.settings.rounds === 1 ? 'One round' : o.settings.rounds + ' rounds'}, ${o.settings.hand} tiles each${o.settings.computer ? `, with ${aOrAn(LEVEL_LABEL[o.settings.computer])} computer player` : o.settings.humans === 3 ? ', three people' : ''}${o.settings.theme && o.settings.theme !== 'classic' ? `, theme: ${THEME_LABEL[o.settings.theme]}` : ''}.`;
+    const summary = `${o.settings.rounds === 1 ? 'One round' : o.settings.rounds + ' rounds'}, ${o.settings.hand} tiles each${o.settings.computer ? `, with ${aOrAn(LEVEL_LABEL[o.settings.computer])} computer player` : o.settings.humans === 3 ? ', three people' : ', two people'}${o.settings.theme && o.settings.theme !== 'classic' ? `, theme: ${THEME_LABEL[o.settings.theme]}` : ''}.`;
     const hintsNote = o.settings.allowHints === false ? (host ? 'Hints are off.' : 'Hints are off (the host\'s choice).') : (host ? 'Hints are allowed.' : 'Hints are allowed: you can switch them off for yourself in the game.');
     const settings = `<p>${summary} ${hintsNote}${host ? '' : ` ${o.players[0] ? o.players[0].name : 'The host'} will start the game.`}</p>`;
     return `<div class="overlay"><div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
@@ -3294,6 +3338,8 @@ select option { color: #1b2523; background: #fff; }
   }
   const JOIN_VIAS = ['local', 'public', 'manual'];
   const portOf = addr => String(addr || '').replace(/^.*:/, '');
+  /* This page is older than the one its game server now serves (the server was given new files while this tab stayed open). */
+  const pageBehind = S => !!(S.hostInfo && S.hostInfo.state === 'ready' && S.hostInfo.build && S.build && S.hostInfo.build !== S.build);
   const publicInfo = S => (S.hostInfo && S.hostInfo.public) || { state: 'checking' };
   const publicChoiceHTML = S => {
     const pi = publicInfo(S);
@@ -3419,11 +3465,11 @@ select option { color: #1b2523; background: #fff; }
       opts: null, overlay: 'setup', modal: null, matchActive: false,
       game: null, roundIndex: 0, startIndex: 0, totals: { human: 0, cpu: 0 }, cpuName: null,
       awaiting: null, selectedKey: null, drawnKey: null, freshKey: null, lastPlay: null, revealed: null, plan: null,
-      hoverKey: null, flashPhase: 0, handOrder: null, dragKey: null,
+      hoverKey: null, flashPhase: 0, handOrder: null, handArranged: false, slotMemory: {}, dragKey: null,
       dropTrain: null, dropFrom: null, comment: null, pendingRating: null, lastCommentAt: -Infinity, lastLine: null,
       banner: '', log: [], lastCounts: {}, lastDialog: null,
       opps: null, cpu2Name: null, seats: null, hostInfo: null, netLog: [], debugNet: false, showHints: true, notice: '',
-      online: null, onlineError: '', form: null, sayOpen: false, mySay: null, dockMode: !!(env && env.dock), copied: false, qrIndex: 0,
+      online: null, onlineError: '', form: null, sayOpen: false, mySay: null, dockMode: !!(env && env.dock), build: String((env && env.build) || ''), copied: false, qrIndex: 0,
     };
     S.opts = loadOpts();
 
@@ -3570,7 +3616,7 @@ select option { color: #1b2523; background: #fff; }
       S.modal = null;
       S.matchActive = false;
       S.plan = null;
-      S.handOrder = null; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
+      S.handOrder = null; S.handArranged = false; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
       S.comment = null; S.pendingRating = null;
       clearChatTimers();
       if (fx) fx.cancelAll();
@@ -3752,6 +3798,7 @@ select option { color: #1b2523; background: #fff; }
      * not running for a while (a hidden tab, a locked phone, a stalled browser) the silence is not held against the server: the
      * connection is checked at once instead. */
     const NET = { checkMs: 5000, pingIdleMs: 10000, deadMs: 30000, wakeProbeMs: 6000, firstRetryMs: 250, suspendedMs: 10000 };
+    const build = env.build ? String(env.build) : '';              // which version of the page this is (build.py stamps it); sent when creating or joining a game
     const dock = env.dock || null;                      // the place where a person types to the other person (outside the redrawn page; see boot)
     const netConsole = env.netConsole !== undefined ? env.netConsole : (typeof window !== 'undefined' && typeof document !== 'undefined');
     // Everything that happens to the connection is written down (the last 60 events): to the browser's console, to the
@@ -3944,6 +3991,13 @@ select option { color: #1b2523; background: #fff; }
           if (m.token) o.token = String(m.token);
           if (m.settings) o.settings = readOnlineSettings(m.settings);
           if (Array.isArray(m.addresses)) o.addresses = m.addresses.map(String).slice(0, 8);
+          if (m.t === 'created' && o.wantHumans === 3 && o.settings.humans !== 3) {      // asked for a game for three people, and the server made one for two (an older server ignores the request): say so now, not when the second guest is turned away
+            leaveOnline(false);
+            openOnlineDialog('online-host');
+            S.onlineError = 'This game server made a game for two people, not three: it is an older version of the program. Stop it, start it again from the new files (node server.js), reload this page, and try again.';
+            render(true);
+            return;
+          }
           o.phase = m.t === 'resumed' && m.state === 'playing' ? 'playing' : 'lobby';
           o.resuming = false; o.oppConnected = true; o.graceUntil = null; o.presenceBySeat = {};
           S.overlay = null; S.onlineError = '';
@@ -3971,6 +4025,22 @@ select option { color: #1b2523; background: #fff; }
           if (!o.oppConnected) startTick();
           render();
           return;
+        case 'again': {                                      // who has asked to play again, and who has gone (kept even before this page's own final dialog)
+          const seats = list => (Array.isArray(list) ? list : []).filter(n => Number.isInteger(n) && n >= 0 && n <= 3);
+          o.again = { asked: seats(m.asked), gone: seats(m.gone) };
+          render(true);
+          return;
+        }
+        case 'rematch': {                                    // a new game is starting with the same people: forget the finished one
+          lastSeq = -1; o.round = null; o.again = null; o.againSent = false; o.lastActor = null; o.pending = null;
+          S.modal = null; S.awaiting = null; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0 }; S.matchActive = false;
+          S.comment = null; S.mySay = null; S.sayOpen = false; S.notice = ''; S.lastPlay = null;
+          S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.handOrder = null; S.handArranged = false; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
+          clearChatTimers();
+          if (fx) fx.cancelAll();
+          render(true);
+          return;
+        }
         case 'chat': { const said = cleanChatText(m.text); if (said) showChat(said, m.from); return; }
         case 'say': if (typeof m.text === 'string') showSay(m); return;
         case 'ack':
@@ -4050,7 +4120,7 @@ select option { color: #1b2523; background: #fff; }
       const openingBefore = !!(gPrev && gPrev.opening && o.round === v.round && !gPrev.players.every(p => gPrev.opening[p.id] && gPrev.opening[p.id].finished));
       if (!openingNow && !openingBefore) for (const ev of evs) if (ev && (ev.e === 'play' || ev.e === 'draw' || ev.e === 'pass') && (ev.who === 'me' || ev.who === 'opp' || ev.who === 'opp2')) o.lastActor = ev.who;
       // 3. the new state
-      if (o.round !== v.round) { S.handOrder = null; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; o.round = v.round; o.lastActor = null; }
+      if (o.round !== v.round) { S.handOrder = null; S.handArranged = false; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; o.round = v.round; o.lastActor = null; }
       o.rounds = Number(v.rounds) || o.rounds;
       o.phase = 'playing';
       S.game = v.game || null;
@@ -4193,8 +4263,8 @@ select option { color: #1b2523; background: #fff; }
       try { storage.set('mt-name', name); storage.set('mt-server', server); } catch (e) { /* ignore */ }
       S.onlineError = '';
       lastSeq = -1; tries = 0; S.qrIndex = 0; S.showHints = true;
-      S.online = { phase: 'connecting', kind, server, name, join, code: '', display: '', token: '', seat: kind === 'create' ? 0 : 1, host: kind === 'create', settings: { rounds: 4, hand: 15, computer: null, theme: 'classic', allowHints: true }, players: [null, null], canStart: false, addresses: [], conn: 'connecting', oppConnected: true, graceUntil: null, ended: null, rounds: 4, pending: null, round: -1, oppName: '', lastActor: null };
-      const first = kind === 'create' ? { t: 'create', name, rounds: Number(a.rounds), hand: Number(a.hand), computer: LEVELS.includes(a.computer) ? a.computer : null, humans: a.computer === 'person' ? 3 : 2, theme: THEME_IDS.includes(a.theme) ? a.theme : 'classic', allowHints: a.allowHints !== false } : { t: 'join', code: String(a.code), name };
+      S.online = { phase: 'connecting', kind, server, name, join, wantHumans: hosting && a.computer === 'person' ? 3 : 2, code: '', display: '', token: '', seat: kind === 'create' ? 0 : 1, host: kind === 'create', settings: { rounds: 4, hand: 15, computer: null, theme: 'classic', allowHints: true }, players: [null, null], canStart: false, addresses: [], conn: 'connecting', oppConnected: true, graceUntil: null, ended: null, rounds: 4, pending: null, round: -1, oppName: '', lastActor: null };
+      const first = kind === 'create' ? { t: 'create', name, rounds: Number(a.rounds), hand: Number(a.hand), computer: LEVELS.includes(a.computer) ? a.computer : null, humans: a.computer === 'person' ? 3 : 2, theme: THEME_IDS.includes(a.theme) ? a.theme : 'classic', allowHints: a.allowHints !== false, build } : { t: 'join', code: String(a.code), name, build };
       netConnect(first);
     }
     function resumeOnline() {
@@ -4213,7 +4283,7 @@ select option { color: #1b2523; background: #fff; }
       netClose(); if (!keepSession) clearSession();      // (the window that took over still needs the saved game)
       S.online = null; S.game = null; S.modal = null; S.awaiting = null; S.matchActive = false;
       S.comment = null; S.mySay = null; S.sayOpen = false; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0 }; S.opps = null; S.cpu2Name = null; S.seats = null;
-      S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.handOrder = null; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
+      S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.handOrder = null; S.handArranged = false; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
       lastSeq = -1;
       clearChatTimers();
       if (fx) fx.cancelAll();
@@ -4231,7 +4301,7 @@ select option { color: #1b2523; background: #fff; }
           const list = (Array.isArray(j && j.addresses) ? j.addresses : []).map(parseServerAddress).filter(Boolean);
           const best = parseServerAddress(j && j.preferred) || list[0] || null;
           if (!best) return fail();
-          S.hostInfo = { state: 'ready', address: best, addresses: list.length ? list : [best], public: { state: 'checking' } };
+          S.hostInfo = { state: 'ready', address: best, addresses: list.length ? list : [best], maxHumans: Number(j && j.maxHumans) === 3 ? 3 : 2, build: String((j && j.build) || ''), public: { state: 'checking' } };
           if (S.overlay === 'online-host') render(true);
           loadPublicIp(mine);
         }).catch(fail);
@@ -4318,7 +4388,7 @@ select option { color: #1b2523; background: #fff; }
         const engine = MAX_PIP - r;
         S.game = newRound({ engine, handSize: S.opts.hand, rng, simultaneousOpening: true, players: n });
         S.game.players.forEach(p => { if (p.id !== 'human') p.name = nameOf(S, p.id); });
-        S.log = []; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.lastPlay = null; S.plan = null; S.handOrder = null; S.dragKey = null;
+        S.log = []; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.lastPlay = null; S.plan = null; S.handOrder = null; S.handArranged = false; S.dragKey = null;
         say(`Round ${r + 1}: the engine is double-${engine}. Everyone builds their train at the same time.`);
         S.log.push(`${startIndex === 0 ? 'You play' : `${nameOf(S, S.game.players[startIndex].id)} plays`} first once the trains are built.`);
         render();
@@ -4466,18 +4536,18 @@ select option { color: #1b2523; background: #fff; }
     }
 
     /* ---------- arranging your hand ---------- */
-    const handKeys = () => orderedHand(S).map(key);
+    const handKeys = () => handSlots(S).map(t => (t ? key(t) : null));      // the slots: a key, or null for an empty one
     function dragStart(k) {
       if (!S.game) return;
       const order = handKeys();
       if (!order.includes(k)) return;
-      S.prevHandOrder = S.handOrder;                  // dragging a tile out to play it must not rearrange the hand
-      S.handOrder = order; S.dragKey = k; S.hoverKey = k;   // hoverKey lights the trains this tile could go on
+      S.prevHandOrder = S.handOrder; S.prevHandArranged = S.handArranged;      // dragging a tile out to play it must not rearrange the hand
+      S.handOrder = order; S.handArranged = true; S.dragKey = k; S.hoverKey = k;   // hoverKey lights the trains this tile could go on
       render();
     }
     function dragMove(index) {
       if (!S.dragKey || !S.handOrder || !(index >= 0)) return;
-      const next = moveInOrder(S.handOrder, S.dragKey, index);
+      const next = moveToSlot(S.handOrder, S.dragKey, index);
       if (next.join() === S.handOrder.join()) return;
       S.handOrder = next;
       render();
@@ -4503,7 +4573,7 @@ select option { color: #1b2523; background: #fff; }
     }
     function dropOnTrain(k, trainId, from) {
       S.dragKey = null; S.dropTrain = null; S.hoverKey = null;
-      if (S.prevHandOrder !== undefined) { S.handOrder = S.prevHandOrder; S.prevHandOrder = undefined; }
+      if (S.prevHandOrder !== undefined) { S.handOrder = S.prevHandOrder; S.handArranged = !!S.prevHandArranged; S.prevHandOrder = undefined; }
       const a = S.awaiting;
       const mv = a && (a.kind === 'move' || a.kind === 'build') && a.moves ? a.moves.find(m => key(m.tile) === k && m.trainId === trainId) : null;
       if (!mv) {                                      // not a legal place for it: it simply goes back to the hand
@@ -4519,7 +4589,7 @@ select option { color: #1b2523; background: #fff; }
       if (!S.game) return;
       const order = handKeys(), i = order.indexOf(k);
       if (i < 0) return;
-      S.handOrder = moveInOrder(order, k, i + delta);
+      S.handOrder = moveToSlot(order, k, i + delta); S.handArranged = true;
       render();
     }
 
@@ -4582,6 +4652,7 @@ select option { color: #1b2523; background: #fff; }
         case 'toggleSay': S.sayOpen = !S.sayOpen; return render(true);
         case 'askLeave': S.overlay = 'online-leave'; return render(true);
         case 'confirmLeave': leaveOnline(false); S.overlay = 'setup'; return render(true);
+        case 'playAgainOnline': if (S.online && !S.online.againSent && S.modal && S.modal.type === 'final') { S.online.againSent = true; netSend({ t: 'rematch' }); render(true); } return;
         case 'onlineBack': leaveOnline(true, !!(S.online && S.online.ended && S.online.ended.reason === 'replaced')); S.overlay = 'setup'; return render(true);
         case 'resumeOnline': return resumeOnline();
         case 'copied': S.copied = a.which === 'copyLink' ? 'link' : 'failed'; later(() => { S.copied = false; render(); }, a.which === 'copyLink' ? 2000 : 6000); return render();
@@ -4661,7 +4732,7 @@ select option { color: #1b2523; background: #fff; }
     } catch (err) { dock = null; }
     const app = createApp({
       root, storage, reducedMotion: reduced, sound, fx, dock,
-      WebSocket: global.WebSocket, defaultServer, fetch: global.fetch ? global.fetch.bind(global) : null,
+      WebSocket: global.WebSocket, defaultServer, build: global.MT_BUILD || '', fetch: global.fetch ? global.fetch.bind(global) : null,
       rng: seed !== null && seed !== '' ? mulberry32(Number(seed)) : Math.random,
     });
 

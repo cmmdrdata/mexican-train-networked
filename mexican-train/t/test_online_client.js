@@ -217,7 +217,7 @@ const hostile = /<(script|img|svg|iframe|b|i)\b[^>]*>/i;
     ok(/node|address/.test(lh) && host.S.online.addresses.length > 0 && host.S.online.addresses.every(a => /:\d+$/.test(a)) && lh.includes(host.S.online.addresses[0]), 'and the addresses the other player can use: ' + host.S.online.addresses.join(', '));
     ok(/data-action="startOnline"[^>]*disabled/.test(lh), 'Start is disabled until someone joins');
     ok(!/<select|<input|<textarea|<option/.test(lh) && !/toggleNetHints|onlineSettings/.test(lh), 'the lobby has no inputs: the game was set up on the Host screen, and now the host is only waiting for players');
-    ok(/One round, 8 tiles each\. Hints are allowed\./.test(lh), '...it just says how the game was set up');
+    ok(/One round, 8 tiles each, two people\. Hints are allowed\./.test(lh), '...it says how the game was set up, including that it is for two people');
     ok(!/Start game<\/button>/.test(lh) || /Waiting for a player/.test(lh), '(the button reads "Waiting for a player...")');
     const code = host.S.online.code;
     guest.dispatch({ type: 'openJoin' });

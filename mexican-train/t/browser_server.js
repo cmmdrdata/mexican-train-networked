@@ -13,5 +13,6 @@ else if (mode === 'fail') lookup.publicIpLookup = async () => { throw new Error(
 else if (/^seq:/.test(mode)) { const ips = mode.slice(4).split(','); let n = 0; lookup.publicIpLookup = async () => ({ ip: ips[Math.min(n++, ips.length - 1)], via: 'test lookup' }); }
 else if (/^slow:/.test(mode)) { const [, ip, ms] = mode.split(':'); lookup.publicIpLookup = async () => { await new Promise(r => setTimeout(r, Number(ms) || 2000)); return { ip, via: 'test lookup' }; }; }
 else lookup.publicIpLookup = async () => ({ ip: mode, via: 'test lookup' });
-const srv = createGameServer(Object.assign({ pagePath: path.join(__dirname, '..', 'mexican-train.html'), sleep: async () => {}, stepDelay: 60, log: () => {}, ratePerSecond: 5000, burst: 10000 }, lookup));
+const check = process.env.MT_CHECK_BUILD === '1' ? { checkBuild: true } : {};                    // (MT_CHECK_BUILD=1: turn away a page that is not the one served, as the command line does)
+const srv = createGameServer(Object.assign({ pagePath: path.join(__dirname, '..', 'mexican-train.html'), sleep: async () => {}, stepDelay: 60, log: () => {}, ratePerSecond: 5000, burst: 10000 }, lookup, check));
 srv.listen(0, '0.0.0.0').then(port => { console.log(JSON.stringify({ port })); });
