@@ -130,6 +130,16 @@
   function noteDraw(game, p) { (game.noMatch || (game.noMatch = {}))[p.id] = null; }
   function notePass(game, p) { (game.noMatch || (game.noMatch = {}))[p.id] = endsOpenTo(game, p); }
 
+  /* A draw the player did not have to make. With hints off the game does not tell you whether you have a play, so it does not refuse a draw because you
+   * do: you may draw anyway, the tile joins your hand and the turn goes on. Not while a double has to be covered, and not from an empty boneyard. */
+  function drawAnyway(game, player) {
+    if (game.openDouble || game.boneyard.length === 0) return null;
+    const tile = game.boneyard.pop();
+    player.hand.push(tile);
+    noteDraw(game, player);                                    // (as for any draw: what the others knew about this hand no longer holds)
+    return tile;
+  }
+
   /* One normal turn: a tile (plus the forced follow-up after a double). */
   async function playTurn(game, player, controller, ui) {
     for (;;) {
@@ -203,6 +213,7 @@
       const lastDouble = all.length > moves.length;
       const placed = train.tiles.length;
       const canDraw = placed === 0 && moves.length === 0 && !st.drew && game.boneyard.length > 0;
+      const canDrawEarly = placed === 0 && moves.length > 0 && !st.drew && game.boneyard.length > 0;      // a draw you did not have to make: only a person with hints off is offered it
 
       if (placed === 0 && moves.length === 0 && !canDraw) {
         train.marker = true;
@@ -213,11 +224,11 @@
 
       const last = train.tiles[placed - 1];
       const canDone = !last || !isDouble(last);
-      const info = { moves, placed, canUndo: placed > 0, canDraw, canDone, drew: st.lastDrew, lastDouble };
+      const info = { moves, placed, canUndo: placed > 0, canDraw, canDrawEarly, canDone, drew: st.lastDrew, lastDouble };
       const action = await agent.act(game, player, info);
       // The opening is simultaneous: while this player was deciding to draw, another may have taken the last tile. There is then
       // nothing to draw (and "drawing" it would put a missing tile in the hand): look again, and they pass.
-      if (action && action.type === 'draw' && canDraw && game.boneyard.length === 0) continue;
+      if (action && action.type === 'draw' && (canDraw || canDrawEarly) && game.boneyard.length === 0) continue;
 
       if (action && action.type === 'play') {
         const mv = moves.find(m => sameTile(m.tile, action.move.tile) && m.trainId === action.move.trainId);
@@ -229,7 +240,7 @@
         const tile = undoLast(game, player);
         st.lastDrew = null;
         if (ui.onBuildUndo) await ui.onBuildUndo(game, player, tile);
-      } else if (action && action.type === 'draw' && canDraw) {
+      } else if (action && action.type === 'draw' && (canDraw || canDrawEarly)) {
         const tile = game.boneyard.pop();
         player.hand.push(tile);
         noteDraw(game, player);
@@ -1081,10 +1092,11 @@
 
   // gap (in evaluation points) below the best available move
   const RATING = { great: 0.5, good: 8, poor: 16, awful: 32 };
+  const OWN_SHORT = 2;                                  // a train of this many tiles or fewer is "very short" for the computer to grumble about
 
   /* Which kind of comment (if any) a rated move deserves. */
   function commentKindFor(r) {
-    if (r.forced) return 'forced';
+    if (r.forced) return null;                                    // the computer cannot see your hand, so it never remarks that a move was your only one
     if (r.best >= 1000 && r.value < 1000) return 'missedOut';     // could have gone out and did not
     if (r.gap <= RATING.great) return 'great';
     if (r.gap <= RATING.good) return 'good';
@@ -1142,14 +1154,6 @@
       'Remind me to send flowers to your hand. It deserves better.',
       'That move should come with a warning label.',
     ],
-    forced: [
-      'That was your only move. Do not act like you planned it.',
-      'Forced move. Genius, truly.',
-      'You had exactly one option. Congratulations on finding it.',
-      'Wow, picking the only tile that fits. Take a bow.',
-      'A choice of one. Even you could not mess that up.',
-      'That one was practically automatic. Like breathing.',
-    ],
     missedOut: [
       'You could have gone OUT. Out! Do you even want to win?',
       'That was the winning move and you walked right past it.',
@@ -1189,6 +1193,35 @@
       'A marker on your train. How welcoming.',
       'Thanks for leaving the door open.',
       'A pass? I will happily take that train for a spin.',
+    ],
+    ownDraw: [
+      'Of course nothing fits. Why would it?',
+      'Another trip to the boneyard. I am practically a tourist.',
+      'Fine. Draw. Let us see what insult the pile has for me.',
+      'The perfect tile was definitely right there a second ago.',
+    ],
+    ownDrawAgain: [
+      'Wrong again. The boneyard has a sense of humor and I hate it.',
+      'Did somebody stack the pile against me? Be honest.',
+      'I draw more tiles than I play. That is a terrible ratio.',
+      'Another wrong tile in a row. I want a word with whoever shuffled.',
+    ],
+    ownBlocked: [
+      'Blocked. Nothing fits and nothing to draw. Lovely.',
+      'A pass. Put the marker on my train. Go on, enjoy it.',
+      'Boxed in with nowhere to go. I should have built something different.',
+      'No move, no tile, no luck. Wonderful.',
+    ],
+    ownShort: [
+      'Look at that train. {built} tiles. It is basically a handshake.',
+      'My train is so short it barely qualifies as a train.',
+      'A short train, thanks to my hand. Do not look at it.',
+      'I have seen longer queues for nothing.',
+    ],
+    roundBlocked: [
+      'Blocked. Everybody stuck. Somebody call a tow truck.',
+      'Nobody can move. Well, that is one way to end a round.',
+      'Stalemate! The tiles have all agreed to disagree.',
     ],
     openBest: [
       'Longest train possible. Show-off.',
@@ -1251,13 +1284,6 @@
       'Oh dear. Oh dear, oh dear, oh dear.',
       'I do not even have a joke for that one. It hurt too much.',
     ],
-    forced: [
-      'Only one move? Lucky! I never get those.',
-      'That was the only one that fit, right? Right?',
-      'Wow, you found the one tile that fits. So brave.',
-      'No choice at all. Must be nice. Or boring.',
-      'You had one option and you took it. Brilliant!',
-    ],
     missedOut: [
       'Wait, you could have gone out! Why did you not go out?',
       'You had the win right there. I would have cried with joy.',
@@ -1297,6 +1323,35 @@
       'Oh, a little train marker! Very festive.',
       'You passed! I do that all the time and it never helps.',
       'Passing, huh? Brave. Or lost.',
+    ],
+    ownDraw: [
+      'Nothing fits? Oh no. Off to the boneyard I go!',
+      'Aw, not again. Digging for tiles, here we go.',
+      'I was SURE I had something. I did not. Drawing!',
+      'Boneyard time. I like the boneyard. I do not like what is in it.',
+    ],
+    ownDrawAgain: [
+      'Another wrong one! The tiles are doing this on purpose.',
+      'I keep drawing the wrong tile. Is there a right tile? Ever?',
+      'Still nothing! I think the boneyard is teasing me.',
+      'That is a lot of bad draws. I am going to cry about it a little.',
+    ],
+    ownBlocked: [
+      'Nothing fits and nothing left to draw. I am stuck! Totally stuck!',
+      'Oh no, I have to pass. Please be gentle with my open train.',
+      'Blocked! I feel like a bus in a very small tunnel.',
+      'No move at all. A marker on my train. How embarrassing.',
+    ],
+    ownShort: [
+      'My train is tiny. Tiny! It is more of a train station.',
+      'Look at my little train. It is only {built} long. It is shy.',
+      'That is the shortest train I have ever built. And I build short ones.',
+      'Is a train supposed to be this short? It feels like a toy.',
+    ],
+    roundBlocked: [
+      'Blocked! Nobody can move? That is a first for me. A sad first.',
+      'Everyone is stuck! Can we call that a draw? Please?',
+      'The tiles ran out of ideas, just like me.',
     ],
     openBest: [
       'Wow, that is a long train. Showing off again.',
@@ -1359,13 +1414,6 @@
       'Please, continue. I am enjoying this.',
       'There are bad moves, and then there is whatever that was.',
     ],
-    forced: [
-      'A forced move. Even the tiles knew you had no choice.',
-      'One option. Naturally you found it.',
-      'No decision required. Spare yourself the credit.',
-      'That was the only play. Do not mistake it for skill.',
-      'Forced. I could have played that for you.',
-    ],
     missedOut: [
       'You could have gone out. I would not have missed that.',
       'The round was yours and you let it go. Noted.',
@@ -1406,6 +1454,31 @@
       'You passed. I will use that.',
       'No play. Your train is mine to use now.',
     ],
+    ownDraw: [
+      'Nothing fits. Irritating. The boneyard will pay for it.',
+      'A draw. I dislike giving a turn to chance.',
+      'The tile I need is somewhere in that pile. I will find it.',
+    ],
+    ownDrawAgain: [
+      'Wrong again. The odds are insulting me.',
+      'Another bad draw. I do not believe in luck. I am starting to resent it.',
+      'Every wrong tile. I remember all of them.',
+    ],
+    ownBlocked: [
+      'Blocked. Nothing to play, nothing to draw. Unacceptable.',
+      'I am forced to pass. Enjoy my open train while it lasts.',
+      'A dead end. I planned for many things. Not this.',
+    ],
+    ownShort: [
+      'A short train. It is a weakness and I know it.',
+      'Only {built}. My hand did not give me the chain I wanted.',
+      'It is brief, yes. I will make it matter.',
+    ],
+    roundBlocked: [
+      'Blocked. Then the lowest hand takes it. Count carefully.',
+      'No tile moves. A stalemate. I dislike stalemates.',
+      'Everyone is blocked. The round is decided by pips. Count them.',
+    ],
     openBest: [
       'The longest train. That is the minimum standard.',
       'Correct opening. At least you can follow instructions.',
@@ -1439,66 +1512,90 @@
       good: [['Сойдёт.', 'It will do.'], ['Нормально. Скучно, но нормально.', 'Fine. Boring, but fine.'], ['Приемлемо. Могло быть хуже. У тебя бывало хуже.', 'Acceptable. It could be worse. You have done worse.']],
       poor: [['Ну и ход. Ты вообще на фишки смотришь?', 'What a move. Are you even looking at the tiles?'], ['Это была ошибка, или ты просто любишь страдать?', 'Was that a mistake, or do you just like suffering?'], ['Смело. Глупо, но смело.', 'Bold. Silly, but bold.']],
       awful: [['Это худший ход, который я видел за всю неделю.', 'That is the worst move I have seen all week.'], ['Скажи, что это была случайность.', 'Tell me that was an accident.'], ['Даже голубь сыграл бы лучше.', 'Even a pigeon would have played better.']],
-      forced: [['Единственный ход. Не делай вид, что это был план.', 'The only move. Do not pretend it was a plan.'], ['Выбор из одного. Поздравляю.', 'A choice of one. Congratulations.']],
       missedOut: [['Партию можно было закончить! Зачем так?', 'The round could have been finished! Why do that?'], ['Победа была в руках, но ускользнула.', 'The win was in your hands, but it slipped away.']],
       slow: [['Эй, ты ещё здесь?', 'Hey, are you still there?'], ['Я успел состариться, пока ты думал.', 'I have grown old while you were thinking.'], ['Фишки сами не сыграют, знаешь ли.', 'The tiles will not play themselves, you know.'], ['Пойду заварю чай. Скажешь, когда решишь.', 'I will go and make tea. Tell me when you decide.']],
       draw: [['Ничего не подходит? Тяни из кучи.', 'Nothing fits? Draw from the pile.'], ['Опять тянешь? Это твой главный талант.', 'Drawing again? That is your greatest talent.']],
       pass: [['Пасуешь? Спасибо, что оставил дверь открытой.', 'Passing? Thanks for leaving the door open.'], ['Маркер на твоём поезде. Как мило.', 'A marker on your train. How sweet.']],
+      ownDraw: [['Ничего не подходит. Придётся тянуть.', 'Nothing fits. I will have to draw.'], ['Опять не та фишка. Не везёт.', 'Not the right tile again. No luck.']],
+      ownDrawAgain: [['Снова мимо! Куча надо мной издевается.', 'Wrong again! The pile is mocking me.'], ['Столько тянуть и всё не то. Невероятно.', 'Drawing so much and still not right. Incredible.']],
+      ownBlocked: [['Ходов нет, тянуть нечего. Тупик.', 'No moves, nothing to draw. A dead end.'], ['Пас. Маркер на мой поезд. Обидно.', 'A pass. A marker on my train. Annoying.']],
+      ownShort: [['Какой короткий поезд. Одно название.', 'What a short train. A train in name only.'], ['Мой поезд совсем маленький. Надо было лучше.', 'My train is tiny. It should have been better.']],
+      roundBlocked: [['Всё заблокировано. Никто не может ходить.', 'Everything is blocked. Nobody can move.'], ['Тупик. Считаем очки.', 'A dead end. Let us count the points.']],
     },
     ja: {
       great: [['なかなかやるね。調子に乗らないでよ。', 'Not bad. Do not let it go to your head.'], ['まあ、いい手だったよ。認めてあげる。', 'Well, that was a good move. I will give you that.'], ['実力？それとも偶然？偶然に一票。', 'Skill or luck? I vote luck.']],
       good: [['悪くないね。ぎりぎり。', 'Not bad. Barely.'], ['まあまあだね。', 'So-so.'], ['無難な手。あなたらしい。', 'A safe move. Very you.']],
       poor: [['えっ、本気でそれ？目を閉じて選んだの？', 'Seriously, that one? Did you pick it with your eyes closed?'], ['大胆だね。間違ってるけど。', 'Bold. Though wrong.'], ['見てるこっちが痛いよ。', 'It hurts just to watch.']],
       awful: [['今週で一番ひどい手だよ。', 'That is the worst move of the week.'], ['お願いだから、クリックミスだったと言って。', 'Please tell me it was a misclick.'], ['ドミノが泣いてるよ。', 'The dominoes are crying.']],
-      forced: [['それしか出せなかったでしょ。作戦じゃないよね。', 'That was your only move, right? It was not a strategy.'], ['選択肢が一つ。おめでとう。', 'One option. Congratulations.']],
       missedOut: [['上がれたのに！どうして上がらなかったの？', 'You could have gone out! Why did you not?'], ['勝ちが目の前にあったのに、見逃したね。', 'The win was right in front of you and you missed it.']],
       slow: [['もしもーし、まだいる？', 'Hello, are you still there?'], ['待ってる間に歳をとったよ。', 'I aged while waiting.'], ['ドミノは勝手に動かないよ。', 'The dominoes will not move by themselves.'], ['お茶を入れてくるね。決まったら教えて。', 'I will go and make tea. Tell me when you decide.']],
       draw: [['出せるのがないの？山から引いてきなよ。', 'Nothing to play? Go draw from the pile.'], ['また引くの？得意技だね。', 'Drawing again? Your specialty.']],
       pass: [['パス？扉を開けてくれてありがとう。', 'Pass? Thanks for leaving the door open.'], ['マーカーがついたよ。親切だね。', 'A marker on your train. How kind.']],
+      ownDraw: [['合うのがない…山から引くしかない。', 'Nothing matches... I have no choice but to draw from the pile.'], ['また違う駒かあ。ついてないな。', 'Another wrong tile. Unlucky.']],
+      ownDrawAgain: [['また外れ！山にからかわれてる気がする。', 'Wrong again! I feel like the pile is teasing me.'], ['引いても引いても合わない。信じられない。', 'No matter how much I draw, nothing fits. Unbelievable.']],
+      ownBlocked: [['出せる駒も引く駒もない。行き詰まりだ。', 'No tile to play and nothing to draw. A dead end.'], ['パスか。列車にマーカーが付くのは悔しい。', 'A pass. It is frustrating to get a marker on my train.']],
+      ownShort: [['私の列車、短すぎる。名ばかりだ。', 'My train is too short. A train in name only.'], ['こんなに短い列車は久しぶりだ。', 'It has been a while since I had such a short train.']],
+      roundBlocked: [['全員行き詰まり。誰も動けない。', 'Everybody is stuck. Nobody can move.'], ['手詰まりだ。点数を数えよう。', 'A stalemate. Let us count the points.']],
     },
     zh: {
       great: [['不错嘛，别得意。', 'Not bad, do not get cocky.'], ['好吧，这步走得挺好。就这一步。', 'Alright, that was a good move. Just that one.'], ['是实力还是运气？我押运气。', 'Skill or luck? I bet on luck.']],
       good: [['还行吧，勉强。', 'Okay, barely.'], ['一般般。', 'So-so.'], ['稳妥，但很无聊。', 'Safe, but boring.']],
       poor: [['这步棋……你是闭着眼睛选的吗？', 'That move... did you pick it with your eyes closed?'], ['够大胆，可惜是错的。', 'Bold enough, but sadly wrong.'], ['看得我都替你难受。', 'It hurts me just to watch.']],
       awful: [['这是我这周见过最糟的一步。', 'That is the worst move I have seen this week.'], ['拜托告诉我你点错了。', 'Please tell me you misclicked.'], ['连鸽子都比你走得好。', 'Even a pigeon would play better than you.']],
-      forced: [['就这一张能出，别装成是计划。', 'That was the only one that fit, do not pretend it was a plan.'], ['只有一个选择，恭喜你找到了。', 'Only one choice, congratulations on finding it.']],
       missedOut: [['你本来可以出完的！为什么不出？', 'You could have gone out! Why did you not?'], ['胜利就在手里，你却放走了。', 'Victory was in your hand and you let it go.']],
       slow: [['喂，你还在吗？', 'Hey, are you still there?'], ['等你等得我都老了。', 'I have aged waiting for you.'], ['骨牌自己是不会动的哦。', 'Dominoes will not move by themselves, you know.'], ['我去泡杯茶，你想好了叫我。', 'I will go make tea, call me when you have decided.']],
       draw: [['没牌可出？去牌堆里摸吧。', 'Nothing to play? Go draw from the pile.'], ['又摸牌？这可是你的拿手好戏。', 'Drawing again? That is your specialty.']],
       pass: [['跳过？谢谢你替我开门。', 'A pass? Thanks for opening the door for me.'], ['你的牌路上放了标记，真贴心。', 'There is a marker on your train, how thoughtful.']],
+      ownDraw: [['没有能出的牌，只能摸牌了。', 'No tile I can play, so I have to draw.'], ['又不是我要的牌，运气真差。', 'Not the tile I wanted again. Such bad luck.']],
+      ownDrawAgain: [['又摸错了！牌堆在捉弄我。', 'Wrong again! The pile is toying with me.'], ['摸了这么多还是不对，太离谱了。', 'I have drawn so many and still no match. Ridiculous.']],
+      ownBlocked: [['没牌可出，也没牌可摸，被堵死了。', 'Nothing to play and nothing to draw. I am completely blocked.'], ['只能过牌，车上还要放标记，真烦。', 'I can only pass, and a marker goes on my train. How annoying.']],
+      ownShort: [['我的火车太短了，根本不像火车。', 'My train is so short it does not even look like a train.'], ['这么短的火车，真拿不出手。', 'A train this short is nothing to show off.']],
+      roundBlocked: [['全都堵住了，谁也走不了。', 'Everything is blocked. Nobody can move.'], ['死局了，来数点数吧。', 'A deadlock. Let us count the points.']],
     },
     ko: {
       great: [['꽤 잘하네. 우쭐대지는 마.', 'Pretty good. Do not get cocky.'], ['좋아, 방금은 괜찮은 수였어. 딱 한 번.', 'Okay, that was a decent move. Just once.'], ['실력이야 운이야? 난 운에 걸게.', 'Skill or luck? I bet on luck.']],
       good: [['나쁘진 않네. 겨우.', 'Not bad. Barely.'], ['그럭저럭이야.', 'It is so-so.'], ['안전한 수네. 참 너답다.', 'A safe move. Very you.']],
       poor: [['그걸 둔다고? 눈 감고 골랐어?', 'You play that? Did you pick it with your eyes closed?'], ['대담하네. 틀렸지만.', 'Bold. Though wrong.'], ['보는 내가 아프다.', 'It hurts me to watch.']],
       awful: [['이번 주에 본 최악의 수야.', 'The worst move I have seen this week.'], ['제발 잘못 눌렀다고 말해줘.', 'Please tell me you misclicked.'], ['비둘기도 더 잘 두겠다.', 'Even a pigeon would play better.']],
-      forced: [['낼 수 있는 게 그것뿐이었잖아. 전략인 척하지 마.', 'That was the only one you could play. Do not pretend it was a strategy.'], ['선택지가 하나였네. 축하해.', 'You had one option. Congratulations.']],
       missedOut: [['끝낼 수 있었는데! 왜 안 끝냈어?', 'You could have finished! Why did you not?'], ['승리가 손안에 있었는데 놓쳤네.', 'Victory was in your hand and you let it slip.']],
       slow: [['여보세요, 아직 있어?', 'Hello, are you still there?'], ['기다리다 늙겠어.', 'I will grow old waiting.'], ['도미노는 저절로 안 움직여.', 'Dominoes do not move by themselves.'], ['차 한잔 하고 올게. 정하면 불러.', 'I will go have some tea. Call me when you decide.']],
       draw: [['낼 게 없어? 더미에서 뽑아.', 'Nothing to play? Draw from the pile.'], ['또 뽑아? 네 특기네.', 'Drawing again? Your specialty.']],
       pass: [['패스? 문을 열어줘서 고마워.', 'Pass? Thanks for opening the door.'], ['네 기차에 마커가 놓였네. 친절하기도 하지.', 'A marker on your train. How kind.']],
+      ownDraw: [['낼 수 있는 패가 없네. 뽑아야겠다.', 'No tile I can play. I will have to draw.'], ['또 맞지 않는 패야. 운이 없어.', 'Another tile that does not fit. Bad luck.']],
+      ownDrawAgain: [['또 틀렸어! 패 더미가 나를 놀리는 것 같아.', 'Wrong again! The pile seems to be teasing me.'], ['이렇게 뽑았는데도 안 맞다니, 말도 안 돼.', 'Drawing this much and still no match. Unbelievable.']],
+      ownBlocked: [['낼 패도 뽑을 패도 없어. 꽉 막혔다.', 'No tile to play and none to draw. Totally blocked.'], ['패스라니. 내 기차에 표시가 붙는 게 분하다.', 'A pass. It is galling to get a marker on my train.']],
+      ownShort: [['내 기차가 너무 짧아. 기차라고 하기도 민망해.', 'My train is too short. It is embarrassing to call it a train.'], ['이렇게 짧은 기차는 오랜만이야.', 'It has been a while since I had a train this short.']],
+      roundBlocked: [['전부 막혔어. 아무도 움직일 수 없어.', 'Everything is blocked. Nobody can move.'], ['교착 상태야. 점수를 세어 보자.', 'A deadlock. Let us count the points.']],
     },
     hi: {
       great: [['बुरा नहीं। ज़्यादा उड़ो मत।', 'Not bad. Do not get carried away.'], ['ठीक है, यह अच्छी चाल थी। बस एक।', 'Okay, that was a good move. Just one.'], ['हुनर था या किस्मत? मेरा दाँव किस्मत पर है।', 'Skill or luck? My bet is on luck.']],
       good: [['चलेगा।', 'It will do.'], ['ठीक-ठाक है, बस।', 'It is okay, that is all.'], ['सुरक्षित चाल। एकदम तुम्हारी तरह।', 'A safe move. Just like you.']],
       poor: [['यह क्या चाल थी? आँखें बंद करके चुनी क्या?', 'What kind of move was that? Did you pick it with your eyes closed?'], ['हिम्मत वाली चाल। गलत, पर हिम्मत वाली।', 'A brave move. Wrong, but brave.'], ['देखकर ही दर्द हो रहा है।', 'It hurts just to watch.']],
       awful: [['इस हफ़्ते की सबसे बुरी चाल यही है।', 'This is the worst move of the week.'], ['प्लीज़ कह दो कि गलती से क्लिक हो गया।', 'Please say it was clicked by mistake.'], ['कबूतर भी इससे अच्छा खेल लेता।', 'Even a pigeon could play better than this.']],
-      forced: [['बस यही एक चाल थी। इसे योजना मत कहना।', 'This was the only move. Do not call it a plan.'], ['एक ही विकल्प था। बधाई हो!', 'There was only one option. Congratulations!']],
       missedOut: [['राउंड खत्म हो सकता था! आपने क्यों नहीं किया?', 'The round could have ended! Why did you not do it?'], ['जीत हाथ में थी और हाथ से निकल गई।', 'The win was in hand and slipped away.']],
       slow: [['अरे, कोई है?', 'Hey, is anyone there?'], ['इंतज़ार करते-करते उम्र निकल गई।', 'A whole lifetime has passed waiting.'], ['डोमिनो अपने आप नहीं चलते, पता है न?', 'Dominoes do not move by themselves, you know?'], ['चाय बन रही है। फ़ैसला हो जाए तो बताना।', 'Tea is brewing. Tell me when you have decided.']],
       draw: [['कुछ नहीं चल रहा? ढेर से उठा लो।', 'Nothing playable? Pick from the pile.'], ['फिर से उठा रहे हो? यही तुम्हारी खासियत है।', 'Drawing again? That is your specialty.']],
       pass: [['पास? दरवाज़ा खुला छोड़ने के लिए शुक्रिया।', 'Pass? Thanks for leaving the door open.'], ['तुम्हारी ट्रेन पर मार्कर लग गया। कितनी मेहरबानी!', 'A marker on your train. How kind!']],
+      ownDraw: [['कोई टाइल नहीं बैठती। अब उठानी पड़ेगी।', 'No tile fits. Now I have to draw one.'], ['फिर से गलत टाइल। किस्मत ही ख़राब है।', 'The wrong tile again. My luck is just bad.']],
+      ownDrawAgain: [['फिर गलत निकली! ढेर मुझे चिढ़ा रहा है।', 'Wrong again! The pile is teasing me.'], ['इतना उठाया, फिर भी कुछ नहीं बैठा। हद है।', 'I drew so much and still nothing fits. This is too much.']],
+      ownBlocked: [['न चलने को टाइल है, न उठाने को। रास्ता बंद है।', 'No tile to play, none to draw. The way is shut.'], ['पास करना पड़ा। मेरी ट्रेन पर निशान लग गया।', 'I had to pass. A marker went on my train.']],
+      ownShort: [['मेरी ट्रेन बहुत छोटी है। नाम की ही ट्रेन है।', 'My train is very short. A train only in name.'], ['इतनी छोटी ट्रेन तो बहुत दिन बाद बनी है।', 'It has been a long time since such a short train got built.']],
+      roundBlocked: [['सब कुछ बंद है। कोई नहीं चल सकता।', 'Everything is blocked. Nobody can move.'], ['गतिरोध हो गया। चलो अंक गिनें।', 'A deadlock. Let us count the points.']],
     },
     ar: {
       great: [['ليس سيئًا. لا تغتر.', 'Not bad. Do not get conceited.'], ['حسنًا، كانت حركة جيدة. واحدة فقط.', 'Fine, that was a good move. Only one.'], ['مهارة أم حظ؟ أراهن على الحظ.', 'Skill or luck? I bet on luck.']],
       good: [['مقبول. بالكاد.', 'Acceptable. Barely.'], ['لا بأس بها.', 'It is alright.'], ['حركة آمنة ومملة. تشبهك.', 'A safe and boring move. Just like you.']],
       poor: [['ما هذه الحركة؟ هل اخترتها وعيناك مغمضتان؟', 'What is this move? Did you choose it with your eyes closed?'], ['جريئة، لكنها خاطئة.', 'Bold, but wrong.'], ['يؤلمني مجرد النظر إليها.', 'It hurts me just to look at it.']],
       awful: [['هذه أسوأ حركة رأيتها هذا الأسبوع.', 'This is the worst move I have seen this week.'], ['أتمنى أن تكون نقرة خاطئة.', 'I hope it was a misclick.'], ['حتى الحمامة كانت ستلعب أفضل.', 'Even a pigeon would have played better.']],
-      forced: [['كانت الحركة الوحيدة الممكنة، وليست خطة.', 'It was the only possible move, not a plan.'], ['خيار واحد فقط. مبروك على إيجاده!', 'Only one choice. Congratulations on finding it!']],
       missedOut: [['كان بالإمكان إنهاء الجولة! لماذا لم يحدث ذلك؟', 'The round could have been finished! Why did that not happen?'], ['كان الفوز بين يديك فتركته يفلت.', 'The win was in your hands and you let it slip.']],
       slow: [['مرحبًا؟ هل ما زلت هنا؟', 'Hello? Are you still here?'], ['كبرتُ عامًا وأنا أنتظر.', 'I have aged a year while waiting.'], ['الأحجار لن تلعب نفسها.', 'The tiles will not play themselves.'], ['سأحضّر الشاي الآن، وسيكون جاهزًا قبل قرارك.', 'I will make tea now, and it will be ready before your decision.']],
       draw: [['لا شيء يصلح؟ حان وقت السحب من الكومة.', 'Nothing fits? Time to draw from the pile.'], ['سحب مرة أخرى؟ هذه موهبتك الكبرى.', 'Drawing again? That is your great talent.']],
       pass: [['تمرير؟ شكرًا على ترك الباب مفتوحًا.', 'Pass? Thanks for leaving the door open.'], ['مصباح على قطارك. يا للكرم!', 'A lamp on your train. How generous!']],
+      ownDraw: [['لا توجد قطعة مناسبة. سأسحب من الكومة.', 'No suitable tile. I will draw from the pile.'], ['مرة أخرى قطعة غير مناسبة. حظي سيئ.', 'Another unsuitable tile. My luck is bad.']],
+      ownDrawAgain: [['مرة أخرى خطأ! الكومة تسخر مني.', 'Wrong again! The pile is mocking me.'], ['سحبت كثيرًا ولا شيء يناسب. أمر لا يصدق.', 'I drew a lot and nothing fits. Unbelievable.']],
+      ownBlocked: [['لا قطعة للعب ولا شيء للسحب. الطريق مسدود.', 'No tile to play and nothing to draw. The road is blocked.'], ['عليّ أن أتخطى الدور، وعلامة على قطاري. مزعج.', 'I must pass, and a marker on my train. Annoying.']],
+      ownShort: [['قطاري قصير جدًا. اسم قطار فقط.', 'My train is very short. A train in name only.'], ['منذ زمن لم أبنِ قطارًا بهذا القصر.', 'It has been a long time since I built a train this short.']],
+      roundBlocked: [['كل شيء مسدود. لا أحد يستطيع التحرك.', 'Everything is blocked. Nobody can move.'], ['وصلنا إلى طريق مسدود. لنحسب النقاط.', 'We reached a dead end. Let us count the points.']],
     },
   };
   // which computer players use which language (names from a Latin-script language stay in English)
@@ -1707,13 +1804,17 @@
           good: ['Not bad at all. Better than my last one, anyway.', 'Seems sensible. I think? I am never sure.'],
           poor: ['Even I would not have played that, and I play everything.', 'Hmm. Was that on purpose? I do that too.', 'That looked like one of my moves. Not a compliment.'],
           awful: ['Oh dear. That was worse than the time I knocked the bucket down the well.', 'I think you just helped me. Thank you! I think.', 'Somebody should write that one down as a warning.'],
-          forced: ['Only one tile fit? Easy choice, then. My favorite kind.', 'One option! Like a menu with one dish. Still counts.'],
           missedOut: ['Wait, could you have won just then? Even I saw that!', 'You could have finished it! I was about to go and put the kettle on.'],
           slow1: ['Are we nearly there? Asking for my stomach.', 'Take your time. I will just count the tiles. Again.'],
           slow2: ['I have counted the tiles three times now. There are still a lot.', 'Is this a long rest? Should I unpack?'],
           slow3: ['I have started making up a song about your turn. It is a very long song.', 'If you do not move soon, I am going to start poking things.'],
           draw: ['Off to the boneyard? Bring me back something good!', 'Drawing again? I do that all the time. It is fun!'],
           pass: ['A pass! Can I play on your train now? I can, can I not?', 'Ooh, your train is open. I love an open door.'],
+          ownDraw: ['Nothing fits? Oh dear. Off I go to the boneyard.', 'I was sure I had a tile for that. I did not. Drawing!', 'Drawing! It is like a surprise, except usually a bad one.'],
+          ownDrawAgain: ['Another wrong tile! I am beginning to think they dislike me.', 'Still nothing! I might have a snack while I draw.'],
+          ownBlocked: ['I cannot play and there is nothing left to draw. What do I do now?', 'Stuck! Is stuck the same as lost? I hope not.', 'A pass, and a marker on my train. That sounds like a punishment.'],
+          ownShort: ['My train is only {built}! It will not even get us to second breakfast.', 'Look at my little train. It is very short. Like me, some say.', 'It is a bit short, is it not? I was hungry when I built it.'],
+          roundBlocked: ['Nobody can move? Then nobody has to be good at it. Lovely!', 'Everyone is stuck! Even the tiles have gone quiet.'],
           openBest: ['That is a lovely long train. Mine is... shorter.', 'Wow, that train goes all the way to Bree!'],
           openShort: ['Only {built}? Even I can see you had {best}.', 'A little train. Cozy. You could have had {best}, though.', 'Short and sweet. Mostly short.'],
           openNone: ['No train at all? Are you saving them for later?', 'You did not build anything! Is that a trick? Teach me.'],
@@ -1723,13 +1824,17 @@
           good: ['Solid. Like a good cellar door.', 'Fair enough. I will allow it.'],
           poor: ['Bold. Not clever, but bold.', 'I have seen better plans hatched over a pint.', 'Pippin would have played that. That is not praise.'],
           awful: ['That was a move Pippin would be proud of. Sorry.', 'Oh no. Oh, that is wonderful. For me.', 'Did you play that with your elbows?'],
-          forced: ['Only one choice, and you took it. Brave of you.', 'No choice at all. I would have done the same. Probably.'],
           missedOut: ['You could have gone out! I was already planning my excuses.', 'The win was right there. I saw it. Everyone saw it.'],
           slow1: ['Is this a riddle? I am terrible at riddles.', 'No rush. The cider is not going anywhere. Well, it is a bit.'],
           slow2: ['I have had time to plan a whole prank on Pippin.', 'Should we send a search party into your thoughts?'],
           slow3: ['I have drawn a map of your turn. It just goes round in circles.', 'At this rate the trees will start walking before you do.'],
           draw: ['Boneyard again? You are a regular.', 'Shopping for tiles? Get something nice.'],
           pass: ['A pass! Your train is open, and I am coming aboard.', 'Leaving the gate open? Very hospitable.'],
+          ownDraw: ['Nothing fits. Pippin would say that is a surprise. It is not.', 'To the boneyard, then. Somebody has to go.', 'Drawing a tile. This is where I look unbothered.'],
+          ownDrawAgain: ['Wrong again. Somebody has hidden the good tiles. Pippin, probably.', 'Another dud. The boneyard has a poor sense of humor.'],
+          ownBlocked: ['Blocked! No tile, no draw, no hope. Still, I look good doing it.', 'I must pass. Put the marker on my train, if you must.', 'Stuck in a corner of my own making. Very hobbit of me.'],
+          ownShort: ['{built} tiles. That is a short train. A hobbit-sized train.', 'My train is rather small. Do not tell Pippin; he would be pleased.', 'A very short train. I blame the tiles. Entirely.'],
+          roundBlocked: ['Blocked all round! Nobody wins. Which is almost like me winning.', 'A standstill. Even the Shire is busier than this.'],
           openBest: ['Long train! Show-off.', 'Every tile laid out neat as a hobbit garden. Fine.'],
           openShort: ['{built} tiles? You had {best} in there. I counted.', 'A short train for a short trip, then?', 'You left a few tiles behind. Packing light?'],
           openNone: ['No train? Did you forget how?', 'Not one tile down. That is a bold kind of lazy.'],
@@ -1739,13 +1844,17 @@
           good: ['Hmm. Not bad, not bad, says we.', 'Safe little move. Sneaky little player.'],
           poor: ['Ha! Silly move. We sees it, yes we does.', 'Bad tile, bad place. We likes it.', 'It does not know what it is doing. Good, good.'],
           awful: ['Oh, terrible! Lovely, lovely terrible!', 'We laughs. Gollum, gollum. We laughs so much.', 'Such a gift it gives us. Thank you, nice player.'],
-          forced: ['Only one tile, only one. No cleverness needed, no.', 'It had no choice. Poor thing. Ha!'],
           missedOut: ['It could have won! And it did not! Gollum!', 'The winning tile, right there, and it walks past it. Ha!'],
           slow1: ['Hurry, hurry. We waits, but we does not like waiting.', 'What is it doing? What has it got in its hand?'],
           slow2: ['Long time. Long, long time. We counts the rocks.', 'Is it asleep? We could peek at its tiles... no, no, nice Gollum.'],
           slow3: ['We has waited a hundred dark years, it feels like.', 'Wakey, wakey! Gollum! Gollum!'],
           draw: ['Draws from the bones. Bones, yes. We likes bones.', 'Nothing fits? Poor thing. Ha!'],
           pass: ['It passes! Its train is open! Ours now, precious.', 'Open train, open train. We creeps in, yes.'],
+          ownDraw: ['Nothing fits, precious. Nothing fits! We must draw from the nasty pile.', 'Where is the tile we want? Gollum must draw, yes, draw.', 'Wrong tiles, always wrong. We hates it.'],
+          ownDrawAgain: ['Again, again! Nasty tiles, tricksy tiles. We hates them!', 'Still the wrong one. The boneyard is cheating us, precious.'],
+          ownBlocked: ['No move! We is stuck, precious. Stuck in the dark!', 'We must pass. A marker on our train. Nasty, nasty marker.', 'Nothing to play, nothing to take. Gollum, gollum.'],
+          ownShort: ['Only {built}! A little train, a poor little train. We wanted more.', 'Short, it is short! The tiles cheated Gollum, yes they did.', 'Such a tiny train. It is not fair, precious.'],
+          roundBlocked: ['Everyone is stuck! Nobody takes it. Nobody has it. We hates a stalemate.', 'All blocked, precious. Dark and quiet. Not even a fish.'],
           openBest: ['Long train. Too long. We hates it.', 'All the tiles, all down. Nasty clever player.'],
           openShort: ['Only {built}! It could have done {best}. Silly.', 'Short little train. We is pleased, yes.', 'It keeps tiles. Hoards them. Like us! Ha!'],
           openNone: ['No train! Nothing! Gollum!', 'It builds nothing. Good. Very good for us.'],
@@ -1755,13 +1864,17 @@
           good: ['Hoom. Reasonable. Not too hasty.', 'Hm. That will do. Probably.'],
           poor: ['Hoom. That was hasty. Very hasty.', 'Hm. I would have thought about that one for a season or two.', 'You played that like a startled squirrel.'],
           awful: ['Hoom, hrum. That was a very hasty and very poor move.', 'Even a sapling would have known better.', 'Hm. I am not angry. Only disappointed. And a little pleased.'],
-          forced: ['Only one tile would fit. Hoom. A simple path is still a path.', 'No choice at all. Not hasty, then. Good.'],
           missedOut: ['Hoom. You could have finished. Perhaps you did not want to rush.', 'The end was right there. Even I saw it, and I am quite slow.'],
           slow1: ['Take your time. I approve of taking time.', 'Hoom. A little thinking is good. A lot is better.'],
           slow2: ['Even I am starting to feel this is a long turn.', 'Hm. I have grown a new ring in my trunk while waiting.'],
           slow3: ['Hoom. I am an Ent, and even I am bored. That is quite something.', 'I began a sentence when your turn started, and I have only now finished it.'],
           draw: ['Drawing? Hoom. Gathering more leaves.', 'A new tile. Let it put down roots.'],
           pass: ['A pass. Hoom. Your path is open to travelers.', 'Hm, you rest. Resting is good. And your train is open.'],
+          ownDraw: ['Hrum. Nothing fits. I must draw, and drawing is not a hasty thing.', 'Hoom. The right tile is not here. I shall go and find it. Slowly.', 'No fit. Hrum. A long time ago this would not have troubled me.'],
+          ownDrawAgain: ['Hoom. Another that does not fit. The pile is not being friendly.', 'Hrum. The wrong tile again. I have known trees with better luck.'],
+          ownBlocked: ['Hrum. I cannot play and cannot draw. That is a very still place to be.', 'I must pass. Hoom. A marker on my train, like moss on a root.', 'Blocked. Even a tree can feel it. Hrum.'],
+          ownShort: ['Hrum. {built} tiles only. A short train, for an old Ent.', 'My train is not long. Hoom. I did not hurry, and I did not have the tiles.', 'A short train, hoom. Even a sapling has longer branches.'],
+          roundBlocked: ['Hoom. Everything is stopped. That is a sensible rest, for once.', 'Nobody can move. Hrum. Like the forest in deep winter.'],
           openBest: ['A long train. Like a long name. I approve.', 'Hoom. Every tile in its place, like trees in an old forest.'],
           openShort: ['Only {built}? You had {best}. Rather hasty.', 'A short train. Hoom. Saplings grow, I suppose.', 'You left tiles in your hand. Seeds for later, perhaps.'],
           openNone: ['No train at all? Hoom. Very, very cautious.', 'Nothing built? Even I would have started by now.'],
@@ -1772,13 +1885,17 @@
           good: ['Sensible. I would have done the same.', 'Steady. One step at a time.'],
           poor: ['Are you sure about that? I am not.', 'That one may come back to trouble you.', 'A heavy choice. I am not sure it was the right one.'],
           awful: ['Oh. That was a hard one to watch.', 'I think you have made my road a good deal easier.', 'I would not wish that move on anyone.'],
-          forced: ['There was only one way forward. I know how that feels.', 'No choice at all. Sometimes the path chooses you.'],
           missedOut: ['You could have ended it, right there. Why did you not?', 'The end was in your hand, and you let it go.'],
           slow1: ['Is it heavy, that choice? Take your time.', 'We could all do with a rest. But not this long.'],
           slow2: ['I have walked shorter roads than this turn.', 'Sam is starting to worry about you. So am I.'],
           slow3: ['I think I have aged a whole year. Again.', 'Please. Any tile. Just to have it over with.'],
           draw: ['To the boneyard again. Keep going.', 'Nothing fits? It happens to us all.'],
           pass: ['A pass. Your train stands open now.', 'You have left the door open. I will try not to take advantage. Much.'],
+          ownDraw: ['Nothing fits. I will have to draw. I am so tired of drawing.', 'Another trip to the boneyard. I hope it is kind this time.', 'It is not the tile I need. It never is, when I need it.'],
+          ownDrawAgain: ['Wrong again. It is a heavy thing, drawing the wrong tile twice.', 'I keep drawing the wrong ones. Perhaps this is my burden.'],
+          ownBlocked: ['I cannot move, and there is nothing left to draw. It is a lonely feeling.', 'A pass. The marker goes on my train. I feel it, somehow.', 'Blocked. I did not choose this, but here we are.'],
+          ownShort: ['{built} tiles. It is such a short road. I hoped for more.', 'My train is very small. I wish I could have carried it further.', 'It does not go far, my train. It has not been my day.'],
+          roundBlocked: ['Everyone is stuck. Perhaps a rest is not the worst thing.', 'Blocked. Nobody can go further. We shall have to count what we have.'],
           openBest: ['A long road of tiles. Well walked.', 'Every tile laid down. That was impressive.'],
           openShort: ['Only {built}, when you had {best}? Saving your strength?', 'A short road. There was more ahead of you.', 'You stopped early. I understand the feeling.'],
           openNone: ['No train at all? Sometimes it is hard to start.', 'Not a single step. That is a quiet beginning.'],
@@ -1788,13 +1905,17 @@
           good: ['Good honest move. Nothing wrong with that.', 'That will do nicely.'],
           poor: ['Begging your pardon, but that was not your best.', 'My old gaffer would have had words about that move.', 'That is like planting potatoes in the shade. It will not grow.'],
           awful: ['Oh, that is a sorry sight, that is.', 'If that move were a stew, I would not serve it.', 'I am not one to judge, but that was dreadful.'],
-          forced: ['Only one way to go, so you went. Fair enough.', 'No choice in it. Some days are like that.'],
           missedOut: ['You could have finished there! Right there!', 'The win was sitting in your hand like a ripe apple.'],
           slow1: ['I will just put the kettle on, shall I?', 'Take your time. I am tending the garden in my head.'],
           slow2: ['I could have cooked a proper supper by now.', 'Wake me when it is my turn, if you would.'],
           slow3: ['I have weeded half the Shire while you were thinking.', 'I do not mean to hurry you, but this is a very long turn.'],
           draw: ['Back to the boneyard? Pack a lunch.', 'Nothing fits? Plenty more where that came from.'],
           pass: ['A pass. That leaves your train open, it does.', 'Open train! I will just hop on, if it is all the same to you.'],
+          ownDraw: ['Nothing fits, and the boneyard is the last place I want to be. Still, here I go.', 'The wrong tile again, and I am hungry, too. Drawing.', 'My old Gaffer used to say: if it does not fit, you draw. He never said it would be easy.'],
+          ownDrawAgain: ['Another wrong one! I could have cooked a stew by now.', 'Still no luck. There must be a better tile in there somewhere. There must.'],
+          ownBlocked: ['I cannot play and I cannot draw. I am proper stuck.', 'A pass, and a marker on my train. Well. It happens to the best of us.', 'Blocked in. Not even a bit of bread to cheer me up.'],
+          ownShort: ['{built} tiles. It is a short train. A very short one. Begging your pardon.', 'My train is so small it would not feed a hobbit. A little one, anyway.', 'Short, it is. I did my best with what I had, and that is the truth.'],
+          roundBlocked: ['Everything is stuck! Nobody can budge. Not even for second breakfast.', 'Blocked, all of us. Well. Count the tiles, then, and have a cup of tea.'],
           openBest: ['Lovely long train. Proper job.', 'Every tile down. My gaffer would approve.'],
           openShort: ['{built} tiles, and you had {best}? That is leaving good food on the plate.', 'A short train. You had more in you.', 'You left tiles behind. Shame to waste them.'],
           openNone: ['Not a single tile? Not even a little one?', 'Nothing built. That is no way to start a journey.'],
@@ -1804,13 +1925,17 @@
           good: ['Decent. Sturdy. Like good stonework.', 'Aye, that will hold.'],
           poor: ['That move has all the strength of elf-bread.', 'Bah! I have seen better choices from a pony.', 'You swung that one wide, friend.'],
           awful: ['By my beard! What was that?', 'That move belongs at the bottom of a mine shaft.', 'Even the elf would not play that. And he plays like a falling leaf.'],
-          forced: ['One tile, one place. Even an elf could manage that.', 'No choice? Then swing and do not look back.'],
           missedOut: ['You had the win in your grip and let it go! Bah!', 'You could have gone out! I would have trimmed my beard for that. Almost.'],
           slow1: ['Are you carving that tile by hand?', 'Come on, I have mountains to get back to.'],
           slow2: ['I have counted my axes twice. You are still thinking.', 'Dwarves are patient with stone. Not with players.'],
           slow3: ['My beard has grown an inch waiting on you!', 'That is it. I am keeping score of your thinking time, and I am winning.'],
           draw: ['Digging in the boneyard? A dwarf approves.', 'Nothing fits? Then dig deeper!'],
           pass: ['A pass! Your train is open. I will march right in.', 'Leaving your door open? Bold. Foolish, but bold.'],
+          ownDraw: ['Nothing fits! Bah. I must draw, like a beardless boy.', 'Wrong tiles, always the wrong tiles. I will draw, and I will grumble.', 'Hrmph. No tile for that. Draw I must, and I do not like it.'],
+          ownDrawAgain: ['Again the wrong tile! Axes and anvils, what a pile!', 'Still nothing. Never in all my years has a pile cheated me so.'],
+          ownBlocked: ['Blocked! Nothing to play, nothing to draw. I could split something over this.', 'A pass! And a marker on my train. A dwarf does not enjoy being marked.', 'Stuck fast, like a stone in a tunnel. Bah.'],
+          ownShort: ['{built} tiles! A short train indeed, and a poor one. A shame upon my beard.', 'My train is short. Do not say a word. Not one.', 'A short train! Even a dwarf wants a longer road than this.'],
+          roundBlocked: ['Blocked all round! A fine stalemate. Count your pips, then.', 'Nobody can move. A stone wall of a round.'],
           openBest: ['A long, strong train. Fine work, I will admit it.', 'Every tile in place, like a well-built hall.'],
           openShort: ['{built}? You had {best}! Where is your spirit?', 'A short train. And a dwarf can say so.', 'You stopped digging too early. The good stuff was deeper.'],
           openNone: ['No train at all? Pick up your axe!', 'Not one tile. I am almost offended.'],
@@ -1820,13 +1945,17 @@
           good: ['A fair move. Not elegant, but fair.', 'It will serve.'],
           poor: ['I see far, and I see trouble ahead for you.', 'That was not your finest shot.', 'Gimli might have played that. That is not a compliment.'],
           awful: ['That move missed its mark by a very long way.', 'Even an orc would have aimed better.', 'I will be kind and say nothing. Except this.'],
-          forced: ['Only one path, and you took it. As one must.', 'A single arrow left. You loosed it.'],
           missedOut: ['The winning shot was clear, and you did not take it.', 'You could have ended it. I saw it from here.'],
           slow1: ['I have lived many centuries. Even so, this is long.', 'The leaves are turning while you think.'],
           slow2: ['I could have counted every star by now.', 'Elves are patient. I am finding my limit.'],
           slow3: ['A whole age of the world may pass before you play.', 'I have composed a long song about this turn. It is a lament.'],
           draw: ['Searching the boneyard? Look carefully.', 'Nothing fits? The wind will change.'],
           pass: ['A pass. Your train lies open to us now.', 'You leave your path unguarded. Unwise.'],
+          ownDraw: ['Nothing fits. How tiresome. I shall draw, and hope for a kinder tile.', 'The tile I wanted is not here. Strange, for a game so simple.', 'I will draw. Trees are patient. I am trying to be.'],
+          ownDrawAgain: ['Another wrong tile. Even the wind finds its way better than I.', 'Still not the one. The pile does not hear me.'],
+          ownBlocked: ['I cannot play, and I cannot draw. An unpleasant stillness.', 'A pass. The marker upon my train. It is not graceful.', 'Blocked. An elf does not enjoy a closed path.'],
+          ownShort: ['{built} tiles. A short train. I expected a longer path.', 'My train is small. A single swallow would cover it.', 'It is a brief train. I had hoped it would sing more.'],
+          roundBlocked: ['No tile can move. A strange, silent end to the round.', 'All paths are blocked. Let us count the pips and be done.'],
           openBest: ['A long, flawless train. Elegant.', 'Every tile placed. Even I am impressed.'],
           openShort: ['{built} tiles, when {best} were there to see?', 'A short train. You could have gone further.', 'Your hand still holds tiles that could have flown.'],
           openNone: ['No train at all? A curious choice.', 'Nothing built. The path is still waiting.'],
@@ -1836,13 +1965,17 @@
           good: ['Sound enough.', 'A soldier would call that a fair move.'],
           poor: ['That was a careless move. Careless moves lose battles.', 'You are giving ground. I would not.', 'In Gondor we would call that a retreat.'],
           awful: ['That move would not hold a single wall.', 'You have handed me victory on a shield.', 'By the White Tower, what was that?'],
-          forced: ['One road left, so you marched it. No shame in that.', 'No choice. That is how battles go.'],
           missedOut: ['You held the victory in your hand. Why did you not use it?', 'The win was yours to take, and you hesitated.'],
           slow1: ['Shall I sound the horn to wake you?', 'Decide! Every moment you wait, the enemy grows.'],
           slow2: ['I have marched across whole kingdoms faster than this.', 'Your indecision is a danger to us all.'],
           slow3: ['I am this close to sounding the horn. Truly.', 'Gondor has waited long for a king. You are testing even that.'],
           draw: ['Back to the boneyard? Gather your strength.', 'Nothing fits? Regroup.'],
           pass: ['A pass! Your defenses are open.', 'Your train is undefended. I will not hesitate.'],
+          ownDraw: ['Nothing fits? A warrior of Gondor should not need the boneyard.', 'I must draw. It is not a thing I do gladly.', 'The wrong tile. I do not enjoy being told no by wood and paint.'],
+          ownDrawAgain: ['Wrong again! Gondor has endured worse, but not much worse.', 'Another useless tile. Fortune is no friend of mine today.'],
+          ownBlocked: ['I cannot move! Nothing to play and nothing to draw. That is no way to fight.', 'A pass, and a marker on my train. I have borne worse. Barely.', 'Blocked. A man cannot win a game he cannot play.'],
+          ownShort: ['{built} tiles. A short train for the son of a Steward. I am ashamed.', 'My train is short. A poor defense. A poor everything.', 'A short train. In Gondor we would call it a skirmish.'],
+          roundBlocked: ['Nobody can move. A stalemate. I would rather have a battle.', 'The round is blocked. A siege with no winner.'],
           openBest: ['A long, proud train. Well built.', 'Every tile in its place. A worthy wall.'],
           openShort: ['{built}? You had {best}! Half a wall is no wall.', 'A short line. It will not hold.', 'You held tiles back. Keeping a reserve?'],
           openNone: ['No train at all? You must at least try.', 'Not one tile. That is not courage.'],
@@ -1853,13 +1986,17 @@
           good: ['Adequate. I have seen hobbits do worse.', 'A reasonable move, for once.'],
           poor: ['That was ill-advised. Very ill-advised.', 'Think, for goodness sake! Think before you play.', 'I have known trolls with more foresight.'],
           awful: ['Foolish! Utterly foolish!', 'That was the move of someone who has not been paying attention.', 'I despair. Truly, I despair.'],
-          forced: ['There was but one move. Even you could not miss it.', 'One road only. Do not mistake it for wisdom.'],
           missedOut: ['You could have ended the round! What were you thinking?', 'Victory, in your very hand, and you set it down. Remarkable.'],
           slow1: ['Come now. I do not have an entire age to spare.', 'The time for thinking is past. Play.'],
           slow2: ['I have smoked a whole pipe while you dithered.', 'Even the hobbits have finished two breakfasts by now.'],
           slow3: ['Must I light a fire under that chair?', 'I have outwaited dragons. You are coming close.'],
           draw: ['To the boneyard, then. Choose more wisely.', 'Nothing fits? Then fetch something that does.'],
           pass: ['A pass. Your road lies open to all.', 'You have left the gate unguarded. Careless.'],
+          ownDraw: ['Nothing fits? Hm. A wizard has resources, but not, it seems, the right tile.', 'I must draw. Bother. Bother and tobacco.', 'The tile I wanted is not here. It is never where one needs it, is it?'],
+          ownDrawAgain: ['Wrong again! I begin to suspect some mischief in the boneyard.', 'Another bad tile. Even a wizard may grumble now and then.'],
+          ownBlocked: ['No move, and nothing to draw. This is a poor place for a wizard to be.', 'I pass. The marker goes upon my train. Hm. Very well.', 'Blocked! A wizard is not stopped by walls. A pile of tiles, apparently, is another matter.'],
+          ownShort: ['{built} tiles. A short train, I admit. It will do what it must.', 'My train is brief. I have had worse beginnings, and better endings.', 'A short train. It was not the plan. It rarely is.'],
+          roundBlocked: ['Everything is blocked. A pause, then. Count the pips, my friend.', 'No one can move. Even wizards must sit and wait sometimes.'],
           openBest: ['The longest possible. Well reckoned.', 'Every tile in its place. I am almost proud.'],
           openShort: ['{built} tiles, when {best} were plain to see? Look harder.', 'A short train. You were not thinking far enough ahead.', 'You left good tiles idle. Waste is folly.'],
           openNone: ['No train at all? Even a small start is a start.', 'Nothing? You did not even try.'],
@@ -1869,13 +2006,17 @@
           good: ['A steady move.', 'You did what needed doing.'],
           poor: ['You have strayed from the right road.', 'A ranger would not have chosen that.', 'That move leaves you exposed.'],
           awful: ['That move will cost you dearly.', 'I have tracked orcs who made fewer wrong turns.', 'No. That was the worst road you could have taken.'],
-          forced: ['There was only one path. You took it.', 'Sometimes the road chooses for us.'],
           missedOut: ['The end was in reach, and you let it pass.', 'You could have finished it. Remember that next time.'],
           slow1: ['The hour grows late.', 'Choose your path. We cannot wait forever.'],
           slow2: ['I have walked from Bree to Rivendell in less time.', 'Even the watchfires are burning low.'],
           slow3: ['I waited many years for my throne. This feels longer.', 'Choose, or the choice will be made for you.'],
           draw: ['Searching for a way forward? Take what comes.', 'Nothing fits. Draw, and press on.'],
           pass: ['A pass. Your road is open.', 'You leave your flank unguarded.'],
+          ownDraw: ['Nothing fits. A ranger does not fear a long road, but this one is tedious.', 'I must draw. I have waited longer for less.', 'No tile for that. I will find the one I need.'],
+          ownDrawAgain: ['Wrong again. I have tracked orcs for days with better luck.', 'Still the wrong tile. Patience, Aragorn.'],
+          ownBlocked: ['No move, and no tile to draw. This path is closed to me.', 'I pass. A marker upon my train. We shall see how you use it.', 'Blocked. Every road ends somewhere. Not usually here.'],
+          ownShort: ['{built} tiles. A short train. It is not the road I wished to walk.', 'My train is short. I will make it count.', 'A brief train. Sometimes a ranger must make do.'],
+          roundBlocked: ['Blocked. No one can pass. Count your pips with care.', 'The road is closed to all of us. Then the lowest hand it is.'],
           openBest: ['The longest road. Well tracked.', 'You missed nothing. Good.'],
           openShort: ['{built} tiles. You could have laid {best}.', 'A short road. There was further to go.', 'You left tiles unused. In the wild, that is wasteful.'],
           openNone: ['No train? Every journey needs a first step.', 'You did not set out at all.'],
@@ -1885,13 +2026,17 @@
           good: ['A fair choice. Not the fairest.', 'It will suffice.'],
           poor: ['I looked into the mirror and saw that move. I hoped I was wrong.', 'You stray from the light, little one.', 'That choice will not serve you.'],
           awful: ['Even the mirror turned away from that move.', 'I have watched the ages pass, and never seen a move quite like that.', 'That was a dark path. Darker than you know.'],
-          forced: ['One road only. Fate is like that.', 'No choice was given to you. Do not grieve it.'],
           missedOut: ['Victory was in your hand, and you let it fall.', 'The end was there, plain as starlight. You did not see it.'],
           slow1: ['Even the woods are growing restless.', 'Time does not pass here as it does elsewhere. But this is too long.'],
           slow2: ['I have seen whole kingdoms rise in less time.', 'Shall I look into the mirror to see your move? It is not there yet.'],
           slow3: ['Ages of the world have turned while you chose.', 'I have passed many tests of patience. You are setting another.'],
           draw: ['The boneyard calls. Answer it.', 'Nothing fits. Seek, and you may find.'],
           pass: ['A pass. Your path lies open to us.', 'You leave your gate unwatched.'],
+          ownDraw: ['Nothing fits. I have seen many things, but rarely a tile so unwilling.', 'I shall draw. The right tile will come. Or it will not.', 'The tile I sought is not in my hand. A small sorrow.'],
+          ownDrawAgain: ['Again the wrong tile. Even a light grows dim when ill-served.', 'Still the pile denies me. I will not forget it.'],
+          ownBlocked: ['There is no path and nothing to draw. I did not foresee this.', 'I pass. A marker upon my train. Let it be.', 'Blocked. Even the Lady of the Wood cannot walk through a closed door.'],
+          ownShort: ['{built} tiles. A short train, and I had hoped for more. Hope is a thin thing.', 'My train is brief. It is a small light, but it still shines.', 'A short train. I have seen shorter roads end greater things.'],
+          roundBlocked: ['No tile may move. A stillness has come over the table.', 'The round is blocked. Time will not move it. Count the pips.'],
           openBest: ['A perfect train. Truly, you have a gift.', 'The longest road, chosen well.'],
           openShort: ['Only {built}. I saw {best} waiting for you.', 'A short road, though a longer one was there.', 'You held back what you could have given.'],
           openNone: ['No train at all. Even a small light is worth kindling.', 'You did not begin. The road waited in vain.'],
@@ -1901,13 +2046,17 @@
           good: ['A fair move.', 'Acceptable. Not remarkable.'],
           poor: ['I have seen this mistake before. Three thousand years ago.', 'Mortals always choose the easy path.', 'That move lacks foresight.'],
           awful: ['That is a blunder that will echo through the ages.', 'I have seen kingdoms fall over smaller errors.', 'You had a chance to be wise, and you threw it in the fire.'],
-          forced: ['There was only one way. Fate decided for you.', 'One choice, one path. As it so often is.'],
           missedOut: ['You could have ended it. The moment has passed, as moments do.', 'The win was yours. You turned away from it.'],
           slow1: ['Rivendell is patient. I am less so.', 'Choose. The council is waiting.'],
           slow2: ['I have held entire councils in less time.', 'The elves are sailing West. They may not wait for your move.'],
           slow3: ['I have lived through three ages. This turn feels like a fourth.', 'Even my patience has an end. You have found it.'],
           draw: ['Drawing again. The boneyard knows you well.', 'Nothing fits. That is a lesson in itself.'],
           pass: ['A pass. Your road is open to all.', 'You leave your train undefended. Unwise.'],
+          ownDraw: ['Nothing fits. I have seen ages pass with less annoyance, but not many.', 'I must draw. A small thing, in the long view, and still irritating.', 'The tile I needed is absent. I will not complain. Much.'],
+          ownDrawAgain: ['Wrong again. In three thousand years I have learned patience. It is thin today.', 'Another unfit tile. I begin to doubt the pile.'],
+          ownBlocked: ['There is no move, and nothing left to draw. A closed door, then.', 'I must pass. Let the marker stand upon my train. It will not be forever.', 'Blocked. I confess I did not foresee it.'],
+          ownShort: ['{built} tiles. A short train, and I counted on more.', 'My train is brief. A wise one makes the most of brief things.', 'A short train. It is a lesson in humility, and I did not ask for one.'],
+          roundBlocked: ['No tile can move. A rare stillness. Count what remains.', 'The round is blocked. Even the long years have not made me love a stalemate.'],
           openBest: ['The longest train. That is wisdom.', 'Every tile placed. I am pleased.'],
           openShort: ['{built} tiles, when {best} were possible. A lack of vision.', 'A short train. You did not look far enough ahead.', 'You held back good tiles. Fear, perhaps.'],
           openNone: ['No train? Every quest must begin somewhere.', 'Nothing built. That is no way to set out.'],
@@ -1917,13 +2066,17 @@
           good: ['Adequate. For one of your kind.', 'A passable move. I expected nothing more.'],
           poor: ['How very predictable.', 'You play as though you have never studied the board.', 'A foolish choice. I welcome it.'],
           awful: ['Delightful. You are doing my work for me.', 'That move was a gift. I accept it graciously.', 'Did you consult a wizard? Clearly not.'],
-          forced: ['One move, and you found it. Do not expect applause.', 'You had no choice. You rarely do.'],
           missedOut: ['You could have won. You did not. How satisfying.', 'The victory was yours, and you handed it to me. Wise of you.'],
           slow1: ['Come now. My patience is famously short.', 'Indecision. How very tiresome.'],
           slow2: ['I have built entire towers in less time.', 'Shall I make the choice for you? I would choose better.'],
           slow3: ['Your dithering is almost an art form.', 'I have seen seeing stones work faster than your mind.'],
           draw: ['Groping in the boneyard again? Pathetic.', 'Nothing fits. Of course it does not.'],
           pass: ['A pass. Your train is open to me. How generous.', 'You leave your road unguarded. I shall use it.'],
+          ownDraw: ['Nothing fits. Outrageous. The tiles obey me no better than the Ents did.', 'I must draw? From a pile? Beneath me. Yet I will do it.', 'The wrong tile. Everything must be done by my own hand, it seems.'],
+          ownDrawAgain: ['Wrong again! Someone has tampered with this pile. I shall find them.', 'Another worthless tile. I will remember this insult.'],
+          ownBlocked: ['No move, no draw. A trap! And I did not make it.', 'I must pass. A marker on my train. You will pay for every inch of it.', 'Blocked! Do you know how long I planned this game?'],
+          ownShort: ['{built} tiles. A short train, unworthy of me. I will not dwell on it.', 'My train is small. My plans are not.', 'A short train. Do not mistake it for weakness. It is a feint.'],
+          roundBlocked: ['Blocked. Nobody wins. Do not look so pleased about it.', 'A stalemate. Everyone stuck, and I am the one who planned for it.'],
           openBest: ['The longest train. You must have been lucky.', 'Every tile placed. I suppose even you can count.'],
           openShort: ['Only {built}, when {best} was obvious? Disappointing.', 'A short train. Typical.', 'You left tiles in your hand. Saving them for me?'],
           openNone: ['No train at all. How very cautious. How very weak.', 'Nothing? I expected little, and you delivered less.'],
@@ -1942,9 +2095,10 @@
   const foodOf = (name, theme) => { const th = themeOf(theme); return (th && th.food[name]) || FOOD[name] || null; };
 
   const CHAT = {
-    chance: { great: 0.45, good: 0.3, poor: 0.8, awful: 1, forced: 0.22, missedOut: 1, draw: 0.2, pass: 0.35, openBest: 0.8, openShort: 1, openNone: 1 },
+    chance: { great: 0.45, good: 0.3, poor: 0.8, awful: 1, missedOut: 1, draw: 0.2, pass: 0.35, openBest: 0.8, openShort: 1, openNone: 1,
+      ownDraw: 0.3, ownDrawAgain: 0.6, ownBlocked: 0.55, ownShort: 0.7, roundBlocked: 0.8 },       // (the last five: the computer's own luck: it draws, it keeps drawing, it cannot move, its train is short, the round is blocked)
     cooldownMs: 7000,                                         // at least this long between ordinary comments
-    bypass: { awful: true, missedOut: true, openShort: true, openNone: true },   // these always get through
+    bypass: { awful: true, missedOut: true, openShort: true, openNone: true, ownShort: true, roundBlocked: true },   // these always get through
     showMs: 6000,                                             // how long a speech bubble stays up
     reactDelayMs: [600, 1100],                                // a beat after your move before it reacts
     slowAfterMs: 25000,                                       // taking too long: the first jab...
@@ -2289,6 +2443,47 @@
     return slots.map(k => (k ? byKey[k] : null));
   }
   const orderedHand = S => handSlots(S).filter(Boolean);        // just the tiles, in the order they lie
+
+  /* Which way round each tile of the hand is DRAWN. A tile is stored as [a, b]; drawn as it is, a is its left half and b its right. When two tiles lie side
+   * by side and have a number in common, one of them is drawn the other way round so that the like halves face each other (a 3|5 beside a 3|7 becomes 5|3 beside 3|7).
+   * Only how it LOOKS: playing a tile does not depend on it. `flips` is how they were drawn last time (key -> true when drawn reversed): tiles are turned only
+   * where that makes more halves face each other, and as few as possible, so a tile is not turned back just because its neighbour has gone. Returns the new flips. */
+  function orientRun(tiles, flips, out, locked) {
+    const pref = i => (flips[key(tiles[i])] && tiles[i][0] !== tiles[i][1] ? 1 : 0);
+    const left = (t, o) => (o ? t[1] : t[0]), right = (t, o) => (o ? t[0] : t[1]);
+    const opts = tiles.map((t, i) => (t[0] === t[1] ? [0] : (locked && locked[key(t)]) ? [pref(i)] : [0, 1]));      // (a double looks the same either way; a tile the player turned stays as they turned it)
+    const better = (a, b) => !b || a.m > b.m || (a.m === b.m && (a.c < b.c || (a.c === b.c && a.z < b.z)));      // most facing pairs, then fewest tiles turned, then the stored way round
+    let layer = {};
+    opts[0].forEach(o => { layer[o] = { m: 0, c: o !== pref(0) ? 1 : 0, z: o, from: null }; });
+    const layers = [layer];
+    for (let i = 1; i < tiles.length; i++) {
+      const next = {};
+      opts[i].forEach(o => {
+        opts[i - 1].forEach(q => {
+          const prev = layers[i - 1][q];
+          const cand = { m: prev.m + (right(tiles[i - 1], q) === left(tiles[i], o) ? 1 : 0), c: prev.c + (o !== pref(i) ? 1 : 0), z: prev.z + o, from: q };
+          if (better(cand, next[o])) next[o] = cand;
+        });
+      });
+      layers.push(next);
+    }
+    let o = null;
+    Object.keys(layers[tiles.length - 1]).forEach(k => { if (o === null || better(layers[tiles.length - 1][k], layers[tiles.length - 1][o])) o = k; });
+    for (let i = tiles.length - 1; i >= 0; i--) { out[key(tiles[i])] = Number(o) === 1; o = layers[i][o].from; }
+  }
+  function faceLikeDots(slots, across, flips, locked) {
+    const out = {};
+    slots.forEach(t => { if (t) out[key(t)] = !!flips[key(t)] && t[0] !== t[1]; });
+    across = Math.max(1, across | 0);
+    for (let i = 0; i < slots.length;) {
+      if (!slots[i]) { i++; continue; }
+      let j = i;
+      while (j + 1 < slots.length && slots[j + 1] && (j + 1) % across !== 0) j++;      // the tiles that lie side by side in this row, with no empty slot between
+      if (j > i) orientRun(slots.slice(i, j + 1), flips, out, locked);
+      i = j + 1;
+    }
+    return out;
+  }
   /* Move a tile to another slot of the hand: into an empty slot, which leaves the slot it came from empty; or, onto a slot with a tile in it,
    * the two swap places. (A drag passes over the slots one at a time, so a long drag slides the tile along; nothing else is ever disturbed.) */
   function moveToSlot(slots, k, toIndex) {
@@ -2310,24 +2505,30 @@
     if (moving && a.moves) a.moves.forEach(m => { playable[key(m.tile)] = true; });
     const style = S.opts.style;
     const slots = handSlots(S);
+    const nominal = Math.min(10, Math.max(1, Math.ceil((slots.length + 1) / 2)));
+    const across = S.handCols || nominal;                    // how many tiles really lie in a row (measured after drawing: the grid wraps to the width of the screen)
+    S.handColsUsed = across;
+    if (!S.dragKey) S.flips = faceLikeDots(slots, across, S.flips || {}, S.flipLocked || {});      // (not while a tile is being dragged about: they turn when it is let go)
+    const flips = S.flips || {};
     const tiles = slots.map(t => {
       if (!t) return '<div class="slot-empty hole" aria-hidden="true"></div>';        // a tile was played from here: the slot stays empty
       const k = key(t);
       const mode = moving ? (hints ? (playable[k] ? 'playable' : 'dim') : 'plain') : 'idle';   // with hints off nothing says which tiles can be played
       const sel = S.selectedKey === k;
-      const label = `${t[0]} and ${t[1]}${mode === 'playable' ? ', playable' : ''}${sel ? ', selected' : ''}`;
+      const rev = !!flips[k], l = rev ? t[1] : t[0], r = rev ? t[0] : t[1];      // as drawn: left half, right half
+      const label = `${l} and ${r}${mode === 'playable' ? ', playable' : ''}${sel ? ', selected' : ''}`;
       // not "disabled": every tile can be dragged, and a click on one that cannot be played does nothing
       return `<button class="tile-btn ${mode}${sel ? ' selected' : ''}${S.freshKey === k ? ' fresh' : ''}${S.dragKey === k ? ' drag-src' : ''}"
         data-action="selectTile" data-key="${k}" data-focus-id="t${k}" aria-pressed="${sel}"
-        aria-label="${label}"${mode === 'playable' || mode === 'plain' ? '' : ' aria-disabled="true"'}>${tileSVG(t[0], t[1], { orient: 'h', style })}</button>`;
+        aria-label="${label}"${mode === 'playable' || mode === 'plain' ? '' : ' aria-disabled="true"'}>${tileSVG(l, r, { orient: 'h', style })}</button>`;
     }).join('');
-    const tip = S.roundIndex === 0 && !S.handArranged ? '<span class="tip">Drag a tile onto a train to play it, or around your hand to rearrange</span>' : '';
+    const tip = S.roundIndex === 0 && !S.handArranged ? '<span class="tip">Drag a tile onto a train to play it, or around your hand to rearrange. Double-click a tile to turn it around.</span>' : '';
     // only when hints are allowed (main screen): a switch to show or hide them during the game
     const hintBtn = allowHintsNow(S) ? `<button class="btn hints-toggle" data-action="toggleShowHints" aria-pressed="${hints ? 'true' : 'false'}" data-focus-id="hints">Show hints: ${hints ? 'on' : 'off'}</button>` : '';
     // Two or more rows: half the tiles (plus one spare spot) per row, at most 10 across. On a narrow
     // screen the grid simply wraps into more rows.
     const n = me.hand.length;
-    const cols = Math.min(10, Math.max(1, Math.ceil((slots.length + 1) / 2)));      // (from the slots, not the tiles: the row does not re-wrap as tiles are played)
+    const cols = nominal;                                    // (from the slots, not the tiles: the row does not re-wrap as tiles are played)
     const canDraw = drawOnly(S) && hints;                  // (with hints off, the boneyard is the only way to draw: no flashing spot)
     const myTurn = !!a && (a.kind === 'move' || a.kind === 'build' || a.kind === 'draw');
     const spot = canDraw
@@ -2608,7 +2809,7 @@
         `<section class="tracks" aria-label="Trains">${tableIds(S).slice(1).map(id => viewTrack(S, id)).join('')}${viewTrack(S, 'mexican')}${viewTrack(S, 'human')}</section>` +
         viewStatus(S) + viewTray(S) + viewLog(S)
       : '<section class="empty"><p>Choose your game settings to deal the first round.</p></section>';
-    return `<div class="shell">${viewBar(S)}<main class="table">${body}</main>${viewOverlay(S)}${S.debugNet && S.online ? viewNetDebug(S) : ''}</div>`;
+    return `<div class="shell">${viewBar(S)}<main class="table${themeNow(S) === 'lotr' ? ' art-lotr' : ''}">${body}</main>${viewOverlay(S)}${S.debugNet && S.online ? viewNetDebug(S) : ''}</div>`;
   }
   /* ?debug=1: the last connection events, on the page, so a drop can be understood (and copied) without a console. */
   function viewNetDebug(S) {
@@ -3008,7 +3209,7 @@
       opts: null, overlay: 'setup', modal: null, matchActive: false,
       game: null, roundIndex: 0, startIndex: 0, totals: { human: 0, cpu: 0 }, cpuName: null,
       awaiting: null, selectedKey: null, drawnKey: null, freshKey: null, lastPlay: null, revealed: null, plan: null,
-      hoverKey: null, flashPhase: 0, handOrder: null, handArranged: false, slotMemory: {}, dragKey: null,
+      hoverKey: null, flashPhase: 0, handOrder: null, handArranged: false, slotMemory: {}, flips: {}, flipLocked: {}, handCols: 0, handColsUsed: 0, unlucky: {}, coverDraw: false, dragKey: null,
       dropTrain: null, dropFrom: null, comment: null, pendingRating: null, lastCommentAt: -Infinity, lastLine: null,
       banner: '', log: [], lastCounts: {}, lastDialog: null,
       opps: null, cpu2Name: null, seats: null, hostInfo: null, netLog: [], debugNet: false, showHints: true, notice: '',
@@ -3020,6 +3221,16 @@
     // While a settings/rules dialog is open, the match keeps running behind it. Re-drawing
     // the page then would wipe whatever the player is choosing, so background updates
     // are skipped; the actions that open/close dialogs pass force=true and redraw.
+    /* How many tiles the screen really lays in a row of the hand (read from the grid itself). True when that is not what the hand was just drawn with. */
+    function measureHandColumns() {
+      const grid = root.querySelector && root.querySelector('.hand-grid'), gcs = global.getComputedStyle;
+      if (!grid || typeof gcs !== 'function') return false;
+      let n = 0;
+      try { const t = gcs(grid).gridTemplateColumns; n = t && t !== 'none' ? t.trim().split(/\s+/).length : 0; } catch (e) { n = 0; }
+      if (!(n >= 1)) return false;
+      S.handCols = n;
+      return n !== S.handColsUsed;
+    }
     function render(force) {                           // returns whether the page was redrawn
       if (!force && S.overlay && S.lastDialog === S.overlay) { if (dock) dock.sync(false); return false; }
       S.flashPhase = Math.floor(now() % FLASH_MS);   // re-drawing restarts CSS animations; this keeps the flash in step
@@ -3053,6 +3264,7 @@
         }
         S.lastDialog = dialogId;
       }
+      if (measureHandColumns()) return render(true);        // the tiles that lie side by side are not the ones assumed: draw the hand again with the real rows
       if (fx) fx.reapply();
       S.lastPlay = null;
       S.revealed = null;
@@ -3088,9 +3300,9 @@
       cancelSlow();
     }
     // put a speech bubble up (after `delay` ms) and take it down again a few seconds later
-    function showComment(kind, vars, delay) {
+    function showComment(kind, vars, delay, speakerId) {
       let text, extra = {};
-      const spk = kind.indexOf('slow') === 0 ? slowSpeaker : pickSpeaker();        // who is talking: during one wait it stays the same computer
+      const spk = kind.indexOf('slow') === 0 ? slowSpeaker : (speakerId || pickSpeaker());        // who is talking: during one wait it stays the same computer
       const spkName = nameOf(S, spk), spkLevel = levelFor(S, spk), theme = S.online ? 'classic' : S.opts.theme;
       const said = composeComment(kind, vars, { name: spkName, level: spkLevel, theme, rng: chatRng, nativeChance, foodChance, last: S.lastLine, dish: slowDish });
       text = said.text;
@@ -3107,14 +3319,24 @@
       if (delay > 0) later(put, delay); else put();
     }
     // Decide, by chance and a cooldown, whether the computer says something about this.
-    function maybeComment(kind, vars) {
+    function maybeComment(kind, vars, speakerId) {
       if (!S.opts.chat || !S.game) return false;
       const p = CHAT.chance[kind];
       if (p === undefined || chatRng() >= p) return false;
       if (!CHAT.bypass[kind] && now() - S.lastCommentAt < CHAT.cooldownMs) return false;
       S.lastCommentAt = now();
-      showComment(kind, vars, CHAT.reactDelayMs[0] + chatRng() * (CHAT.reactDelayMs[1] - CHAT.reactDelayMs[0]));
+      showComment(kind, vars, CHAT.reactDelayMs[0] + chatRng() * (CHAT.reactDelayMs[1] - CHAT.reactDelayMs[0]), speakerId);
       return true;
+    }
+    /* A computer player grumbles about ITS OWN luck: nothing fits and it must draw, it keeps drawing the wrong tile, it cannot move at all, its opening train is
+     * very short. It knows its own hand and what is on the table; it never says anything that needs your hand. Only the computer it happened to speaks. */
+    function ownLuck(id, event, vars) {
+      if (id === 'human') return;
+      if (event === 'play') { S.unlucky[id] = 0; return; }              // a tile went down: the bad run is over
+      if (!S.opts.chat || !S.game) return;
+      if (event === 'draw') { const n = S.unlucky[id] = (S.unlucky[id] || 0) + 1; maybeComment(n === 1 ? 'ownDraw' : 'ownDrawAgain', {}, id); }
+      else if (event === 'blocked') maybeComment('ownBlocked', {}, id);
+      else if (event === 'short') maybeComment('ownShort', vars, id);
     }
     // You are taking too long: a jab after 25 s, then another every 20-26 s, each one ruder.
     function armSlow() {
@@ -3159,8 +3381,8 @@
       S.modal = null;
       S.matchActive = false;
       S.plan = null;
-      S.handOrder = null; S.handArranged = false; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
-      S.comment = null; S.pendingRating = null;
+      S.handOrder = null; S.handArranged = false; S.flips = {}; S.flipLocked = {}; S.unlucky = {}; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
+      S.comment = null; S.pendingRating = null; cancelPendingClick();
       clearChatTimers();
       if (fx) fx.cancelAll();
       if (a) a.reject(ABORT);
@@ -3170,6 +3392,7 @@
     const ui = {
       // --- normal turns ---
       async onNeedDraw(game, player) {
+        S.coverDraw = player.hand.length === 0;                          // (a draw to cover a last double: nothing to grumble about)
         if (player.id === 'human') await awaitUser('draw');
         else {
           setBanner(player.hand.length === 0
@@ -3182,6 +3405,7 @@
         if (player.id === 'human') { say(`You drew ${fmt(tile)}.`); S.drawnKey = key(tile); }
         else say(`${nameOf(S, player.id)} draws a tile.`);
         if (player.id === 'human') maybeComment('draw');
+        else if (!S.coverDraw) ownLuck(player.id, 'draw');
         const spec = { playerId: player.id, key: key(tile) };
         const tok = fx ? fx.captureDraw(spec) : null;
         render();
@@ -3198,6 +3422,7 @@
               ? 'The boneyard is empty and nothing fits. You pass and a marker goes on your train.'
               : 'That tile does not fit. You pass and a marker goes on your train.');
         } else {
+          if (player.hand.length > 0) ownLuck(player.id, 'blocked');
           say(player.hand.length === 0
             ? `${nameOf(S, player.id)} cannot draw to cover their double and passes. Once it is covered, they have gone out.`
             : `${nameOf(S, player.id)} cannot play and passes. A marker goes on their train: you can play there.`);
@@ -3207,6 +3432,7 @@
       },
       async onPlay(game, player, move, info) {
         const you = player.id === 'human';
+        if (!you) ownLuck(player.id, 'play');
         S.lastPlay = { trainId: move.trainId, index: game.trains[move.trainId].tiles.length - 1 };
         S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.hoverKey = null;
         clack();
@@ -3254,6 +3480,7 @@
         if (player.id === 'human') { say(`You drew ${fmt(tile)}.`); S.drawnKey = key(tile); S.freshKey = key(tile); }
         else S.log.push(`${nameOf(S, player.id)} draws a tile.`);
         if (player.id === 'human') maybeComment('draw');
+        else ownLuck(player.id, 'draw');
         const spec = { playerId: player.id, key: key(tile) };
         const tok = fx ? fx.captureDraw(spec) : null;
         render();
@@ -3269,6 +3496,7 @@
             : 'Nothing fits the engine. You pass and a marker goes on your train.');
         } else {
           S.revealed = player.id;
+          ownLuck(player.id, 'blocked');
           S.log.push(`${nameOf(S, player.id)} cannot start a train and passes. A marker goes on their train: you can play there.`);
         }
         render();
@@ -3280,6 +3508,7 @@
         else S.revealed = player.id;
         S.selectedKey = null; S.drawnKey = null; S.freshKey = null;
         S.log.push(`${you ? 'You' : nameOf(S, player.id)} finished a train of ${count} ${count === 1 ? 'tile' : 'tiles'}.`);
+        if (!you && count >= 1 && count <= OWN_SHORT) ownLuck(player.id, 'short', { built: count });         // a very short train of its own
         if (you) {                                       // was that the longest train you could have built?
           const best = longestFullChain(game, player).length;
           if (count === 0 && best > 0) maybeComment('openNone');
@@ -3290,6 +3519,7 @@
         await pause(300);
       },
       async onOpeningDone() {
+        S.unlucky = {};                                                  // the normal turns start with a clean slate
         const first = S.startIndex === 0 ? 'You play' : `${nameOf(S, S.game.players[S.startIndex].id)} plays`;
         say(`All trains are built. ${first} first.`);
         render();
@@ -3315,7 +3545,7 @@
       if (planDone && info.canDone) { await pause(450); return { type: 'done' }; }       // so the opening is finished too: there is no Done to press
       const chain = longestFullChain(game, player);
       return awaitUser('build', {
-        moves: info.moves, placed: info.placed, canUndo: info.canUndo, canDraw: info.canDraw, canDone: info.canDone, lastDouble: !!info.lastDouble,
+        moves: info.moves, placed: info.placed, canUndo: info.canUndo, canDraw: info.canDraw, canDrawEarly: !!info.canDrawEarly, canDone: info.canDone, lastDouble: !!info.lastDouble,
         canBuild: chain.length > (info.canDone ? info.placed : -1), buildCount: chain.length,
       });
     }
@@ -3578,7 +3808,7 @@
           lastSeq = -1; o.round = null; o.again = null; o.againSent = false; o.lastActor = null; o.pending = null;
           S.modal = null; S.awaiting = null; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0 }; S.matchActive = false;
           S.comment = null; S.mySay = null; S.sayOpen = false; S.notice = ''; S.lastPlay = null;
-          S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.handOrder = null; S.handArranged = false; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
+          S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.handOrder = null; S.handArranged = false; S.flips = {}; S.flipLocked = {}; S.unlucky = {}; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
           clearChatTimers();
           if (fx) fx.cancelAll();
           render(true);
@@ -3663,7 +3893,7 @@
       const openingBefore = !!(gPrev && gPrev.opening && o.round === v.round && !gPrev.players.every(p => gPrev.opening[p.id] && gPrev.opening[p.id].finished));
       if (!openingNow && !openingBefore) for (const ev of evs) if (ev && (ev.e === 'play' || ev.e === 'draw' || ev.e === 'pass') && (ev.who === 'me' || ev.who === 'opp' || ev.who === 'opp2')) o.lastActor = ev.who;
       // 3. the new state
-      if (o.round !== v.round) { S.handOrder = null; S.handArranged = false; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; o.round = v.round; o.lastActor = null; }
+      if (o.round !== v.round) { S.handOrder = null; S.handArranged = false; S.flips = {}; S.flipLocked = {}; S.unlucky = {}; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; o.round = v.round; o.lastActor = null; }
       o.rounds = Number(v.rounds) || o.rounds;
       o.phase = 'playing';
       S.game = v.game || null;
@@ -3718,7 +3948,7 @@
             else if (v.type === 'undo') onlineIntent({ a: 'undo' });
             else if (v.type === 'draw') onlineIntent({ a: 'draw' });
             else if (v.type === 'done') onlineIntent({ a: 'done' });
-          } else if (kind === 'move') onlineIntent({ a: 'play', tile: v.tile, train: v.trainId });
+          } else if (kind === 'move') { if (v.extraDraw) onlineIntent({ a: 'draw' }); else onlineIntent({ a: 'play', tile: v.tile, train: v.trainId }); }
           else if (kind === 'draw') onlineIntent({ a: 'draw' });
           else if (kind === 'modal') onlineIntent({ a: 'ok' });
         },
@@ -3826,7 +4056,7 @@
       netClose(); if (!keepSession) clearSession();      // (the window that took over still needs the saved game)
       S.online = null; S.game = null; S.modal = null; S.awaiting = null; S.matchActive = false;
       S.comment = null; S.mySay = null; S.sayOpen = false; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0 }; S.opps = null; S.cpu2Name = null; S.seats = null;
-      S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.handOrder = null; S.handArranged = false; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
+      S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.handOrder = null; S.handArranged = false; S.flips = {}; S.flipLocked = {}; S.unlucky = {}; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
       lastSeq = -1;
       clearChatTimers();
       if (fx) fx.cancelAll();
@@ -3900,15 +4130,23 @@
       human: {
         act: humanAct,
         async choose(game, player, moves, drew) {
-          const dk = drew ? key(drew) : null;
-          // pre-select a just-drawn tile only when it has a choice of trains; otherwise one click plays it.
-          // The only tile you can play is always selected: there is nothing else to choose, and it cannot be de-selected.
-          const sole = soleTile(moves);
-          S.selectedKey = !hintsOn(S) ? null : (sole && moves.length > 1) ? sole : ((dk && moves.filter(m => key(m.tile) === dk).length > 1) ? dk : null);
-          const chosen = await awaitUser('move', { moves });
-          try { S.pendingRating = S.opts.chat ? rateMove(game, player, moves, chosen) : null; }   // judged on the board as it was
-          catch (e) { S.pendingRating = null; }                                                  // a comment must never be able to break the game
-          return chosen;
+          let list = moves, justDrew = drew, drewThisTurn = !!drew;      // (a turn that began with the ordinary draw, because nothing fitted, has had its one draw)
+          for (;;) {
+            const dk = justDrew ? key(justDrew) : null;
+            // pre-select a just-drawn tile only when it has a choice of trains; otherwise one click plays it.
+            // The only tile you can play is always selected: there is nothing else to choose, and it cannot be de-selected.
+            const sole = soleTile(list);
+            S.selectedKey = !hintsOn(S) ? null : (sole && list.length > 1) ? sole : ((dk && list.filter(m => key(m.tile) === dk).length > 1) ? dk : null);
+            const chosen = await awaitUser('move', { moves: list, drewThisTurn });
+            if (chosen && chosen.extraDraw) {                 // hints off: a draw the player did not have to make. The tile joins the hand and the turn goes on.
+              const tile = drawAnyway(game, player);
+              if (tile) { drewThisTurn = true; justDrew = tile; list = legalMoves(game, player); await ui.onDraw(game, player, tile); }
+              continue;
+            }
+            try { S.pendingRating = S.opts.chat ? rateMove(game, player, list, chosen) : null; }   // judged on the board as it was
+            catch (e) { S.pendingRating = null; }                                                  // a comment must never be able to break the game
+            return chosen;
+          }
         },
       },
       cpu: cpuController('cpu'),
@@ -3931,13 +4169,14 @@
         const engine = MAX_PIP - r;
         S.game = newRound({ engine, handSize: S.opts.hand, rng, simultaneousOpening: true, players: n });
         S.game.players.forEach(p => { if (p.id !== 'human') p.name = nameOf(S, p.id); });
-        S.log = []; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.lastPlay = null; S.plan = null; S.handOrder = null; S.handArranged = false; S.dragKey = null;
+        S.log = []; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.lastPlay = null; S.plan = null; S.handOrder = null; S.handArranged = false; S.flips = {}; S.flipLocked = {}; S.unlucky = {}; S.dragKey = null;
         say(`Round ${r + 1}: the engine is double-${engine}. Everyone builds their train at the same time.`);
         S.log.push(`${startIndex === 0 ? 'You play' : `${nameOf(S, S.game.players[startIndex].id)} plays`} first once the trains are built.`);
         render();
         await pause(800);
 
         const result = await playRound(S.game, startIndex, controllers, ui);
+        if (result.blocked) maybeComment('roundBlocked');
         setBanner(result.blocked ? 'The round is blocked.'
           : result.tie ? (n === 2 ? 'You both played every tile.' : 'More than one of you played every tile.')
           : `${nameOf(S, result.winner.id)} played the last tile.`);
@@ -3980,9 +4219,48 @@
       });
     }
 
-    function selectTile(k) {
+    /* A mouse or finger click on a tile that would be played at once (hints on: it has only one place to go) waits a moment to see whether a second click follows:
+     * a double-click turns the tile around instead. Nothing else waits: with hints off a click only picks a tile up, and a key press has no second click. */
+    const DOUBLE_CLICK_MS = 280;
+    let pendingClick = null, lastTurn = { key: null, at: -Infinity }, lastPick = null;      // lastPick: which tile was picked up before the latest click on a tile (so a double-click leaves that as it was)
+    function cancelPendingClick() { if (pendingClick) { timer.clear(pendingClick.id); pendingClick = null; } }
+    function flushPendingClick() {
+      const p = pendingClick;
+      if (!p) return;
+      timer.clear(p.id); pendingClick = null;
+      if (S.awaiting === p.a) p.fn();
+    }
+    function playSoon(k, viaMouse, fn) {
+      if (!viaMouse) { fn(); return; }
+      const a = S.awaiting;
+      const id = timer.set(() => { pendingClick = null; if (S.awaiting === a) fn(); }, DOUBLE_CLICK_MS);
+      pendingClick = { key: k, id, fn, a };
+    }
+    /* Double-click (or double-tap, or R on a focused tile): the tile turns 180 degrees in the hand. The game then leaves it as it was turned: its own idea of
+     * which way round the like halves should face no longer applies to this tile (it still turns the others to face it). A double looks the same either way up. */
+    function rotateTile(k) {
+      if (!S.game || !S.game.players || !S.game.players[0]) return;
+      const t = S.game.players[0].hand.find(x => key(x) === k);
+      if (!t) return;
+      cancelPendingClick();                                      // (the first click of this double-click was about to play it)
+      if (lastTurn.key === k && now() - lastTurn.at < 400) return;       // (the same gesture, heard twice: as a second click and as a double-click)
+      lastTurn = { key: k, at: now() };
+      if (lastPick && lastPick.key === k && now() - lastPick.at < 600) S.selectedKey = lastPick.prev;      // a double-click is not a pick-up: whatever its first click picked up (or put down) is as it was
+      lastPick = null;
+      if (t[0] === t[1]) { render(); return; }
+      S.flips = S.flips || {}; S.flipLocked = S.flipLocked || {};
+      S.flips[k] = !S.flips[k]; S.flipLocked[k] = true;
+      render();
+    }
+
+    function selectTile(k, viaMouse) {
+      if (pendingClick) {
+        if (viaMouse && pendingClick.key === k) return;          // the second click of a double-click: the double-click itself decides what happens
+        flushPendingClick();                                     // a click on something else: the first one was meant
+      }
       const a = S.awaiting;
       if (!a) return;
+      if (!(lastPick && lastPick.key === k && now() - lastPick.at < 600)) lastPick = { key: k, prev: S.selectedKey, at: now() };      // (what was picked up before this click: the first click of a pair is the one that counts)
       if (!hintsOn(S)) {                       // no hints: any tile can be picked up, whether or not it can be played; nothing is played for you
         if (a.kind !== 'move' && a.kind !== 'build' && a.kind !== 'draw') return;
         S.selectedKey = S.selectedKey === k ? null : k; S.hoverKey = null; S.notice = '';
@@ -3991,14 +4269,14 @@
       }
       if (a.kind === 'build') {
         const mv = a.moves.find(m => key(m.tile) === k);
-        if (mv) { S.hoverKey = null; a.resolve({ type: 'play', move: mv }); }
+        if (mv) playSoon(k, viaMouse, () => { S.hoverKey = null; a.resolve({ type: 'play', move: mv }); });
         return;
       }
       if (a.kind !== 'move') return;
       const mine = a.moves.filter(m => key(m.tile) === k);
       if (!mine.length) return;
       // Only one place this tile can go: just play it, no need to ask where.
-      if (mine.length === 1) { S.selectedKey = null; S.hoverKey = null; a.resolve(mine[0]); return; }
+      if (mine.length === 1) { playSoon(k, viaMouse, () => { S.selectedKey = null; S.hoverKey = null; a.resolve(mine[0]); }); return; }
       if (S.selectedKey === k) {
         if (soleTile(a.moves) === k) return;       // the only tile you can play stays selected
         S.selectedKey = null;
@@ -4028,7 +4306,16 @@
       if (!a) return;
       if (a.kind === 'draw') a.resolve();
       else if (a.kind === 'build' && a.canDraw) a.resolve({ type: 'draw' });
-      else if (!hintsOn(S) && (a.kind === 'move' || a.kind === 'build')) { S.notice = 'You cannot draw while you have a tile you can play.'; render(); }
+      else if (!hintsOn(S) && a.kind === 'build') {      // hints off: the game does not refuse a draw because you have a play (that would tell you that you do)
+        if (a.canDrawEarly) a.resolve({ type: 'draw' });
+        else { S.notice = 'You can only draw before you have put a tile down, and only once.'; render(); }
+      } else if (!hintsOn(S) && a.kind === 'move') {
+        if (S.game.openDouble) S.notice = 'A double has to be covered first: you cannot draw while you have a tile you can play on it.';
+        else if (a.drewThisTurn) S.notice = 'You have already drawn a tile this turn.';
+        else if (!S.game.boneyard.length) S.notice = 'The boneyard is empty.';
+        else { a.resolve({ extraDraw: true }); return; }                       // a draw you did not have to make: the tile joins your hand and the turn goes on
+        render();
+      }
     }
 
     function autoBuild() {
@@ -4169,7 +4456,8 @@
     function dispatch(a) {
       switch (a.type) {
         case 'startGame': return startGame(a);
-        case 'selectTile': return selectTile(a.key);
+        case 'selectTile': return selectTile(a.key, a.viaMouse);
+        case 'rotateTile': return rotateTile(a.key);
         case 'playOn': return playOn(a.train);
         case 'draw': return draw();
         case 'autoBuild': return autoBuild();
@@ -4208,6 +4496,7 @@
         case 'dropOnTrain': return dropOnTrain(a.key, a.train, a.from);
         case 'moveTile': return moveTile(a.key, a.delta);
         case 'snapTrains': return snapTrains();
+        case 'measureHand': if (S.game && measureHandColumns()) render(true); return;
         case 'toggleSound': return toggleSound();
         case 'toggleChat': return toggleChat();
         case 'netWake': return netWake(a);
@@ -4310,7 +4599,8 @@
         } else if (d.action === 'copyLink') {
           copyText(String(d.key || ''), { document, navigator: global.navigator }).then(done => app.dispatch({ type: 'copied', which: done ? 'copyLink' : 'failed' }));
         } else {
-          app.dispatch({ type: d.action, key: d.key, train: d.train });
+          if (d.action === 'selectTile' && e.detail === 2) app.dispatch({ type: 'rotateTile', key: d.key });        // the second click of a double-click (or double-tap)
+          else app.dispatch({ type: d.action, key: d.key, train: d.train, viaMouse: d.action === 'selectTile' && e.detail > 0 });     // (detail is 0 for a click that came from the keyboard)
         }
         return;
       }
@@ -4353,7 +4643,7 @@
       const b = root.querySelector('[data-primary]');
       if (b && !b.disabled && b.click) { e.preventDefault(); b.click(); }
     });
-    if (global.addEventListener) global.addEventListener('resize', () => app.dispatch({ type: 'snapTrains' }));
+    if (global.addEventListener) global.addEventListener('resize', () => { app.dispatch({ type: 'measureHand' }); app.dispatch({ type: 'snapTrains' }); });
 
     // Browsers only allow sound after a click, tap or key press: unlock it on the first one.
     ['pointerdown', 'click', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, () => sound.unlock(), true));
@@ -4367,6 +4657,19 @@
     root.addEventListener('mouseleave', () => app.dispatch({ type: 'hoverTile', key: null }));
     root.addEventListener('focusin', e => app.dispatch({ type: 'hoverTile', key: tileKey(e.target) }));
     root.addEventListener('focusout', () => app.dispatch({ type: 'hoverTile', key: null }));
+    // double-click a tile in the hand: it turns around (some touch browsers send this and not a second click, so both are heard; the page counts it once)
+    root.addEventListener('dblclick', e => {
+      const b = e.target && e.target.closest ? e.target.closest('.hand .tile-btn') : null;
+      if (b && b.dataset) { e.preventDefault(); app.dispatch({ type: 'rotateTile', key: b.dataset.key }); }
+    });
+    // keyboard alternative: R turns the focused tile around
+    root.addEventListener('keydown', e => {
+      if ((e.key !== 'r' && e.key !== 'R') || e.ctrlKey || e.metaKey || e.altKey) return;
+      const b = e.target && e.target.closest ? e.target.closest('.hand .tile-btn') : null;
+      if (!b) return;
+      e.preventDefault();
+      app.dispatch({ type: 'rotateTile', key: b.dataset.key });
+    });
     // keyboard alternative to dragging: Shift + left/right arrow moves the focused tile
     root.addEventListener('keydown', e => {
       if (!e.shiftKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
@@ -4384,14 +4687,14 @@
 
   global.MexicanTrainGame = {
     Engine: {
-      newRound, legalMoves, applyMove, undoLast, playTurn, buildPhase, playRound, isBlocked, cpuChoose,
+      newRound, legalMoves, applyMove, undoLast, playTurn, drawAnyway, buildPhase, playRound, isBlocked, cpuChoose,
       cpuBuildAction, cpuChooseAsync, tilesNotSeen, chanceHolds, guessHiddenTiles, longestChain, longestFullChain, buildSteps, handPips, tilePips, mulberry32, shuffle, key, LEVELS, LEVEL_LABEL,
       moveValue, rateMove,
     },
     tileSVG, tileBackSVG, pipPoints, viewApp, createApp, pickCpuName, PIP_COLORS, PACE, CPU_NAMES, renderClack, clackGapMs, renderTurn, createSound,
     flightGeometry, flightRotation, flightStart, moveInOrder, slotAt, dropIndexAt, createFx, createDrag, orderedHand,
-    RATING, CHAT, LINES, commentKindFor, pickLine, fillLine, composeComment, paceFor, soleTile, CPU_PLAYERS, levelOfName, NATIVE_LINES, NATIVE_LANG, nativeLangOf, FOOD, FOOD_ENGLISH, FOOD_NATIVE, foodComment,
-    PLAYER_IDS, toyTrainSVG, ringSVG, THEMES, THEME_IDS, voiceOf, foodOf, trainColor, ONLINE_PHRASES, cleanChatText, CHAT_MAX, cleanPlayerName, parseServerAddress, parseJoinAddress, viewJoinChoices, joinList, copyText, qrEncode, qrSvg, qrCodewords, rsEncode, QR_BLOCKS_M, QR_TOTAL_CODEWORDS,
+    RATING, OWN_SHORT, CHAT, LINES, commentKindFor, pickLine, fillLine, composeComment, paceFor, soleTile, CPU_PLAYERS, levelOfName, NATIVE_LINES, NATIVE_LANG, nativeLangOf, FOOD, FOOD_ENGLISH, FOOD_NATIVE, foodComment,
+    PLAYER_IDS, toyTrainSVG, ringSVG, THEMES, THEME_IDS, voiceOf, foodOf, trainColor, ONLINE_PHRASES, cleanChatText, CHAT_MAX, cleanPlayerName, faceLikeDots, parseServerAddress, parseJoinAddress, viewJoinChoices, joinList, copyText, qrEncode, qrSvg, qrCodewords, rsEncode, QR_BLOCKS_M, QR_TOTAL_CODEWORDS,
   };
 
   if (typeof document !== 'undefined') {

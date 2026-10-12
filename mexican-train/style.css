@@ -404,6 +404,19 @@ select option { color: #1b2523; background: #fff; }
   .boneyard.ready { box-shadow: 0 0 0 5px rgba(214, 168, 79, 0.6); }   /* no flashing: a steady strong ring instead */
 }
 
+/* The Lord of the Rings board: scenery behind everything (mountains at the top, hills and trees along the bottom, a faint golden ring in the middle),
+   drawn by art/make_lotr_art.py. The rule it is drawn by: NOTHING is brighter than the felt's centre, so no text on the board is harder to read than in
+   the classic theme (t/test_browser_lotr_bg.py measures that on the drawn pixels). The scenery is dark silhouettes, a soft glow and a ring that stays
+   under that limit. The page's own sizes keep it a backdrop: it never grows past its band, and phones get a closer crop of it. */
+.table.art-lotr {
+  background:
+    url(art:lotr-top) top center / max(100%, 760px) auto no-repeat,
+    url(art:lotr-bottom) bottom center / max(100%, 760px) auto no-repeat,
+    url(art:lotr-ring) 50% 50% / min(520px, 90%) auto no-repeat,
+    radial-gradient(ellipse at 50% 30%, #1e4d3f 0%, #13332b 100%);
+}
+/* a person who has asked for more contrast gets the plain board */
+@media (prefers-contrast: more) { .table.art-lotr { background: radial-gradient(ellipse at 50% 30%, #1e4d3f 0%, #13332b 100%); } }
 /* The Lord of the Rings theme: the open-train marker is a golden ring with a soft glow. */
 .toy-train.ring svg { filter: drop-shadow(0 0 3px rgba(255, 200, 70, 0.75)) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35)); }
 

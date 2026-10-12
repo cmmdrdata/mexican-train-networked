@@ -178,7 +178,7 @@ function matchOf(opts) {
   for (const theme of ['lotr', 'classic']) {
     const ft = fakeTimer();
     const adv = async ms => { ft.advance(ms); await wait(70); };         // (time is ours; the network's delivery is real, so give it a moment)
-    const T0 = await startServer({ timer: ft, now: () => ft.now, chatRng: () => 0.5, nativeChance: 0, foodChance: 0, softGraceMs: 400, graceMs: 8000 });
+    const T0 = await startServer({ timer: ft, now: () => ft.now, chatRng: () => 0.95, nativeChance: 0, foodChance: 0, softGraceMs: 400, graceMs: 8000 });     // (0.95: above every chance of a remark about the computer's own luck, which depends on the deal, so the first 25 seconds really are quiet)
     const p = await pair(T0.port, { computer: 'normal', theme, rounds: 1, hand: 12 });
     const lob = p.a.last('lobby'), who = lob.players[2].name;
     p.a.send({ t: 'start' });

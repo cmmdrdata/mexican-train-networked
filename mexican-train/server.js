@@ -6,6 +6,7 @@
  *   node server.js                 listen on port 8080 on every network interface
  *   node server.js --port 3000     another port
  *   node server.js --local-only    only this computer may connect (for trying it out)
+ *   node server.js --name table1   a label of your choice, to tell this server from other processes in `ps -ef`
  *   node server.js --help
  *
  * No dependencies; plain Node.js (v14 or newer).
@@ -683,8 +684,15 @@ function createGameServer(options) {
 }
 
 /* ------------------------------ command line ------------------------------ */
+/* What `ps -ef` (and Activity Monitor, top, htop, pgrep -f ...) show for this process: not just "node", but this, so that it can be told from any other Node program:
+ *     mexican-train-server :8080            or, with --name table1:      mexican-train-server table1 :8080
+ * (On Windows the title is the console window's.) */
+const PROCESS_NAME = 'mexican-train-server';
+const NAME_OK = /^[A-Za-z0-9._:-]{1,40}$/;
+function processTitle(name, port) { return PROCESS_NAME + (name ? ' ' + name : '') + (port ? ' :' + port : ''); }
+
 function main(argv) {
-  const args = { port: Number(process.env.PORT) || 8080, localOnly: false, page: null, grace: 180, help: false, quiet: false, publicIp: true };
+  const args = { port: Number(process.env.PORT) || 8080, localOnly: false, page: null, grace: 180, help: false, quiet: false, publicIp: true, name: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') args.help = true;
@@ -694,9 +702,11 @@ function main(argv) {
     else if (a === '--grace') args.grace = Number(argv[++i]);
     else if (a === '--quiet') args.quiet = true;
     else if (a === '--no-public-ip') args.publicIp = false;
+    else if (a === '--name') args.name = argv[++i];
     else { console.error(`Unknown option: ${a}`); args.help = true; args.bad = true; }
   }
   if (!Number.isInteger(args.port) || args.port < 0 || args.port > 65535) { console.error('--port must be a number from 0 to 65535'); args.help = args.bad = true; }
+  if (args.name !== null && !(typeof args.name === 'string' && NAME_OK.test(args.name))) { console.error('--name must be 1 to 40 letters, digits, dots, dashes, underscores or colons (no spaces)'); args.help = args.bad = true; }
   if (!(args.grace >= 5)) { console.error('--grace must be a number of seconds (at least 5)'); args.help = args.bad = true; }
   if (args.help) {
     console.log(`Mexican Train server
@@ -710,12 +720,15 @@ Usage: node server.js [options]
   --quiet          do not print what happens in games
   --no-public-ip   never ask an internet service (api.ipify.org and others) what this computer's public address is
                    (by default it is asked, only when you open the Host screen, to offer it as a way to join)
+  --name LABEL     a label to tell this server from other processes: it is part of the command line and of the process name
+                   (in ps -ef the server shows as "mexican-train-server LABEL :PORT"; with no label, "mexican-train-server :PORT")
   -h, --help       this help
 
 Listening on the whole network means other computers can connect to YOUR-IP:PORT.
 Your firewall may ask whether to allow Node.js: say yes for private networks.`);
     process.exit(args.bad ? 1 : 0);
   }
+  process.title = processTitle(args.name, args.port);                    // what ps shows (updated below when the port is known)
   const server = createGameServer({
     localOnly: args.localOnly, checkBuild: true, publicIp: args.publicIp, graceMs: Math.round(args.grace * 1000),
     pagePath: args.page ? path.resolve(args.page) : path.join(__dirname, 'mexican-train.html'),
@@ -723,7 +736,9 @@ Your firewall may ask whether to allow Node.js: say yes for private networks.`);
   });
   server.listen(args.port).then(port => {
     const addrs = lanAddresses(port, args.localOnly);
+    process.title = processTitle(args.name, port);
     console.log('\nMexican Train server is running.\n');
+    console.log(`  Process name: ${process.title}   (find it with: ps -ef | grep mexican-train-server)\n`);
     const served = server.pageBuild ? server.pageBuild() : '';
     console.log(served ? `  Serving the game page, build ${served}. (A browser tab opened before the files were replaced has an older build: reload it.)\n` : '');
     if (args.localOnly) {
@@ -752,4 +767,4 @@ Your firewall may ask whether to allow Node.js: say yes for private networks.`);
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { createGameServer, isPublicIPv4, lanAddresses, addressRank, sortAddresses, normalizeCode, showCode, CODE_ALPHABET };
+module.exports = { processTitle, PROCESS_NAME, createGameServer, isPublicIPv4, lanAddresses, addressRank, sortAddresses, normalizeCode, showCode, CODE_ALPHABET };

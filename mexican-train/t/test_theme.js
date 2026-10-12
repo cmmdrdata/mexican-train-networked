@@ -31,7 +31,8 @@ const KINDS = Object.keys(G.LINES.normal);
   ok(cast.every(n => KINDS.every(k => Array.isArray(T.voices[n][k]) && T.voices[n][k].length >= 2)), `every character has at least two lines for each of the ${KINDS.length} kinds of comment`);
   ok(cast.every(n => Object.keys(T.voices[n]).every(k => KINDS.includes(k))), 'and no kind the game does not use');
   ok(all.every(([, , l]) => typeof l === 'string' && l.length >= 4 && l.length <= 110), `${all.length} lines, each short enough for a speech bubble`);
-  ok(all.every(([, k, l]) => k === 'openShort' || !/\{/.test(l)), 'only the short-opening lines have placeholders');
+  ok(all.every(([, k, l]) => k === 'openShort' || k === 'ownShort' || !/\{/.test(l)), 'only the short-train lines have placeholders (yours when you build a short opening, its own for its own)');
+  ok(all.filter(([, k]) => k === 'ownShort').every(([, , l]) => !/\{(?!built\})\w+\}/.test(l)) && cast.every(n => T.voices[n].ownShort.some(l => l.includes('{built}'))), 'and a character remarking on its own short train can say how many tiles, and only that'); 
   ok(all.filter(([, k]) => k === 'openShort').every(([, , l]) => (l.match(/\{(\w+)\}/g) || []).every(p => p === '{built}' || p === '{best}')), 'and those use only {built} and {best}');
   ok(cast.every(n => T.voices[n].openShort.some(l => l.includes('{built}'))), 'every character can quote how many tiles you built');
   const rude = all.filter(([, , l]) => blocked.test(l));
@@ -116,6 +117,7 @@ const KINDS = Object.keys(G.LINES.normal);
     ok(T.players[LEVELS[seed % 3]].includes(g.names[0]) && (!two || (T.players[LEVELS[(seed + 1) % 3]].includes(g.names[1]) && g.names[1] !== g.names[0])), `game ${seed}: ${g.names.filter(Boolean).join(' and ')}, from the right levels`);
     g.screens.forEach(h => { if (/toy-train ring/.test(h)) ringScreens++; if (/<span class="toy-train c\d"/.test(h)) trainScreens++; });
     ok(g.screens.some(h => h.includes('Double-12 in Middle-earth')), `game ${seed}: the header says Middle-earth`);
+    ok(g.screens.some(h => h.includes('<main class="table art-lotr">')) && g.screens.filter(h => h.includes('<section class="tracks"')).every(h => h.includes('<main class="table art-lotr">')), `game ${seed}: the board has the Lord of the Rings scenery, on every screen of the game itself (the trains showing)`);
     g.bubbles.forEach(b => {
       said++;
       const who = b.from || g.names[0];

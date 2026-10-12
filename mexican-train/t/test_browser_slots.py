@@ -82,16 +82,24 @@ with sync_playwright() as pw:
         ctx.close()
 
         print('2. dragging a tile into an empty slot, or onto another tile')
-        ctx = browser.new_context(viewport={'width': 1100, 'height': 950}); page = ctx.new_page(); page.on('pageerror', lambda e: errors.append(str(e)))
-        page.goto(base); page.select_option('#opt-rounds', '1'); page.select_option('#opt-hand', '15'); page.click('[data-action="startGame"]'); page.wait_for_selector('.hand-grid')
         def usable(snap):                                          # two tiles side by side in a row, and a tile beside an empty slot in the same row
             ks = [c['k'] for c in snap]; t = lambda k: k not in ('_', '.', '?')
             pair = any(t(ks[i]) and t(ks[i + 1]) and snap[i]['y'] == snap[i + 1]['y'] for i in range(len(ks) - 1))
             beside = any(ks[h] == '_' and any(0 <= i < len(ks) and t(ks[i]) and snap[i]['y'] == snap[h]['y'] for i in (h - 1, h + 1)) for h in range(len(ks)))
             return pair and beside and sum(1 for k in ks if k == '_') >= 2
-        for _ in range(900):                                      # until the trains are built, it is your move, and the hand has what this test needs (stop BEFORE making that move)
-            if page.evaluate("() => { const a = window.MexicanTrainApp.state.awaiting; return !!a && a.kind === 'move'; }") and usable(page.evaluate(SNAP)): break
-            page.evaluate(STEP); time.sleep(0.05)
+        found = False
+        for attempt in range(8):                                  # (games are random: play new ones until a hand has what this test needs)
+            ctx = browser.new_context(viewport={'width': 1100, 'height': 950}); page = ctx.new_page(); page.on('pageerror', lambda e: errors.append(str(e)))
+            page.goto(base); page.select_option('#opt-rounds', '1'); page.select_option('#opt-hand', '15'); page.click('[data-action="startGame"]'); page.wait_for_selector('.hand-grid')
+            for _ in range(500):                                  # until the trains are built, it is your move, and the hand has what this test needs (stop BEFORE making that move)
+                if page.evaluate("() => !!window.MexicanTrainApp.state.modal"): break                      # the round is over: try another game
+                if page.evaluate("() => { const a = window.MexicanTrainApp.state.awaiting; return !!a && a.kind === 'move'; }") and usable(page.evaluate(SNAP)): found = True; break
+                page.evaluate(STEP); time.sleep(0.05)
+            if found: break
+            ctx.close()
+        ok(found, f'a game reached a hand with two tiles side by side and an empty slot beside a tile (after {attempt + 1} games)')
+        if not found:
+            browser.close(); srv.terminate(); print(f'\n{passed} passed, {failed} failed'); sys.exit(1)
         time.sleep(0.5)
         s0 = page.evaluate(SNAP)
         holes0 = [i for i, c in enumerate(s0) if c['k'] == '_']

@@ -76,7 +76,7 @@ const handKeys = S => S.game.players[0].hand.map(key).sort().join();
     const c = makeApp({ seed: 11 }); startGame(c, { allowHints: false, hand: 15 });
     ok(!/Show hints/.test(c.html), 'there is no Show hints button on the hand');
     const rnd = mulberry32(3);
-    let wrong = 0, right = 0, drawRefused = 0, guard = 0, mixed = 0, lastPrompt = null, newPrompts = 0, preselected = 0;
+    let wrong = 0, right = 0, drawRefused = 0, earlyDraws = 0, guard = 0, mixed = 0, lastPrompt = null, newPrompts = 0, preselected = 0;
     while (!(c.S.modal && c.S.modal.type === 'roundEnd') && guard++ < 6000) {
       const a = c.S.awaiting;
       if (!a) { await wait(0); continue; }
@@ -87,8 +87,19 @@ const handKeys = S => S.game.players[0].hand.map(key).sort().join();
       const mode = rnd();
       if (a.kind === 'move' || a.kind === 'build') {
         if (mode < 0.15) {                                    // try to draw while a move exists
+          const dbl = !!c.S.game.openDouble, drewBefore = !!a.drewThisTurn, early = !!a.canDrawEarly;
           c.d({ type: 'draw' });
-          if (legal.length) { if (c.S.game.boneyard.length === boneBefore && /cannot draw/.test(c.html)) drawRefused++; else mixed++; }
+          if (legal.length) {
+            // with hints off the game does not refuse a draw because you have a play (that would tell you that you do). Not allowed: to cover a double, a second draw in
+            // a turn, from an empty boneyard, or in the opening once a tile is down (or after the one draw there)
+            const mayDraw = a.kind === 'move' ? (!dbl && !drewBefore && boneBefore > 0) : (early && boneBefore > 0);
+            if (mayDraw) {
+              for (let w = 0; w < 400 && !((c.S.awaiting && c.S.awaiting !== a) || c.S.modal); w++) await wait(2);
+              if (c.S.game.boneyard.length === boneBefore - 1 && c.S.game.players[0].hand.length === hand.length) earlyDraws++; else mixed++;
+              continue;
+            }
+            if (c.S.game.boneyard.length === boneBefore && /cannot draw|can only draw|already drawn|covered first|boneyard is empty/.test(c.html)) drawRefused++; else mixed++;
+          }
           if (a.kind === 'build' && a.canDraw) continue;
         }
         if (legal.length && mode < 0.65) {                    // a right guess: the tile, then its train
@@ -134,7 +145,8 @@ const handKeys = S => S.game.players[0].hand.map(key).sort().join();
     ok(wrong > 10 && right > 20, `the round was played by guessing tile and train: ${right} plays, ${wrong} wrong guesses`);
     ok(mixed === 0, 'every wrong guess changed nothing (the tile stayed in the hand, the same prompt stayed) and said "That tile cannot be played on that train."; picking up a tile never played it, not even when it had only one place to go; a right guess always played' + (mixed ? ` (${mixed} exceptions)` : ''));
     ok(newPrompts > 30 && preselected === 0, `at the start of each of the ${newPrompts} prompts nothing was picked for the player (not even a tile that had only one place to go)`);
-    ok(drawRefused > 2, `trying to draw while having a move was refused with a message (${drawRefused} times)`);
+    ok(drawRefused > 2, `trying to draw when it was not allowed (a double to cover, a second draw in a turn, an empty boneyard, a tile already down in the opening) was refused with a message (${drawRefused} times)`);
+    ok(earlyDraws > 5, `and a draw the player did not have to make was allowed with hints off, and nothing told them they had a play (${earlyDraws} times)`);
     ok(c.S.modal && c.S.modal.type === 'roundEnd', 'and the round reached its end with a proper result');
     {
       const k0 = c.S.game.players[0].hand.map(key)[0];
@@ -238,7 +250,11 @@ const handKeys = S => S.game.players[0].hand.map(key).sort().join();
     ok(/class="track must" data-train="cpu"/.test(c.html) && /Cover the double here/.test(c.html) && !/class="track[^"]*\btarget\b/.test(c.html), 'online with hints off: the train with the open double is still outlined and labelled, and no train glows as a target');
     ok(/<button class="slot-draw calm" data-action="draw"[^>]*><span>Draw<\/span><\/button>/.test(c.html), 'and the hand has its plain Draw button on your turn');
     c.d({ type: 'draw' });
-    ok(!ws.sent.some(m => m.a === 'draw'), 'asking to draw while a move exists is refused on the page: nothing is sent to the server');
+    ok(!ws.sent.some(m => m.a === 'draw'), 'a double has to be covered: asking to draw while a move exists is refused on the page, nothing is sent to the server');
+    ws.say({ t: 'ack', id: sent[0].id, ok: true, seq: 91 });                       // (the server has answered the play: the next tap may be sent)
+    ws.say({ t: 'state', seq: 92, view: view(move), events: [] });
+    c.d({ type: 'draw' });
+    ok(ws.sent.filter(m => m.a === 'draw').length === 1, 'with no double to cover, a draw you did not have to make is sent to the server (hints off: the page does not refuse it because you have a move)');
   }
   function eq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
   console.log('8. the host\'s choice about hints rules a hosted game, from every side');

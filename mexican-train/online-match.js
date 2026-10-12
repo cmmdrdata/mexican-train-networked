@@ -21,7 +21,7 @@
 require('./game.js');
 const G = globalThis.MexicanTrainGame;
 const E = G.Engine;
-const { newRound, playRound, longestFullChain, buildSteps, handPips, key, legalMoves, cpuChoose, cpuChooseAsync, cpuBuildAction, rateMove } = E;
+const { newRound, playRound, longestFullChain, buildSteps, handPips, key, legalMoves, cpuChoose, cpuChooseAsync, cpuBuildAction, rateMove, drawAnyway } = E;
 const CHAT = G.CHAT;
 
 const MAX_PIP = 12;
@@ -74,6 +74,7 @@ class OnlineMatch {
     this.banners = blank(() => '');
     this.modal = null;
     this.modalOk = blank(() => false);
+    this.unlucky = 0; this.coverDraw = false;     // how many turns in a row the computer has drawn without playing; and whether this draw is only to cover a last double
     this.paused = false;
     this.over = null;                       // null while running; 'finished', 'aborted' or 'error'
     this.error = null;
@@ -132,13 +133,14 @@ class OnlineMatch {
       const engine = MAX_PIP - r;
       this.game = newRound({ engine, handSize: this.hand, rng: this.rng, simultaneousOpening: true, players: this.n });
       this.game.players.forEach((p, i) => { p.name = this.names[i]; });
-      this.logs = this.logs.map(() => []); this.plans = this.plans.map(() => null); this.modal = null;
+      this.logs = this.logs.map(() => []); this.plans = this.plans.map(() => null); this.modal = null; this.unlucky = 0;
       this._say(() => `Round ${r + 1}: the engine is double-${engine}. Everyone builds their train at the same time.`);
       this._log(seat => `${startIndex === seat ? 'You play' : `${this.names[startIndex]} plays`} first once the trains are built.`);
       this._broadcast(this.noEvents());
 
       const result = await playRound(this.game, startIndex, this.controllers, this.hooks);
       const winnerSeat = result.winner ? SEATS.indexOf(result.winner.id) : -1;
+      if (result.blocked) this._sayOwn('roundBlocked');
       this._say(seat => result.blocked ? 'The round is blocked.'
         : result.tie ? (this.n === 2 ? 'You both played every tile.' : 'More than one of you played every tile.')
         : `${winnerSeat === seat ? 'You' : this.names[winnerSeat]} played the last tile.`);
@@ -208,14 +210,22 @@ class OnlineMatch {
     }
     return {
       act: (game, player, info) => this._act(seat, game, player, info),
-      choose: async (game, player, moves) => {
+      choose: async (game, player, moves, drew) => {
         this.others(seat).forEach(s => { if (!this.computers[s]) this.banners[s] = `${this.names[seat]} is choosing a tile.`; });
-        const chosen = await this._wait(seat, 'move', { moves });
-        if (this.talker !== undefined) {                     // the computer has an opinion of that move (judged on the board as it was)
-          try { const kind = G.commentKindFor(rateMove(game, player, moves, chosen)); if (kind) this._maybeSay(seat, kind); }
-          catch (e) { /* a comment must never be able to break the game */ }
+        let list = moves, drewThisTurn_ = !!drew;                  // (a turn that began with the ordinary draw, because nothing fitted, has had its one draw)
+        for (;;) {
+          const chosen = await this._wait(seat, 'move', { moves: list, drewThisTurn: drewThisTurn_ });
+          if (chosen && chosen.extraDraw) {                    // a draw the person did not have to make (hints off on their page): the tile joins their hand and the turn goes on
+            const tile = drawAnyway(game, player);
+            if (tile) { drewThisTurn_ = true; list = legalMoves(game, player); await this.hooks.onDraw(game, player, tile); }
+            continue;
+          }
+          if (this.talker !== undefined) {                     // the computer has an opinion of that move (judged on the board as it was)
+            try { const kind = G.commentKindFor(rateMove(game, player, list, chosen)); if (kind) this._maybeSay(seat, kind); }
+            catch (e) { /* a comment must never be able to break the game */ }
+          }
+          return chosen;
         }
-        return chosen;
       },
     };
   }
@@ -260,6 +270,7 @@ class OnlineMatch {
       // --- normal turns ---
       async onNeedDraw(game, player) {
         const seat = m._seat(player);
+        m.coverDraw = player.hand.length === 0;                        // (a draw to cover a last double: nothing to grumble about)
         // A person who has nothing to play is not announced to the others (it would tell them what is in that hand before the
         // person has even drawn): they see the same line as for any other turn. The draw itself, once it happens, is public.
         // (A double played as the last tile is different: everybody can see the hand is empty. And the computer is just told.)
@@ -273,6 +284,7 @@ class OnlineMatch {
       async onDraw(game, player, tile) {
         const seat = m._seat(player);
         if (!m.computers[seat]) { m._logOne(seat, `You drew ${fmt(tile)}.`); m._maybeSay(seat, 'draw'); }
+        else if (!m.coverDraw) m._ownLuck(seat, 'draw');
         m._tell(seat, `${m.names[seat]} draws a tile.`);
         const ev = m.noEvents();
         for (const s of m.humans) ev[s].push(s === seat ? { e: 'draw', who: 'me', tile: tile.slice() } : { e: 'draw', who: m.who(s, seat) });
@@ -282,6 +294,7 @@ class OnlineMatch {
       async onPass(game, player) {
         const seat = m._seat(player);
         if (!m.computers[seat]) m._maybeSay(seat, 'pass');
+        else if (player.hand.length > 0) m._ownLuck(seat, 'blocked');
         if (!m.computers[seat]) m._logOne(seat, player.hand.length === 0
           ? 'The boneyard is empty, so you cannot draw to cover your double. You pass. Once it is covered, you have gone out.'
           : game.boneyard.length === 0
@@ -297,6 +310,7 @@ class OnlineMatch {
       },
       async onPlay(game, player, move, info) {
         const seat = m._seat(player);
+        m._ownLuck(seat, 'play');
         for (const s of m.humans) {
           const mine = s === seat;
           m._logOne(s, `${mine ? 'You played' : `${m.names[seat]} played`} ${fmt(move.tile)} on ${m._trainRef(s, move.trainId, seat)}.`);
@@ -327,6 +341,7 @@ class OnlineMatch {
       async onBuildDraw(game, player, tile) {
         const seat = m._seat(player);
         if (!m.computers[seat]) { m._logOne(seat, `You drew ${fmt(tile)}.`); m._maybeSay(seat, 'draw'); }
+        else m._ownLuck(seat, 'draw');
         m._tellLog(seat, `${m.names[seat]} draws a tile.`);
         const ev = m.noEvents();
         for (const s of m.humans) ev[s].push(s === seat ? { e: 'draw', who: 'me', tile: tile.slice() } : { e: 'draw', who: m.who(s, seat) });
@@ -335,6 +350,7 @@ class OnlineMatch {
       async onBuildPass(game, player) {
         const seat = m._seat(player);
         if (!m.computers[seat]) m._maybeSay(seat, 'pass');
+        else m._ownLuck(seat, 'blocked');
         if (!m.computers[seat]) m._logOne(seat, game.boneyard.length === 0 && !game.opening[player.id].drew
           ? 'The boneyard is empty and nothing fits the engine. You pass and a marker goes on your train.'
           : 'Nothing fits the engine. You pass and a marker goes on your train.');
@@ -356,12 +372,14 @@ class OnlineMatch {
             else if (count >= 3) m._maybeSay(seat, 'openBest');
           }
         }
+        if (m.computers[seat] && count >= 1 && count <= G.OWN_SHORT) m._ownLuck(seat, 'short', { built: count });       // a very short train of its own
         m._tellLog(seat, `${m.names[seat]} finished a train of ${word}.`);
         const ev = m.noEvents();
         for (const s of m.humans) if (s !== seat) ev[s].push({ e: 'reveal', who: m.who(s, seat) });
         m._broadcast(ev);
       },
       async onOpeningDone(game) {
+        m.unlucky = 0;                                              // the normal turns start with a clean slate
         m._say(seat => `All trains are built. ${m.startIndex === seat ? 'You play' : `${m.names[m.startIndex]} plays`} first.`);
         m._broadcast(m.noEvents());
       },
@@ -413,6 +431,32 @@ class OnlineMatch {
     this._say1(seat, kind, vars, CHAT.reactDelayMs[0] + this.chatRng() * (CHAT.reactDelayMs[1] - CHAT.reactDelayMs[0]));
     return true;
   }
+  /* The computer grumbling about ITS OWN luck (a tile that does not fit, a run of bad draws, no move at all, a very short opening train, a blocked round): it knows its own
+   * hand and the table, never yours. Everybody at the table sees the same remark, so it is decided once (by chance and the cooldown, which is shared by all of them). */
+  _sayOwn(kind, vars) {
+    if (this.talker === undefined || this.over || !this.humans.length) return false;
+    const p = CHAT.chance[kind];
+    if (p === undefined || this.chatRng() >= p) return false;
+    const now = this.now();
+    if (!CHAT.bypass[kind] && this.humans.some(h => now - this.talk[h].at < CHAT.cooldownMs)) return false;
+    this.humans.forEach(h => { this.talk[h].at = now; });
+    const name = this.names[this.talker], lead = this.talk[this.humans[0]];
+    const said = G.composeComment(kind, vars, { name, level: this.computers[this.talker].level, theme: this.theme, rng: this.chatRng,
+      nativeChance: this.nativeChance, foodChance: 0, last: lead.last, dish: null });
+    this.humans.forEach(h => { this.talk[h].last = said.text; });
+    const msg = Object.assign({ t: 'say', from: name, kind, text: said.text }, said.lang ? { lang: said.lang, trans: said.trans } : {});
+    const send = () => this.humans.forEach(h => this.push(h, msg));
+    const delay = CHAT.reactDelayMs[0] + this.chatRng() * (CHAT.reactDelayMs[1] - CHAT.reactDelayMs[0]);
+    if (delay > 0) this._later(send, delay); else send();
+    return true;
+  }
+  _ownLuck(seat, event, vars) {
+    if (seat !== this.talker) return;
+    if (event === 'play') { this.unlucky = 0; return; }              // a tile went down: the bad run is over
+    if (event === 'draw') { this.unlucky++; this._sayOwn(this.unlucky === 1 ? 'ownDraw' : 'ownDrawAgain'); }
+    else if (event === 'blocked') this._sayOwn('ownBlocked');
+    else if (event === 'short') this._sayOwn('ownShort', vars);
+  }
   /* Taking too long: a jab after 25 seconds, then another every 20 to 26 seconds, each one ruder. Not while paused. */
   _armSlow(seat) {
     if (this.talker === undefined || !this.humans.includes(seat)) return;
@@ -452,8 +496,8 @@ class OnlineMatch {
       const flipMove = mv => ({ tile: mv.tile.slice(), trainId: cid(mv.trainId), placed: mv.placed.slice(), newEnd: mv.newEnd });
       if (aw.kind === 'build') {
         const i = aw.info;
-        awaiting = { kind: 'build', moves: i.moves.map(flipMove), placed: i.placed, canUndo: !!i.canUndo, canDraw: !!i.canDraw, canDone: !!i.canDone, lastDouble: !!i.lastDouble, canBuild: !!aw.canBuild, buildCount: aw.buildCount };
-      } else if (aw.kind === 'move') awaiting = { kind: 'move', moves: aw.moves.map(flipMove) };
+        awaiting = { kind: 'build', moves: i.moves.map(flipMove), placed: i.placed, canUndo: !!i.canUndo, canDraw: !!i.canDraw, canDrawEarly: !!i.canDrawEarly, canDone: !!i.canDone, lastDouble: !!i.lastDouble, canBuild: !!aw.canBuild, buildCount: aw.buildCount };
+      } else if (aw.kind === 'move') awaiting = { kind: 'move', moves: aw.moves.map(flipMove), drewThisTurn: !!aw.drewThisTurn };
       else awaiting = { kind: aw.kind };
     }
     let modal = null;
@@ -521,7 +565,7 @@ class OnlineMatch {
         const i = aw.info;
         if (a === 'play') { const mv = findMove(i.moves); if (!mv) return bad('illegal', 'You cannot play that tile there.'); aw.resolve({ type: 'play', move: mv }); return { ok: true }; }
         if (a === 'undo') { if (!i.canUndo) return bad('illegal', 'There is nothing to take back.'); aw.resolve({ type: 'undo' }); return { ok: true }; }
-        if (a === 'draw') { if (!i.canDraw) return bad('illegal', 'You cannot draw now.'); aw.resolve({ type: 'draw' }); return { ok: true }; }
+        if (a === 'draw') { if (!i.canDraw && !i.canDrawEarly) return bad('illegal', 'You can only draw before you have put a tile down, and only once.'); aw.resolve({ type: 'draw' }); return { ok: true }; }
         if (a === 'done') { if (!i.canDone) return bad('illegal', 'Cover the double or take it back first.'); aw.resolve({ type: 'done' }); return { ok: true }; }
         if (a === 'autoBuild') {
           if (!this.allowHints) return bad('illegal', 'The host has turned hints off, so the game does not build a train for you.');
@@ -541,6 +585,13 @@ class OnlineMatch {
         return bad('bad_message', 'That is not something you can do right now.');
       }
       case 'move': {
+        if (a === 'draw') {                                   // a draw the person did not have to make (the game does not refuse it because they have a play)
+          if (this.game.openDouble) return bad('illegal', 'A double has to be covered first.');
+          if (aw.drewThisTurn) return bad('illegal', 'You have already drawn a tile this turn.');
+          if (this.game.boneyard.length === 0) return bad('illegal', 'The boneyard is empty.');
+          aw.resolve({ extraDraw: true });
+          return { ok: true };
+        }
         if (a !== 'play') return bad('bad_message', 'Play a tile.');
         const mv = findMove(aw.moves);
         if (!mv) return bad('illegal', 'You cannot play that tile there.');

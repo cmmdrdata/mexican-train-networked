@@ -208,6 +208,7 @@ const ringsAndTrains = c => { let rings = 0, trains = 0; c.screens.forEach(h => 
     ok(done, `game ${k + 1}: played to the end`);
     [host, guest].forEach(c => { const r = ringsAndTrains(c); rings += r.rings; trains += r.trains; });
     ok([host, guest].every(c => c.screens.some(h => h.includes('Double-12 online, in Middle-earth'))), `game ${k + 1}: both headers say Middle-earth`);
+    ok([host, guest].every(c => c.screens.some(h => h.includes('<main class="table art-lotr">'))), `game ${k + 1}: and both boards have the Lord of the Rings scenery`);
     host.dispatch({ type: 'onlineBack' }); guest.dispatch({ type: 'onlineBack' });
   }
   ok(rings > 0 && trains === 0, `open trains wore the golden ring on both players' screens (${rings} screens), never a toy train`);
@@ -222,6 +223,7 @@ const ringsAndTrains = c => { let rings = 0, trains = 0; c.screens.forEach(h => 
     ok(r.every(x => x.rings === 0), 'no rings');
     const subs = c => c.screens.map(h => (h.match(/<p class="sub">([^<]*)</) || [])[1]).filter(Boolean);
     ok([host, guest].every(c => subs(c).includes('Double-12 online') && !subs(c).some(x => /Middle-earth/.test(x))), 'and the usual header');
+    ok([host, guest].every(c => !c.screens.some(h => h.includes('art-lotr')) && c.screens.some(h => h.includes('<main class="table">'))), 'and the usual board (no scenery)');
     // a page that plays The Lord of the Rings against the computer still shows a classic online game as classic
     const p = makeClient(A.port);
     p.dispatch({ type: 'startGame', rounds: 1, hand: 8, level: 'easy', theme: 'lotr' });

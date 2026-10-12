@@ -77,12 +77,13 @@ const silent = { onNeedDraw() {}, onDraw() {}, onPass() {}, onPlay() {} };
   }
 
   console.log('2. the thresholds, on real play (150 deals per kind of player)');
+  let forcedRemarked = 0;                                 // forced decisions that were given a remark (there must be none)
   async function sample(policy) {
     const kinds = { great: 0, good: 0, mid: 0, poor: 0, awful: 0, forced: 0, missedOut: 0 }; let n = 0;
     for (let i = 0; i < 150; i++) {
       const g = newRound({ engine: 12 - (i % 13), handSize: 15, rng: mulberry32(95000 + i), simultaneousOpening: true });
       const me = { act: async (gm, p, info) => cpuBuildAction(gm, p, info, 'normal'), choose: async (gm, p, moves) => {
-        const chosen = policy(gm, p, moves); const k = G.commentKindFor(rateMove(gm, p, moves, chosen)); kinds[k === null ? 'mid' : k]++; n++; return chosen; } };
+        const chosen = policy(gm, p, moves); const r = rateMove(gm, p, moves, chosen); const k = G.commentKindFor(r); if (r.forced) { kinds.forced++; if (k !== null) forcedRemarked++; } else kinds[k === null ? 'mid' : k]++; n++; return chosen; } };
       const other = { act: async (gm, p, info) => cpuBuildAction(gm, p, info, 'normal'), choose: async (gm, p, m) => cpuChoose(gm, p, m, 'normal') };
       await playRound(g, i % 2, { human: me, cpu: other }, silent);
     }
@@ -98,7 +99,8 @@ const silent = { onNeedDraw() {}, onDraw() {}, onPass() {}, onPlay() {} };
   ok(rnd.poor > nrm.poor && nrm.poor > hrd.poor - 0.001, 'the worse the player, the more often they are roasted');
   // (a move is rated by the plain evaluation; Hard now also weighs what a move leaves the other player to play, so it sometimes picks a move that evaluation likes a little less)
   ok(rnd.poor > 0.25 && nrm.poor < 0.2 && hrd.poor < 0.06, 'a random player is roasted on over a quarter of real choices; Normal-level under 20%; Hard-level only rarely');
-  ok(rnd.forced / rnd.n > 0.4, 'most decisions are forced, so forced-move remarks must be rare');
+  ok(rnd.forced / rnd.n > 0.4, 'most decisions are forced (a single legal move)');
+  ok(forcedRemarked === 0, 'and not one of them earned a remark: the computer cannot see your hand, so it never says a move was your only one'); 
 
   console.log('3. which comment a rating earns');
   const R = (gap, o) => ({ n: 4, forced: false, best: 20, value: 20 - gap, gap, rank: 1, ...(o || {}) });
@@ -106,12 +108,12 @@ const silent = { onNeedDraw() {}, onDraw() {}, onPass() {}, onPlay() {} };
   ok(K(R(0)) === 'great' && K(R(0.5)) === 'great' && K(R(0.51)) === 'good', 'matching the best is "great"; just behind is "good"');
   ok(K(R(8)) === 'good' && K(R(8.01)) === null && K(R(15.99)) === null, 'a middling move earns no comment');
   ok(K(R(16)) === 'poor' && K(R(31.99)) === 'poor' && K(R(32)) === 'awful' && K(R(500)) === 'awful', 'poor from 16 points behind, awful from 32');
-  ok(K(R(0, { forced: true, n: 1 })) === 'forced' && K(R(30, { forced: true, n: 1 })) === 'forced', 'a single legal move is "forced"');
+  ok(K(R(0, { forced: true, n: 1 })) === null && K(R(30, { forced: true, n: 1 })) === null && K(R(0, { forced: true, n: 1, best: 2000, value: 0 })) === null, 'a single legal move earns no remark, whatever it was worth: the computer does not know it was forced (not praise, not scorn, not "only move")');
   ok(K(R(1000, { best: 1020, value: 20 })) === 'missedOut', 'missing a chance to go out gets its own remark');
   ok(K(R(5, { best: 1020, value: 1015 })) === 'good', 'going out anyway is not "missed"');
 
   console.log('4. the lines themselves, for every level');
-  const KINDS = ['great', 'good', 'poor', 'awful', 'forced', 'missedOut', 'slow1', 'slow2', 'slow3', 'draw', 'pass', 'openBest', 'openShort', 'openNone'];
+  const KINDS = ['great', 'good', 'poor', 'awful', 'missedOut', 'slow1', 'slow2', 'slow3', 'draw', 'pass', 'openBest', 'openShort', 'openNone', 'ownDraw', 'ownDrawAgain', 'ownBlocked', 'ownShort', 'roundBlocked'];
   const blocked = /\b(fuck\w*|shit\w*|bitch\w*|cunt|nigg\w*|fag\w*|retard\w*|whore|slut|bastard|dick|cock|piss\w*|damn\w*|hell|crap|ass|asshole|kill|die|suicide|stupid|idiot|moron|ugly|fat)\b/i;
   ok(Object.keys(G.LINES).join() === 'easy,normal,hard,expert' && G.LINES.expert === G.LINES.hard, 'a complete set of comments for every level: Easy, Medium, Hard, and Expert (who talks like Hard)');
   const everyLine = [];
@@ -122,10 +124,12 @@ const silent = { onNeedDraw() {}, onDraw() {}, onPass() {}, onPlay() {} };
     let dupes = 0, tooLong = 0, markup = 0, braces = 0;
     for (const k of Object.keys(L)) {
       if (new Set(L[k]).size !== L[k].length) dupes++;
-      L[k].forEach(line => { everyLine.push([lvl, k, line]); if (line.length > 120) tooLong++; if (/[<>&"]/.test(line)) markup++; if (/\{\w+\}/.test(line) && k !== 'openShort') braces++; });
+      L[k].forEach(line => { everyLine.push([lvl, k, line]); if (line.length > 120) tooLong++; if (/[<>&"]/.test(line)) markup++; if (/\{\w+\}/.test(line) && k !== 'openShort' && k !== 'ownShort') braces++; });
     }
     ok(dupes === 0 && tooLong === 0 && markup === 0 && braces === 0, `${lvl}: no duplicates, all under 120 characters, no HTML characters, placeholders only where they are filled`);
     ok(L.openShort.some(l => l.includes('{built}')) && L.openShort.every(l => !/\{(?!built\}|best\})\w+\}/.test(l)), `${lvl}: the opening remarks can quote your numbers, and only those`);
+    ok(L.ownShort.some(l => l.includes('{built}')) && L.ownShort.every(l => !/\{(?!built\})\w+\}/.test(l)), `${lvl}: and the computer's remarks about its own short train can quote its own number, and only that`);
+    ok(['ownDraw', 'ownDrawAgain', 'ownBlocked', 'ownShort', 'roundBlocked'].every(k => L[k].length >= 3), `${lvl}: at least three lines for each of the computer's own-luck kinds`);
   }
   ok(everyLine.length > 200, `${everyLine.length} lines in all`);
   const bad = everyLine.filter(([, , l]) => blocked.test(l));
@@ -239,12 +243,11 @@ const silent = { onNeedDraw() {}, onDraw() {}, onPass() {}, onPlay() {} };
   {
     const f = await fresh((A, a) => A.kind === 'move' && A.moves.length === 1);
     ok(!!f, 'found a forced move');
-    const { a, A } = f; a.ctl.rng = 0;
+    const { a, A } = f; a.ctl.rng = 0;                                 // (every ordinary comment would pass the dice)
     play(a, A, A.moves[0]);
-    for (let i = 0; i < 20; i++) await tick();
-    a.timer.advance(1200);
-    const b = bubble(a.root.innerHTML);
-    ok(b && LN.forced.includes(unescape(b.text)), 'a forced move gets a sarcastic remark: ' + (b && b.text));
+    const seen = new Set();
+    for (let i = 0; i < 40; i++) { await tick(); a.timer.advance(300); const c = a.app.state.comment; if (c) seen.add(c.kind); }
+    ok(![...seen].some(k => ['great', 'good', 'poor', 'awful', 'forced', 'missedOut'].includes(k)), 'a forced move gets no remark about the move at all: the computer cannot see your hand, so it does not know it was your only one (remarks about its OWN luck may follow: ' + [...seen].join(', ') + ')');
   }
   // (c) chance and cooldown
   {

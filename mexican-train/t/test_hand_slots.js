@@ -129,7 +129,7 @@ const show = cells => cells.map(k => (k === null ? '_' : k)).join(' ');
       let prev = null, steps = 0, moved = 0, widths = new Set(), holesSeen = 0, drawsIntoHole = 0, maxHoles = 0;
       for (let i = 0; i < 400 && !c.S.modal; i++) {
         const a = c.S.awaiting;
-        if (a && a.kind === 'move') c.d({ type: 'selectTile', key: key(a.moves[0].tile) });
+        if (a && a.kind === 'move') { const m = a.moves[0]; c.d({ type: 'selectTile', key: key(m.tile) }); if (c.S.awaiting === a) c.d({ type: 'playOn', train: m.trainId }); }
         else if (a && a.kind === 'draw') c.d({ type: 'draw' });
         else if (a && a.kind === 'build') c.d({ type: a.canBuild ? 'autoBuild' : a.canDone ? 'endBuild' : 'undoTile' });
         await wait(3);
