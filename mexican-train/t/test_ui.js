@@ -457,12 +457,13 @@ async function waitFor(pred, label) {
 
   console.log('L. the click sound');
   {
-    // one clack per domino placed, by either player, in the opening and in normal turns
-    let placements = 0, clacks = 0;
+    // one clack per domino placed, by either player, in the opening and in normal turns, and one for each tile the computer takes back (it changes its mind while building)
+    let placements = 0, clacks = 0, takenBack = 0;
     for (let seed = 1; seed <= 12; seed++) {
       const q = makeApp(seed);
       let n = 0;
-      const ob = q.app.ui.onBuildPlay, op = q.app.ui.onPlay;
+      const ob = q.app.ui.onBuildPlay, op = q.app.ui.onPlay, ou = q.app.ui.onBuildUndo;
+      q.app.ui.onBuildUndo = async (game, player, tile) => { if (player.id !== 'human') { n++; takenBack++; } return ou(game, player, tile); };      // (the person's own take-backs make no sound)
       q.app.ui.onBuildPlay = async (...a) => { n++; return ob(...a); };
       q.app.ui.onPlay = async (...a) => { n++; return op(...a); };
       const pk = mulberry32(seed + 500);
@@ -488,10 +489,10 @@ async function waitFor(pred, label) {
         }
       }
       placements += n; clacks += q.snd.clacks;
-      ok(q.snd.clacks === n, `seed ${seed}: exactly one clack per placement (${q.snd.clacks} vs ${n})`);
+      ok(q.snd.clacks === n, `seed ${seed}: exactly one clack per placement, and per tile the computer takes back (${q.snd.clacks} vs ${n})`);
     }
-    console.log(`   ${placements} placements -> ${clacks} clacks`);
-    ok(placements > 500 && placements === clacks, 'clacks match placements across 12 matches (human + computer, opening + normal turns)');
+    console.log(`   ${placements} placements and computer take-backs (${takenBack} of them take-backs) -> ${clacks} clacks`);
+    ok(placements > 500 && takenBack > 10 && placements === clacks, 'clacks match placements and computer take-backs across 12 matches (human + computer, opening + normal turns)');
 
     // nothing for taking a tile back, drawing, or passing
     let q = null;

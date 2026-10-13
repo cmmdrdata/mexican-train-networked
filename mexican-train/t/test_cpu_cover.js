@@ -87,7 +87,8 @@ async function cpuTurn(G, setup) {
       else if (A.kind === 'build') { if (A.canDraw) a.app.dispatch({ type: 'draw' }); else if (A.canBuild) a.app.dispatch({ type: 'autoBuild' }); else if (A.canDone) a.app.dispatch({ type: 'endBuild' }); else a.app.dispatch({ type: 'undoTile' }); }
       else { const m = A.moves[0]; a.app.dispatch({ type: 'selectTile', key: key(m.tile) }); if (a.S.awaiting === A) a.app.dispatch({ type: 'playOn', train: m.trainId }); }
     }
-    placeWaits = sleeps.filter(ms => ms === PLACE).length;
+    const replaceWait = G.PACE.replace ? (G.PACE.replace[0] + G.PACE.replace[1]) / 2 : null;      // (a tile laid straight after the computer changed its mind has the quicker re-lay wait: still a thinking wait; at this test's random value, 0.5, it is the midpoint)
+    placeWaits = sleeps.filter(ms => ms === PLACE || ms === replaceWait).length;
     return { cpuOpening, cpuPlays, covers, placeWaits, finished: !!(a.S.modal && a.S.modal.type === 'final') };
   }
   let tot = { opening: 0, plays: 0, covers: 0, waits: 0, oldWaits: 0, oldPlays: 0 }, allFinished = true;

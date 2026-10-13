@@ -591,7 +591,8 @@ const R = (left, top, width, height) => ({ left, top, width, height });
     ok(/scrollbar-width:\s*none/.test(rule('.scroller')) && /display:\s*none/.test(rule('.scroller::-webkit-scrollbar')), 'scroll bars are hidden (Firefox and Chrome/Safari/Edge)');
     ok(/overflow-x:\s*auto/.test(rule('.scroller')), 'trains can still be moved by swiping or a trackpad');
     ok(/mask-image/.test(rule('.scroller.more-left')), 'a soft fade shows when older tiles are out of sight');
-    ok(!/scrollbar-color|scrollbar-width:\s*thin/.test(css), 'no leftover visible scroll bar styling');
+    ok(!/scrollbar-color|scrollbar-width:\s*thin/.test(css.replace(rule('.log'), '')), 'no leftover visible scroll bar styling anywhere but the history panel');
+    ok(/scrollbar-width:\s*thin/.test(rule('.log')) && /overflow-y:\s*auto/.test(rule('.log')), '(the history panel, which scrolls, has a thin scroll bar so that you can see that it does)');
 
     const sc = ['human', 'cpu', 'mexican'].map(id => { const e = new FakeEl('div'); e.dataset.train = id; e.scrollLeft = 0; e.scrollWidth = 1800; return e; });
     const root = { _h: '', set innerHTML(v) { this._h = v; }, get innerHTML() { return this._h; }, querySelectorAll: sel => (sel === '.scroller' ? sc : []), querySelector() { return { focus() {} }; }, ownerDocument: {}, addEventListener() {} };

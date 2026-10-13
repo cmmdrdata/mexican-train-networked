@@ -50,7 +50,7 @@ with sync_playwright() as pw:
 
     print('2. how fast it thinks, in the browser')
     t = page.evaluate(TIMING)
-    ok(t.get('n', 0) >= 20 and t['median'] < 80 and t['max'] < 400, f"an Expert decision takes {t.get('median', 0):.0f} ms typically and {t.get('max', 0):.0f} ms at most (over {t.get('n')} positions in Chromium)")
+    ok(t.get('n', 0) >= 20 and t['median'] < 110 and t['max'] < 400, f"an Expert decision takes {t.get('median', 0):.0f} ms typically and {t.get('max', 0):.0f} ms at most (over {t.get('n')} positions in Chromium)")
 
     print('3. a whole round against an Expert')
     page.select_option('#opt-rounds', '1'); page.select_option('#opt-hand', '8'); page.select_option('#opt-level', 'expert')

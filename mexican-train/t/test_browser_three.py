@@ -89,7 +89,7 @@ with sync_playwright() as pw:
     ok(sp.is_disabled('[data-action="hostGame"]') and 'Reload this page' in sp.inner_text('.dialog'), 'a page that is behind its server says so on the Host screen, and Create game cannot be pressed')
     sc.close()
 
-    LOGCHK = "() => { const norm = h => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent; }; const S = window.MexicanTrainApp.state; const all = Array.from(document.querySelectorAll('.log li')); const li = all[0]; return li ? { top: li.classList.contains('latest') && norm(li.innerHTML) === norm(S.log[S.log.length - 1]), n: all.length, latestCount: document.querySelectorAll('.log li.latest').length, order: all.map(x => norm(x.innerHTML)).join('|') === S.log.slice(-5).reverse().map(norm).join('|') } : null; }"
+    LOGCHK = "() => { const norm = h => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent; }; const S = window.MexicanTrainApp.state; const all = Array.from(document.querySelectorAll('.log li')); const li = all[0]; return li ? { top: li.classList.contains('latest') && norm(li.innerHTML) === norm(S.log[S.log.length - 1]), n: all.length, latestCount: document.querySelectorAll('.log li.latest').length, order: all.map(x => norm(x.innerHTML)).join('|') === S.log.slice(-600).reverse().map(norm).join('|') } : null; }"
     log_bad = []; log_seen = [0]
 
     a = new_page('Ann'); a.goto(base); a.click('[data-action="openHost"]')
@@ -197,7 +197,7 @@ with sync_playwright() as pw:
     for p in (a, b): p.wait_for_function("() => document.querySelector('.dialog') && document.querySelector('.dialog').innerText.includes('Cat has left, so there is nobody to play again with.')", timeout=8000)
     ok(a.query_selector('[data-action="playAgainOnline"]') is None and b.query_selector('[data-action="playAgainOnline"]') is None and 'Back to the menu' in dlg(a), 'Cat goes back to the menu: Ann and Ben are told she has left, and can only go back to the menu')
     a.screenshot(path='/tmp/shots/three_again_gone.png')
-    ok(log_seen[0] >= 6 and not log_bad, f'in all three windows, all through the game, the messages at the bottom had the newest on top and the older ones below it ({log_seen[0]} looks)' + (f': {log_bad[:1]}' if log_bad else ''))
+    ok(log_seen[0] >= 6 and not log_bad, f'in all three windows, all through the game, the history of the game at the bottom had the newest on top and all the older ones below it ({log_seen[0]} looks)' + (f': {log_bad[:1]}' if log_bad else ''))
     ok(errors == [], 'no JavaScript errors' + (': ' + '; '.join(errors[:3]) if errors else ''))
     browser.close()
 srv.terminate()

@@ -33,13 +33,13 @@ async function startServer(opts) {
 }
 function makeClient(port, opts) {
   opts = opts || {};
-  const c = { screens: [], flights: [], clacks: 0, turns: 0, turnAt: [], store: {}, port };
+  const c = { screens: [], flights: [], clacks: 0, undos: 0, turns: 0, turnAt: [], store: {}, port };
   const root = { _h: '', set innerHTML(v) { this._h = v; c.screens.push(v); }, get innerHTML() { return this._h; }, querySelectorAll() { return []; }, querySelector() { return { focus() {} }; }, ownerDocument: {}, addEventListener() {} };
   const R0 = { left: 10, top: 10, width: 40, height: 20 };
   const fx = { capture: () => ({ from: R0 }), land: (tok, spec) => c.flights.push(['play', spec]), captureDraw: () => ({ from: R0 }), landDraw: (tok, spec) => c.flights.push(['draw', spec]), reapply() {}, cancelAll() {} };
   const Base = opts.WebSocket || WebSocket;
   c.statesReceived = 0;
-  const WS = function (url) { const s = opts.factory ? opts.factory(url, Base) : new Base(url); if (s.addEventListener) s.addEventListener('message', e => { try { if (JSON.parse(e.data).t === 'state') c.statesReceived++; } catch (x) { /* ignore */ } }); return s; };
+  const WS = function (url) { const s = opts.factory ? opts.factory(url, Base) : new Base(url); if (s.addEventListener) s.addEventListener('message', e => { try { const m = JSON.parse(e.data); if (m.t === 'state') { c.statesReceived++; (m.events || []).forEach(ev => { if (ev && ev.e === 'undo' && ev.who !== 'me') c.undos++; }); } } catch (x) { /* ignore */ } }); return s; };
   WS.prototype = Base.prototype;
   const app = G.createApp({ root, rng: mulberry32(1), sleep: async () => {}, reducedMotion: false, now: () => Date.now(), chatRng: () => 1, nativeChance: 0, foodChance: 0,
     storage: { get: k => (k in c.store ? c.store[k] : null), set: (k, v) => { c.store[k] = v; } }, fetch: opts.fetch || globalThis.fetch, infoUrl: `http://127.0.0.1:${port}/info`, WebSocket: WS, fx, sound: { unlock() {}, clack() { c.clacks++; }, turn() { c.turns++; c.turnAt.push(c.S.online ? c.S.online.applied : 0); } }, defaultServer: `127.0.0.1:${port}` });
@@ -175,7 +175,7 @@ async function lobby(port, settings, level) {
     }
     ok(oppFlights(host).every(f => f[1].hidden === (f[1].placed[0] < 0)) && oppFlights(guest).every(f => f[1].hidden === (f[1].placed[0] < 0)), 'and were face down exactly when their numbers were withheld');
     const plays = c => c.flights.filter(f => f[0] === 'play').length;
-    ok(plays(host) === plays(guest) && host.clacks === plays(host) && guest.clacks === plays(guest), `all ${plays(host)} tile placements were animated and clicked on both screens: nobody's play was missed, the computer's included`);
+    ok(plays(host) === plays(guest) && host.undos === guest.undos && host.clacks === plays(host) + host.undos && guest.clacks === plays(guest) + guest.undos, `all ${plays(host)} tile placements were animated and clicked on both screens (and each of the ${host.undos} tiles the computer took back, changing its mind, clicked too): nobody's play was missed, the computer's included`);
     ok(host.flights.filter(f => f[0] === 'draw').length === guest.flights.filter(f => f[0] === 'draw').length, '(and every draw, by anyone, was seen by both)');
     const eh = turnsOf(A.srv, code, 0), eg = turnsOf(A.srv, code, 1);
     if (host.turns !== eh || guest.turns !== eg) {

@@ -131,9 +131,9 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px
 .cpu-hand { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; min-width: 0; }
 .who { font-weight: 700; }
 .backs { display: inline-flex; flex-wrap: wrap; gap: 3px; max-width: 34rem; }
-.back {
+.back {                                       /* the back of a domino: the off-white of a blank tile's face, no line, no dot */
   display: inline-block; width: 15px; height: 26px; border-radius: 3px;
-  background: linear-gradient(#2f7468, #1e5149); border: 1px solid #0a2c27;
+  background: var(--bone); border: 0; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 .count { color: var(--muted); font-size: 0.9rem; }
 .count b { color: var(--text); font-variant-numeric: tabular-nums; }
@@ -148,7 +148,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px
 .boneyard .stack { position: relative; width: 30px; height: 32px; }
 .boneyard .stack i {
   position: absolute; width: 18px; height: 30px; border-radius: 3px;
-  background: linear-gradient(#2f7468, #1e5149); border: 1px solid #0a2c27;
+  background: var(--bone); border: 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);       /* the shadows tell the overlapping backs apart */
 }
 .boneyard .stack i:nth-child(1) { left: 0; top: 2px; transform: rotate(-9deg); }
 .boneyard .stack i:nth-child(2) { left: 6px; top: 1px; transform: rotate(2deg); }
@@ -271,9 +271,14 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px
 .tile-btn.fresh:not(.selected) { box-shadow: 0 0 0 2px rgba(255, 243, 196, 0.6); }
 .tile-btn:disabled { color: inherit; }
 
-.log { padding: 0.7rem 0.2rem 0; min-height: 7.2rem; }
-.log ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.15rem; font-size: 0.9rem; color: var(--muted); }
+.log {                                           /* the game's history: the same size as before, and it scrolls (mouse wheel, touch, or the keyboard once it has the focus) */
+  padding: 0.7rem 0.2rem 0; height: 7.2rem; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: rgba(246, 240, 224, 0.4) transparent;
+}
+.log:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; border-radius: 6px; }
+.log ol { margin: 0; padding: 0 0.4rem 0.5rem 0; list-style: none; display: grid; gap: 0.15rem; font-size: 0.9rem; color: var(--muted); }
 .log li.latest { color: var(--text); }
+.log li.round { color: var(--text); font-weight: 700; margin-top: 0.3rem; padding-top: 0.3rem; border-top: 1px solid var(--line); }   /* where a round begins */
 
 /* dominoes flying onto the board (the copy lives on <body>, above everything) */
 .flying { position: fixed; z-index: 50; margin: 0; pointer-events: none; will-change: transform, filter; }
@@ -357,6 +362,8 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
 }
 .dialog.wide { width: min(46rem, 100%); }
+/* The end-of-round dialog: its tiles are the ordinary off-white ones, on the deep green of the felt (from the game's own palette), so that they stand out; its text turns light to match. */
+.dialog.roundend { --dlg-bg: var(--felt-deep); --dlg-ink: var(--bone); --dlg-muted: #b9d4cc; --dlg-line: rgba(246, 240, 224, 0.3); --dlg-focus: #fff3c4; }
 .dialog :focus-visible { outline-color: var(--dlg-focus); }
 .dialog h2 { margin: 0 0 0.6rem; font: 700 1.7rem/1.15 var(--display); }
 .dialog p { margin: 0 0 0.9rem; }
@@ -390,6 +397,10 @@ select option { color: #1b2523; background: #fff; }
 .mini .none { color: var(--dlg-muted); font-size: 0.9rem; }
 .pts { display: grid; justify-items: end; line-height: 1.1; }
 .pts b { font: 700 1.35rem/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.pts b[data-count], .tot b[data-count] { display: inline-block; transition: transform 0.07s ease-out; }      /* a total counting up: tabular digits (so it does not jiggle) and a little swell while it counts */
+.pts b.counting { transform: scale(1.14); transform-origin: right center; }
+.tot b.counting { transform: scale(1.1); }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .pts span { font-size: 0.78rem; color: var(--dlg-muted); }
 .final { display: flex; gap: 2rem; margin: 0.4rem 0 0.8rem; }
 .final .tot b { font-size: 2.6rem; }
@@ -471,7 +482,7 @@ select option { color: #1b2523; background: #fff; }
 <div id="app"></div>
 <noscript>Mexican Train needs JavaScript turned on to run.</noscript>
 <script>
-window.MT_BUILD = "39b110766b";
+window.MT_BUILD = "d5fcc896ba";
 (function (global) {
   'use strict';
 
@@ -708,17 +719,19 @@ window.MT_BUILD = "39b110766b";
         const mv = moves.find(m => sameTile(m.tile, action.move.tile) && m.trainId === action.move.trainId);
         if (!mv) throw new Error('illegal tile in the opening');
         applyMove(game, player, mv);
-        st.lastDrew = null;
+        st.lastDrew = null; st.last = 'play'; st.lastWobble = false;
         if (ui.onBuildPlay) await ui.onBuildPlay(game, player, mv);
       } else if (action && action.type === 'undo' && info.canUndo) {
         const tile = undoLast(game, player);
-        st.lastDrew = null;
+        st.lastDrew = null; st.last = 'undo'; st.lastWobble = !!action.wobble;       // (was it a change of mind, or the takeback of a double that could not be covered?)
+        st.undos = (st.undos || 0) + 1;                            // tiles taken back, for any reason
+        if (action.wobble) st.wobbled = (st.wobbled || 0) + 1;       // ... and those the computer took back because it changed its mind
         if (ui.onBuildUndo) await ui.onBuildUndo(game, player, tile);
       } else if (action && action.type === 'draw' && (canDraw || canDrawEarly)) {
         const tile = game.boneyard.pop();
         player.hand.push(tile);
         noteDraw(game, player);
-        st.drew = true;
+        st.drew = true; st.last = 'draw'; st.lastWobble = false;
         st.lastDrew = tile;
         if (ui.onBuildDraw) await ui.onBuildDraw(game, player, tile);
       } else if (action && action.type === 'done' && canDone) {
@@ -1065,16 +1078,33 @@ window.MT_BUILD = "39b110766b";
       const cover = info.moves[0];
       return cover ? { type: 'play', move: cover } : { type: 'undo' };
     }
-    if (info.placed > 0 && game.rng() < EASY_STOP) return { type: 'done' };
+    if (info.placed > 0 && !game.opening[player.id].lastWobble && game.rng() < EASY_STOP) return { type: 'done' };      // (not straight after a change of mind: it carries on, so changing its mind does not make its train shorter)
     if (!info.moves.length) return { type: 'done' };
     return { type: 'play', move: info.moves[Math.floor(game.rng() * info.moves.length)] };
   }
 
-  /* What the computer does in the opening: lay down its longest chain one tile at a time,
+  /* While it builds, the computer changes its mind: it takes the tile it just laid back, one at a time, and goes on (usually to lay the same one again, or another),
+   * until it finally finishes. How much depends on the level: Easy dithers most, Medium less, Hard less still, Expert least. Each step it takes the last tile back with
+   * chance `p`, never twice running, and at most `max` times in an opening. What it finishes with is as good as before (it is the same plan, carried out with some second
+   * thoughts on the way). The "chance" is decided from the position itself (its hand, its train and how many times it has taken one back), not from the game's random
+   * numbers, so it never disturbs the deals or anything else that is decided by them, and the same position always gives the same answer. */
+  const WOBBLE = { easy: { p: 0.6, max: 5 }, normal: { p: 0.22, max: 3 }, hard: { p: 0.11, max: 2 }, expert: { p: 0.05, max: 1 } };
+  function strHash(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function secondThoughts(game, player, info, level) {
+    const w = WOBBLE[level], st = game.opening && game.opening[player.id];
+    if (!w || !st || !(info.placed > 0) || !info.canUndo || st.last === 'undo' || (st.wobbled || 0) >= w.max) return null;
+    const train = game.trains[player.id];
+    const roll = mulberry32(strHash(player.hand.map(key).join(',') + '|' + train.tiles.map(key).join(',') + '|' + (st.undos || 0) + '|' + game.boneyard.length))();
+    return roll < w.p ? { type: 'undo', wobble: true } : null;
+  }
+
+  /* What the computer does in the opening: lay down its longest chain one tile at a time (with some second thoughts on the way: see WOBBLE),
    * then say it is done. (It never ends on an uncovered double, so Done is always allowed.) */
   function cpuBuildAction(game, player, info, level) {
-    if (level === 'easy') return casualBuildAction(game, player, info);
     if (info.canDraw) return { type: 'draw' };
+    const again = secondThoughts(game, player, info, level);
+    if (again) return again;
+    if (level === 'easy') return casualBuildAction(game, player, info);
     const train = game.trains[player.id];
     const last = train.tiles[train.tiles.length - 1];
     const plan = longestChain(player.hand, train.end, !!last && isDouble(last));
@@ -1084,6 +1114,73 @@ window.MT_BUILD = "39b110766b";
     }
     if (info.canDone) return { type: 'done' };
     return { type: 'undo' };
+  }
+
+  /* ================================ THE GAME LOG ================================ */
+  /* A record of a game, for debugging: the boneyard and every player's hand as dealt, then every domino drawn and every play, in order, and how each round ended. The
+   * recorder turns what the engine reports (its hooks) into events and hands each one to `emit` (through a round buffer, so that nothing leaves memory until its round is
+   * over: see createRoundBuffer; the page then sends them to the server, which writes them to a file; a game on the server writes them itself). Every event has n (1, 2, 3, ...) and t (milliseconds since the log began). Tiles are written as "a-b", the way they lie in
+   * a hand; the boneyard is listed in the order it is drawn from the END of the list. node tools/check_gamelog.js replays a log and says whether it adds up. */
+  const LOG_HOOKS = ['onNeedDraw', 'onDraw', 'onPass', 'onPlay', 'onBuildPlay', 'onBuildUndo', 'onBuildDraw', 'onBuildPass', 'onBuildDone', 'onOpeningDone'];
+  function createRecorder(emit, clock) {
+    clock = clock || Date.now;
+    const t0 = clock();
+    let n = 0, round = 0;
+    const out = ev => { try { emit(Object.assign({ n: ++n, t: clock() - t0 }, ev)); } catch (e) { /* the log can never be allowed to stop the game */ } };
+    const handsOf = game => { const h = {}; game.players.forEach(p => { h[p.id] = p.hand.map(key); }); return h; };
+    return {
+      /* once, first: what is being played (rounds, hand size, who, at what level ...), as the caller describes it */
+      game(meta) { out(Object.assign({ e: 'game', version: 1 }, meta)); },
+      /* a round has been dealt: the engine, who builds first, the boneyard in full and every hand */
+      round(game, r, firstIndex) {
+        round = r + 1;
+        out({ e: 'round', round, engine: game.engine, first: game.players[firstIndex] ? game.players[firstIndex].id : null, players: game.players.map(p => ({ id: p.id, name: p.name })),
+          boneyard: game.boneyard.map(key), hands: handsOf(game) });
+      },
+      onBuildDraw(game, player, tile) { out({ e: 'draw', round, phase: 'opening', player: player.id, tile: key(tile), boneyard: game.boneyard.length }); },
+      onDraw(game, player, tile) { out({ e: 'draw', round, phase: 'turn', player: player.id, tile: key(tile), boneyard: game.boneyard.length }); },
+      onBuildPlay(game, player, mv) { out({ e: 'play', round, phase: 'opening', player: player.id, tile: key(mv.tile), placed: key(mv.placed || mv.tile), train: mv.trainId, end: mv.newEnd, left: player.hand.length }); },
+      onPlay(game, player, mv, info) {
+        const ev = { e: 'play', round, phase: 'turn', player: player.id, tile: key(mv.tile), placed: key(mv.placed || mv.tile), train: mv.trainId, end: mv.newEnd, left: player.hand.length };
+        if (info) { if (info.doubleOpened) ev.double = 'opened'; if (info.doubleSatisfied) ev.double = 'covered'; if (info.lastTileDouble) ev.lastTileDouble = true; }
+        out(ev);
+      },
+      onBuildUndo(game, player, tile) { out({ e: 'undo', round, player: player.id, tile: key(tile), train: player.id, left: player.hand.length }); },        // (a tile taken back from the end of the train it was laid on)
+      onBuildDone(game, player, count) { out({ e: 'done', round, player: player.id, tiles: count }); },
+      onBuildPass(game, player) { out({ e: 'pass', round, phase: 'opening', player: player.id, boneyard: game.boneyard.length }); },
+      onPass(game, player) { out({ e: 'pass', round, phase: 'turn', player: player.id, boneyard: game.boneyard.length }); },
+      onOpeningDone() { out({ e: 'openingDone', round }); },
+      /* the round is over: who won, the pips left in each hand and what was left in them, and the totals so far (with this round's pips added) */
+      roundEnd(game, result, totals) {
+        const pips = {}; game.players.forEach(p => { pips[p.id] = handPips(p); });
+        out({ e: 'roundEnd', round, winner: result && result.winner ? result.winner.id : null, blocked: !!(result && result.blocked), tie: !!(result && result.tie), pips, hands: handsOf(game), totals: Object.assign({}, totals || {}) });
+      },
+      gameEnd(totals, how) { out({ e: 'gameEnd', how: how || 'finished', totals: Object.assign({}, totals || {}) }); },
+    };
+  }
+  /* NOTHING ABOUT A ROUND IS WRITTEN WHILE IT IS BEING PLAYED. The log holds the boneyard and every hand, so a log that grew during a round would show anyone who could read
+   * it what the others hold and what will be drawn. The buffer keeps a round's events in memory and lets them go, all together and in order, only when the round has ended
+   * (its "roundEnd" event) or the game has ended (its "gameEnd" event: finished, or stopped, which includes an error: that round is over and nobody can play on in it).
+   * `sink` is given a list of events each time. The first round's list begins with the "game" event. */
+  function createRoundBuffer(sink) {
+    let held = [];
+    function flush() {
+      if (!held.length) return;
+      const out = held; held = [];
+      try { sink(out); } catch (e) { /* the log can never be allowed to stop the game */ }
+    }
+    return { push(ev) { held.push(ev); if (ev && (ev.e === 'roundEnd' || ev.e === 'gameEnd')) flush(); }, flush, get pending() { return held.length; } };
+  }
+  /* The engine's hooks with the recorder listening first: whatever the real hooks do, they still do. */
+  function recordingUi(ui, rec) {
+    const wrapped = Object.create(ui);
+    LOG_HOOKS.forEach(h => {
+      wrapped[h] = async (...a) => {
+        try { if (rec[h]) rec[h](...a); } catch (e) { /* never stops the game */ }
+        return ui[h] ? ui[h].apply(ui, a) : undefined;
+      };
+    });
+    return wrapped;
   }
 
   /* ================================ SOUND ================================= */
@@ -1153,8 +1250,23 @@ window.MT_BUILD = "39b110766b";
     return out;
   }
 
+  /* The click of a score counting up: much shorter and drier than a domino's clack, higher, and quieter, so a run of them reads as a counter ticking over
+   * and not as tiles being played. A burst of noise and a ring at about 2.6 kHz (and an octave above), 16 milliseconds long, fading to nothing. */
+  function renderTick(sampleRate) {
+    const n = Math.floor(sampleRate * 0.016), out = new Float32Array(n);
+    let seed = 20240607;
+    for (let i = 0; i < n; i++) {
+      const t = i / sampleRate;
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const noise = (seed / 4294967296) * 2 - 1;
+      const env = Math.min(1, t / 0.0004) * Math.exp(-t / 0.0028) * Math.min(1, (n - 1 - i) / (sampleRate * 0.002));   // a quick attack, a fast fade, nothing left at the end
+      out[i] = env * (0.5 * noise + 0.85 * Math.sin(2 * Math.PI * 2600 * t) + 0.3 * Math.sin(2 * Math.PI * 5200 * t)) / 1.65;   // never above 1
+    }
+    return out;
+  }
+
   function createSound(AudioCtor, rng) {
-    let ctx = null, buffers = [], turnBuffer = null;
+    let ctx = null, buffers = [], turnBuffer = null, tickBuffer = null;
     rng = rng || Math.random;
     function unlock() {
       if (!AudioCtor) return;
@@ -1170,6 +1282,9 @@ window.MT_BUILD = "39b110766b";
           const tdata = renderTurn(ctx.sampleRate);
           turnBuffer = ctx.createBuffer(1, tdata.length, ctx.sampleRate);
           turnBuffer.getChannelData(0).set(tdata);
+          const kdata = renderTick(ctx.sampleRate);
+          tickBuffer = ctx.createBuffer(1, kdata.length, ctx.sampleRate);
+          tickBuffer.getChannelData(0).set(kdata);
         }
         if (ctx.state === 'suspended' && ctx.resume) ctx.resume();
         // iOS only starts audio from inside a gesture: play one silent sample right here
@@ -1205,7 +1320,22 @@ window.MT_BUILD = "39b110766b";
         src.start((ctx.currentTime || 0) + 0.12);
       } catch (e) { /* ignore */ }
     }
-    return { unlock, clack, turn };
+    // one click of a score counting up; `progress` (0 to 1: how far along the count is) nudges the pitch up a little as the number climbs
+    function tick(progress) {
+      if (!ctx || ctx.state !== 'running' || !tickBuffer) return;
+      try {
+        const src = ctx.createBufferSource();
+        src.buffer = tickBuffer;
+        const p = Math.min(1, Math.max(0, Number(progress) || 0));
+        if (src.playbackRate) src.playbackRate.value = 0.92 + 0.3 * p;
+        const gain = ctx.createGain();
+        gain.gain.value = 0.3;
+        src.connect(gain);
+        gain.connect(ctx.destination);
+        src.start(0);
+      } catch (e) { /* ignore */ }
+    }
+    return { unlock, clack, turn, tick };
   }
 
   /* =============================== TILE ART =============================== */
@@ -1280,17 +1410,14 @@ window.MT_BUILD = "39b110766b";
   }
 
 
-  /* A face-down tile: what you see of the opponent's train while they are still building. */
+  /* A face-down tile: what you see of the opponent's train while they are still building. The back of a domino is the same off-white as the face of a blank tile (BONE): nothing is drawn on it. */
   function tileBackSVG(orient, cls, idx) {
     const horiz = orient !== 'v';
     const w = horiz ? 204 : 104, h = horiz ? 104 : 204;
     return `<svg class="tile ${horiz ? 'h' : 'v'} back${cls ? ' ' + cls : ''}" viewBox="0 0 ${w} ${h}" role="img"` +
       `${idx !== undefined ? ' data-idx="' + idx + '"' : ''} ` +
       `aria-label="face-down tile" focusable="false">` +
-      `<rect x="2" y="2" width="${w - 4}" height="${h - 4}" rx="12" fill="#2a6a60" stroke="#123d36" stroke-width="3"/>` +
-      `<rect x="13" y="13" width="${w - 26}" height="${h - 26}" rx="8" fill="none" stroke="#8fc2b6" stroke-opacity="0.55" ` +
-      `stroke-width="2.5" stroke-dasharray="7 6"/>` +
-      `<circle cx="${w / 2}" cy="${h / 2}" r="5" fill="${BRASS}" stroke="#8a6a24" stroke-width="1"/></svg>`;
+      `<rect x="2" y="2" width="${w - 4}" height="${h - 4}" rx="12" fill="${BONE}"/></svg>`;       // the back of a domino: the same off-white as the face of a blank tile; no line, no dot
   }
 
   /* ================================ MOTION ================================ */
@@ -1566,6 +1693,8 @@ window.MT_BUILD = "39b110766b";
 
   // gap (in evaluation points) below the best available move
   const RATING = { great: 0.5, good: 8, poor: 16, awful: 32 };
+  /* The score counting up in the round-end and final dialogs: a click for each step, one player after another. */
+  const COUNT_UP = { startMs: 450, tickMs: 35, maxTicks: 28, gapMs: 260 };       // wait for the dialog to appear; between clicks; at most this many clicks for one player (bigger scores step by more); between players
   const OWN_SHORT = 2;                                  // a train of this many tiles or fewer is "very short" for the computer to grumble about
 
   /* Which kind of comment (if any) a rated move deserves. */
@@ -3017,10 +3146,15 @@ window.MT_BUILD = "39b110766b";
     </section>`;
   }
 
+  /* The game's history: every message of the game so far (not just the last few), the newest on top, the oldest further down, in a panel of a fixed size that
+   * scrolls (and can be scrolled from the keyboard: it takes the focus). The start of each round is picked out. The most that is drawn is LOG_SHOWN lines. */
+  const LOG_SHOWN = 600;
   function viewLog(S) {
-    const lines = S.log.slice(-5).reverse();                 // the newest message on top, the oldest at the bottom
-    return `<section class="log" aria-label="Recent moves, newest first"><ol>${lines.map((l, i) =>
-      `<li${i === 0 ? ' class="latest"' : ''}>${l}</li>`).join('')}</ol></section>`;
+    const lines = S.log.slice(-LOG_SHOWN).reverse();
+    return `<section class="log" role="region" tabindex="0" aria-label="Game history, newest first. Scroll to see earlier moves."><ol>${lines.map((l, i) => {
+      const cls = (i === 0 ? 'latest ' : '') + (/^Round \d+:/.test(l) ? 'round' : '');
+      return `<li${cls.trim() ? ` class="${cls.trim()}"` : ''}>${l}</li>`;
+    }).join('')}</ol></section>`;
   }
 
   const RULES_HTML = `
@@ -3088,6 +3222,10 @@ window.MT_BUILD = "39b110766b";
       .map(t => tileSVG(t[0], t[1], { orient: 'h', style })).join('');
   }
 
+  /* The number to show for a total in the round-end or final dialog: how far the count has got (index i, the nth player of the dialog), or the real number when
+   * nothing is counting. (The real number is also written, for a screen reader, in a visually hidden span: it should not hear the count.) */
+  const countShown = (S, i, real) => (S.count && S.count.shown && S.count.shown[i] !== undefined ? S.count.shown[i] : real);
+
   function viewRoundEnd(S) {
     const m = S.modal;
     const cpu = cpuName(S);
@@ -3095,13 +3233,13 @@ window.MT_BUILD = "39b110766b";
     if (m.blocked) title = m.winnerId ? (m.winnerId === 'human' ? 'Blocked, and you hold fewer pips' : `Blocked, and ${nameOf(S, m.winnerId)} holds fewer pips`) : 'Blocked, and it is a tie';
     else if (m.tie) title = tableIds(S).length === 2 ? 'You both played every tile' : 'More than one of you played every tile';
     else title = m.winnerId === 'human' ? 'You went out first' : `${nameOf(S, m.winnerId)} went out first`;
-    const rows = m.rows.map(r => `<div class="row">
+    const rows = m.rows.map((r, i) => `<div class="row">
         <div class="who">${r.name}</div>
         <div class="mini">${miniTiles(r.hand, S.opts.style)}</div>
         <div class="pts"><b>+${r.pips}</b><span>this round</span></div>
-        <div class="pts"><b>${m.totals[r.id]}</b><span>total</span></div>
+        <div class="pts"><b data-count="${i}" aria-hidden="true">${countShown(S, i, m.totals[r.id])}</b><span class="sr-only">${m.totals[r.id]}</span><span>total</span></div>
       </div>`).join('');
-    return `<div class="overlay"><div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+    return `<div class="overlay"><div class="dialog wide roundend" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
       <h2 id="dlg-title">${title}</h2>
       <div class="rows">${rows}</div>
       <div class="actions"><button class="btn primary" data-action="dialogOk" data-primary="1">${m.last ? 'See final score' : 'Start round ' + (S.roundIndex + 2)}</button></div>
@@ -3117,7 +3255,7 @@ window.MT_BUILD = "39b110766b";
     const rivals = ids.slice(1).map(id => nameOf(S, id)).join(' and ');
     return `<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
       <h2 id="dlg-title">${title}</h2>
-      <div class="final">${ids.map(id => `<div class="tot"><b>${score(id)}</b><span>${nameOf(S, id)}</span></div>`).join('')}</div>
+      <div class="final">${ids.map((id, i) => `<div class="tot"><b data-count="${i}" aria-hidden="true">${countShown(S, i, score(id))}</b><span class="sr-only">${score(id)} points,</span><span>${nameOf(S, id)}</span></div>`).join('')}</div>
       <p>Lowest score wins. ${S.online ? `You played ${rivals} online.` : tableIds(S).length === 3 ? `You played ${cpuName(S)} (${LEVEL_LABEL[S.opts.level]}) and ${nameOf(S, 'cpu2')} (${LEVEL_LABEL[S.opts.level2]}).` : `You played ${cpuName(S)} on ${LEVEL_LABEL[S.opts.level]}.`}</p>
       ${S.online ? onlineAgainHTML(S) : '<div class="actions"><button class="btn primary" data-action="newGame" data-primary="1">Play again</button></div>'}
     </div></div>`;
@@ -3627,6 +3765,8 @@ window.MT_BUILD = "39b110766b";
   // How long a person takes: [min, max] milliseconds, picked at random each time.
   const PACE = {
     place: [500, 4000],        // every tile the computer places, in the opening or on a normal turn
+    undo: [400, 1400],         // taking a tile back in the opening (the computer changing its mind)
+    replace: [420, 1500],      // laying a tile straight after that: it has already thought about it, so this comes quicker
     finish: [1100, 2300],      // a last look before saying "done" in the opening
     draw: [900, 1700],
     settle: [450, 900],        // a beat after playing, so its tile can land before the turn passes
@@ -3713,8 +3853,17 @@ window.MT_BUILD = "39b110766b";
       if (root.querySelectorAll) root.querySelectorAll('.scroller').forEach(el => { saved[el.dataset.train] = el.scrollLeft; });
       const doc = root.ownerDocument;
       const active = doc && doc.activeElement && doc.activeElement.dataset ? doc.activeElement.dataset.focusId : null;
+      // The history panel: where it was scrolled to, and how tall its contents were (the newest line goes on TOP, so a reader further down must be moved down by as much as
+      // was added above them, or what they were reading would slide away from under them).
+      const logBefore = root.querySelector ? root.querySelector('.log') : null;
+      const logSaved = logBefore && typeof logBefore.scrollTop === 'number' ? { top: logBefore.scrollTop, height: logBefore.scrollHeight } : null;
 
+      syncCount();
       root.innerHTML = viewApp(S);
+      if (logSaved && logSaved.top > 0) {                                  // (at the top, the newest, it stays at the top: nothing to keep)
+        const logNow = root.querySelector('.log');
+        if (logNow && typeof logNow.scrollTop === 'number') logNow.scrollTop = logSaved.top + Math.max(0, logNow.scrollHeight - logSaved.height);
+      }
 
       if (root.querySelectorAll) {
         const counts = {};
@@ -3755,6 +3904,57 @@ window.MT_BUILD = "39b110766b";
     }
     function clack() { if (S.opts.sound) sound.clack(); }
     function turnCue() { if (S.opts.sound && sound.turn) sound.turn(); }
+    function countClick(progress) { if (S.opts.sound && sound.tick) sound.tick(progress); }
+
+    /* ---------- the score counting up ----------
+     * When the round-end dialog appears, each player's total counts up from what it was before the round to what it is now, one player after another, with a click
+     * for each step; on the final dialog each total counts up from nothing. Fast: a small score takes a fraction of a second, and a big one steps by more so that no
+     * player takes more than COUNT_UP.maxTicks clicks. The numbers are changed in place (the dialog is not drawn again, so nothing loses the focus), and the count so far
+     * is kept in S.count, so whenever the page is drawn again it shows where the count has got to. The button never waits for it. With reduced motion, no count. */
+    let countTimer = null;
+    const countEnabled = env.countUp !== false;
+    function countPlan(m) {
+      if (!m || (m.type !== 'roundEnd' && m.type !== 'final') || !m.totals) return null;
+      const ids = m.type === 'roundEnd' ? (m.rows || []).map(r => r.id) : tableIds(S);
+      const to = ids.map(id => Math.max(0, Number(m.totals[id]) || 0));
+      const from = m.type === 'roundEnd' ? (m.rows || []).map((r, i) => Math.max(0, to[i] - Math.max(0, Number(r.pips) || 0))) : ids.map(() => 0);
+      return { ids, from, to };
+    }
+    function cancelCount() { if (countTimer !== null) { timer.clear(countTimer); countTimer = null; } }
+    function syncCount() {                              // called before every drawing: is there a dialog whose score should be counting?
+      const plan = !reduced && countEnabled ? countPlan(S.modal) : null;
+      const sig = plan ? S.modal.type + '|' + S.roundIndex + '|' + plan.to.join(',') : null;     // (a hosted game sends the same dialog again with every update: it must not start over)
+      if (S.count && S.count.sig === sig) return;
+      cancelCount();
+      if (!plan) { S.count = null; return; }
+      S.count = { sig, from: plan.from, to: plan.to, shown: plan.from.slice(), active: -1, done: false };
+      countTimer = timer.set(tickCount, COUNT_UP.startMs);
+    }
+    function paintCount() {                             // show the count in the dialog on the page: in place when there is a real page
+      const c = S.count;
+      if (!c) return;
+      let stub = false;
+      c.shown.forEach((v, i) => {
+        const el = root.querySelector ? root.querySelector('[data-count="' + i + '"]') : null;
+        if (el && typeof el.textContent === 'string') {
+          if (el.textContent !== String(v)) el.textContent = String(v);
+          if (el.classList && el.classList.toggle) el.classList.toggle('counting', c.active === i && !c.done);
+        } else if (el) stub = true;                    // something that is not a real element (a test's stand-in): draw the dialog again instead
+      });
+      if (stub) render(true);
+    }
+    function tickCount() {
+      countTimer = null;
+      const c = S.count;
+      if (!c || !S.modal) return;
+      const i = c.shown.findIndex((v, k) => v < c.to[k]);
+      if (i < 0) { c.done = true; c.active = -1; paintCount(); return; }
+      if (c.active !== i) { c.active = i; c.stepBy = Math.max(1, Math.ceil((c.to[i] - c.from[i]) / COUNT_UP.maxTicks)); }
+      c.shown[i] = Math.min(c.to[i], c.shown[i] + c.stepBy);
+      countClick((c.shown[i] - c.from[i]) / Math.max(1, c.to[i] - c.from[i]));
+      paintCount();
+      countTimer = timer.set(tickCount, c.shown[i] >= c.to[i] ? COUNT_UP.gapMs : COUNT_UP.tickMs);
+    }
     function say(text) { S.banner = text; S.log.push(text); }
     function setBanner(text) { S.banner = text; }
 
@@ -3849,10 +4049,11 @@ window.MT_BUILD = "39b110766b";
       });
     }
     function abortMatch() {
+      endGameLog('aborted');                                           // (a game that is left half way leaves its log, ended)
       token++;
       const a = S.awaiting;
       S.awaiting = null;
-      S.modal = null;
+      S.modal = null; cancelCount(); S.count = null;
       S.matchActive = false;
       S.plan = null;
       S.handOrder = null; S.handArranged = false; S.flips = {}; S.flipLocked = {}; S.unlucky = {}; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
@@ -3946,7 +4147,7 @@ window.MT_BUILD = "39b110766b";
         if (fx) fx.land(tok, spec, { fast: !!S.plan });
       },
       async onBuildUndo(game, player, tile) {
-        if (player.id === 'human') S.freshKey = key(tile);
+        if (player.id === 'human') S.freshKey = key(tile); else clack();      // (the computer's tile comes off with a click too: it gives nothing away)
         S.selectedKey = null; S.drawnKey = null;
         render();
       },
@@ -4026,7 +4227,8 @@ window.MT_BUILD = "39b110766b";
 
     async function cpuAct(game, player, info) {
       const action = cpuBuildAction(game, player, info, levelFor(S, player.id));
-      const kind = action.type === 'done' ? 'finish' : action.type === 'draw' ? 'draw' : 'place';
+      const second = game.opening && game.opening[player.id] && game.opening[player.id].lastWobble;       // (it has just taken a tile back because it changed its mind)
+      const kind = action.type === 'done' ? 'finish' : action.type === 'draw' ? 'draw' : action.type === 'undo' ? 'undo' : second ? 'replace' : 'place';
       await pause(humanPace(kind));
       return action;
     }
@@ -4355,7 +4557,8 @@ window.MT_BUILD = "39b110766b";
           clack();
           if (ev.who === 'me') { S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.hoverKey = null; }
           S.lastPlay = { trainId: ev.train, index: ev.index };
-        } else if (ev.e === 'draw' && ev.who === 'me' && ev.tile) { S.drawnKey = key(ev.tile); S.freshKey = key(ev.tile); }
+        } else if (ev.e === 'undo' && ev.who !== 'me') clack();
+        else if (ev.e === 'draw' && ev.who === 'me' && ev.tile) { S.drawnKey = key(ev.tile); S.freshKey = key(ev.tile); }
         else if (ev.e === 'pass' && ev.who === 'me') { S.drawnKey = null; S.freshKey = null; }
         else if (ev.e === 'reveal') S.revealed = ev.who === 'opp2' ? 'cpu2' : 'cpu';
       }
@@ -4387,7 +4590,14 @@ window.MT_BUILD = "39b110766b";
       const T = v.totals || {};
       S.totals = { human: Number(T.human) || 0, cpu: Number(T.cpu) || 0, cpu2: Number(T.cpu2) || 0 };
       S.roundIndex = Number(v.round) || 0;
-      S.log = (v.log || []).map(clean);
+      const logFrom = Number.isInteger(v.logFrom) && v.logFrom >= 0 ? v.logFrom : null;
+      if (logFrom === null) S.log = (v.log || []).map(clean);                   // (a server that sends only the latest lines: show those)
+      else {                                                                      // each line has its own place in the history: lines the page already has are put in the same place
+        let all = o.logAll || (o.logAll = []);
+        if (logFrom + (v.log || []).length < all.length) all = o.logAll = [];      // the history got shorter: a new game; start again
+        (v.log || []).forEach((l, i) => { all[logFrom + i] = clean(l); });
+        S.log = all.filter(x => typeof x === 'string');
+      }
       S.banner = clean(v.banner || '');
       S.modal = v.modal ? Object.assign({}, v.modal, v.modal.rows ? { rows: v.modal.rows.map(r => Object.assign({}, r, { name: clean(r.name) })) } : {}) : null;
       S.awaiting = v.awaiting ? makeOnlineAwaiting(v.awaiting) : null;
@@ -4614,7 +4824,7 @@ window.MT_BUILD = "39b110766b";
             const chosen = await awaitUser('move', { moves: list, drewThisTurn });
             if (chosen && chosen.extraDraw) {                 // hints off: a draw the player did not have to make. The tile joins the hand and the turn goes on.
               const tile = drawAnyway(game, player);
-              if (tile) { drewThisTurn = true; justDrew = tile; list = legalMoves(game, player); await ui.onDraw(game, player, tile); }
+              if (tile) { drewThisTurn = true; justDrew = tile; list = legalMoves(game, player); if (gameRec) gameRec.onDraw(game, player, tile); await ui.onDraw(game, player, tile); }       // (this draw is made here, not by the engine, so the game log is told of it here)
               continue;
             }
             try { S.pendingRating = S.opts.chat ? rateMove(game, player, list, chosen) : null; }   // judged on the board as it was
@@ -4633,8 +4843,43 @@ window.MT_BUILD = "39b110766b";
       if (wait) await awaitUser('modal'); else render();
     }
 
+    /* ---------- the game log (see createRecorder) ----------
+     * A game against the computer is played in this page, which cannot write a file, so its events are sent to the game server (POST /gamelog; the server writes them
+     * under its games directory). **Nothing about a round leaves the page until that round is over** (see createRoundBuffer): the log holds the boneyard and every hand,
+     * and one that could be read during a round would show what the computer holds. So a round's events are sent all together when it ends, and the rest when the game
+     * ends or is left (a game left half way is dead, so its last round is sent then). There is no timer, and nothing is sent when the page is closed: a page can come back
+     * (the browser's Back button) with its game still going. Nothing is sent when the page was not served by the game server, or the server does not take a log: the first
+     * refusal switches it off for good. Tests give their own sender with env.gameLog, or null for none. */
+    const logSender = env.gameLog !== undefined ? env.gameLog : (fetchImpl && defaultServer ? makeLogSender() : null);
+    function makeLogSender() {
+      let dead = false;
+      return { send(id, events) {
+        if (dead) return;
+        try { fetchImpl('/gamelog', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify({ id, events }), keepalive: true })
+          .then(r => { if (!r || !r.ok) dead = true; }, () => { dead = true; }); } catch (e) { dead = true; }
+      } };
+    }
+    let gameRec = null, gameLogId = null;
+    function startGameLog() {
+      gameRec = null;
+      if (!logSender) return null;
+      gameLogId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);        // (not the game's own random numbers: the log must not disturb them)
+      const held = createRoundBuffer(events => logSender.send(gameLogId, events));          // (what is held here is let go when the round ends, and not before)
+      gameRec = createRecorder(ev => held.push(ev), now);
+      gameRec.game({ mode: 'local', build: env.build || '', startedAt: new Date(now()).toISOString(), rounds: S.opts.rounds, hand: S.opts.hand, theme: S.opts.theme, allowHints: S.opts.allowHints !== false,
+        players: [{ id: 'human', name: 'You', kind: 'human' }, { id: 'cpu', name: S.cpuName, kind: 'computer', level: S.opts.level }]
+          .concat(S.opts.cpus === 2 ? [{ id: 'cpu2', name: S.cpu2Name, kind: 'computer', level: S.opts.level2 }] : []) });
+      return gameRec;
+    }
+    function endGameLog(how) {                                    // 'finished', or 'aborted' when a new game is started over it (the game is over either way: its last round is let go)
+      if (!gameRec) return;
+      const rec = gameRec; gameRec = null;
+      rec.gameEnd(S.totals, how);
+    }
+
     async function runMatch() {
       S.matchActive = true;
+      const rec = startGameLog();
       const n = S.opts.cpus === 2 ? 3 : 2;                              // players at the table
       let startIndex = n === 2 ? (rng() < 0.5 ? 0 : 1) : Math.floor(rng() * n);
       for (let r = 0; r < S.opts.rounds; r++) {
@@ -4643,13 +4888,14 @@ window.MT_BUILD = "39b110766b";
         const engine = MAX_PIP - r;
         S.game = newRound({ engine, handSize: S.opts.hand, rng, simultaneousOpening: true, players: n });
         S.game.players.forEach(p => { if (p.id !== 'human') p.name = nameOf(S, p.id); });
-        S.log = []; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.lastPlay = null; S.plan = null; S.handOrder = null; S.handArranged = false; S.flips = {}; S.flipLocked = {}; S.unlucky = {}; S.dragKey = null;
+        if (rec) rec.round(S.game, r, startIndex);                       // (the boneyard and every hand, as dealt)
+        S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.lastPlay = null; S.plan = null; S.handOrder = null; S.handArranged = false; S.flips = {}; S.flipLocked = {}; S.unlucky = {}; S.dragKey = null;
         say(`Round ${r + 1}: the engine is double-${engine}. Everyone builds their train at the same time.`);
         S.log.push(`${startIndex === 0 ? 'You play' : `${nameOf(S, S.game.players[startIndex].id)} plays`} first once the trains are built.`);
         render();
         await pause(800);
 
-        const result = await playRound(S.game, startIndex, controllers, ui);
+        const result = await playRound(S.game, startIndex, controllers, rec ? recordingUi(ui, rec) : ui);
         if (result.blocked) maybeComment('roundBlocked');
         setBanner(result.blocked ? 'The round is blocked.'
           : result.tie ? (n === 2 ? 'You both played every tile.' : 'More than one of you played every tile.')
@@ -4659,6 +4905,7 @@ window.MT_BUILD = "39b110766b";
 
         const rows = S.game.players.map(p => ({ id: p.id, name: p.name, hand: p.hand.map(t => t.slice()), pips: handPips(p) }));
         rows.forEach(row => { S.totals[row.id] += row.pips; });
+        if (rec) rec.roundEnd(S.game, result, S.totals);                 // (the round is over: its events are let go now)
         await showModal({
           type: 'roundEnd', blocked: result.blocked, tie: !!result.tie, winnerId: result.winner ? result.winner.id : null,
           rows, totals: Object.assign({}, S.totals), last: r === S.opts.rounds - 1,
@@ -4666,6 +4913,7 @@ window.MT_BUILD = "39b110766b";
         startIndex = (startIndex + 1) % n;
       }
       S.matchActive = false;
+      endGameLog('finished');
       await showModal({ type: 'final', totals: Object.assign({}, S.totals) }, false);
     }
 
@@ -4924,7 +5172,7 @@ window.MT_BUILD = "39b110766b";
 
     function dialogOk() {
       const a = S.awaiting;
-      if (a && a.kind === 'modal') { S.modal = null; a.resolve(); if (S.online) S.awaiting = null; }
+      if (a && a.kind === 'modal') { cancelCount(); S.count = null; S.modal = null; a.resolve(); if (S.online) S.awaiting = null; }
     }
 
     function dispatch(a) {
@@ -5165,9 +5413,9 @@ window.MT_BUILD = "39b110766b";
       cpuBuildAction, cpuChooseAsync, tilesNotSeen, chanceHolds, guessHiddenTiles, longestChain, longestFullChain, buildSteps, handPips, tilePips, mulberry32, shuffle, key, LEVELS, LEVEL_LABEL,
       moveValue, rateMove,
     },
-    tileSVG, tileBackSVG, pipPoints, viewApp, createApp, pickCpuName, PIP_COLORS, PACE, CPU_NAMES, renderClack, clackGapMs, renderTurn, createSound,
+    tileSVG, tileBackSVG, pipPoints, viewApp, createApp, pickCpuName, PIP_COLORS, PACE, CPU_NAMES, renderClack, clackGapMs, renderTurn, renderTick, COUNT_UP, createSound,
     flightGeometry, flightRotation, flightStart, moveInOrder, slotAt, dropIndexAt, createFx, createDrag, orderedHand,
-    RATING, OWN_SHORT, CHAT, LINES, commentKindFor, pickLine, fillLine, composeComment, paceFor, soleTile, CPU_PLAYERS, levelOfName, NATIVE_LINES, NATIVE_LANG, nativeLangOf, FOOD, FOOD_ENGLISH, FOOD_NATIVE, foodComment,
+    RATING, OWN_SHORT, WOBBLE, createRecorder, createRoundBuffer, recordingUi, LOG_HOOKS, CHAT, LINES, commentKindFor, pickLine, fillLine, composeComment, paceFor, soleTile, CPU_PLAYERS, levelOfName, NATIVE_LINES, NATIVE_LANG, nativeLangOf, FOOD, FOOD_ENGLISH, FOOD_NATIVE, foodComment,
     PLAYER_IDS, toyTrainSVG, ringSVG, THEMES, THEME_IDS, voiceOf, foodOf, trainColor, ONLINE_PHRASES, cleanChatText, CHAT_MAX, cleanPlayerName, faceLikeDots, parseServerAddress, parseJoinAddress, viewJoinChoices, joinList, copyText, qrEncode, qrSvg, qrCodewords, rsEncode, QR_BLOCKS_M, QR_TOTAL_CODEWORDS,
   };
 

@@ -28,6 +28,7 @@ const https = require('https');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { GameLogs, isThisComputer } = require('./gamelog.js');
 const crypto = require('crypto');
 let monitorEventLoopDelay = null; try { monitorEventLoopDelay = require('perf_hooks').monitorEventLoopDelay; } catch (e) { /* older Node: no loop-lag figures */ }
 const { upgrade } = require('./ws-lite.js');
@@ -131,6 +132,9 @@ function createGameServer(options) {
     publicIpLookup: null,                // (tests) an async function returning { ip, via } instead of asking a service
     maxWrongCodes: 8,                    // wrong join codes from one address before it must wait a minute
     ratePerSecond: 30, burst: 60,        // messages a connection may send: far more than a person can click
+    gameLog: false,                      // write a log of every game, for debugging (the command line turns this on; see gamelog.js)
+    gamesDir: path.join(__dirname, 'games'),     // ... into this directory (made if it is not there)
+    maxLogPost: 256 * 1024,              // the most a page may send in one go
   }, options || {});
   if (opt.deadAfterMs === undefined) opt.deadAfterMs = options && options.heartbeatMs !== undefined ? 2 * opt.heartbeatMs : 30000;
 
@@ -202,9 +206,26 @@ function createGameServer(options) {
       return page;
     } catch (e) { return null; }
   }
+  const gamelogs = opt.gameLog ? new GameLogs({ dir: opt.gamesDir, onError: e => opt.log(`the game log has been switched off: ${e && e.message}`) }) : null;
   const http_ = http.createServer((req, res) => {
     const url = String(req.url || '/').split('?')[0];
     const headers = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' };
+    if (url === '/gamelog') {                                 // events of a game a page is playing against the computer: kept in this server's games directory
+      const reply = (code, text) => { res.writeHead(code, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, headers)); res.end(text || ''); };
+      if (req.method !== 'POST') { res.writeHead(405, Object.assign({ Allow: 'POST' }, headers)); return res.end(); }
+      if (!gamelogs) return reply(404, 'This server is not keeping a game log.');
+      if (!isThisComputer(req.socket && req.socket.remoteAddress)) return reply(403, 'Only this computer may add to the game log.');
+      let size = 0, tooBig = false; const chunks = [];
+      req.on('data', c => { size += c.length; if (size > opt.maxLogPost) { tooBig = true; return; } chunks.push(c); });
+      req.on('end', () => {
+        if (tooBig) return reply(413, 'Too much at once.');
+        let body = null; try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { /* not JSON */ }
+        if (!body || typeof body !== 'object') return reply(400, 'Not understood.');
+        return gamelogs.acceptLocal(body.id, body.events) ? reply(204) : reply(400, 'Nothing was kept.');
+      });
+      req.on('error', () => reply(400, 'Not understood.'));
+      return;
+    }
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, Object.assign({ Allow: 'GET, HEAD' }, headers)); return res.end(); }
     if (url === '/' || url === '/index.html') {
       const body = readPage();
@@ -507,6 +528,7 @@ function createGameServer(options) {
       rng: opt.rng ? opt.rng(room) : undefined, stepDelay: opt.stepDelay, sleep: opt.sleep,
       chatRng: opt.chatRng || undefined, timer: opt.timer || undefined, now: opt.now || undefined, nativeChance: opt.nativeChance, foodChance: opt.foodChance,
       push: (seat, msg) => sendSeat(room, seat, msg),
+      gameLog: gamelogs ? gamelogs.forHosted(showCode(room.code).replace(/[^A-Za-z0-9]/g, '')) : undefined,
     });
     match.start().then(() => {
       if (room.match !== match) return;                            // (a newer match has taken this room over: this one must not change its state)
@@ -680,7 +702,7 @@ function createGameServer(options) {
     for (const c of Array.from(conns)) c.ws.terminate();
     return new Promise(res => http_.close(() => res()));
   }
-  return { listen, close, rooms, conns, http: http_, get port() { return boundPort; }, options: opt, heartbeat, netStats, pageBuild };
+  return { listen, close, rooms, conns, http: http_, get port() { return boundPort; }, options: opt, heartbeat, netStats, pageBuild, gameLogs: gamelogs, get gameLogDir() { return gamelogs ? gamelogs.dir : null; } };
 }
 
 /* ------------------------------ command line ------------------------------ */
@@ -692,7 +714,7 @@ const NAME_OK = /^[A-Za-z0-9._:-]{1,40}$/;
 function processTitle(name, port) { return PROCESS_NAME + (name ? ' ' + name : '') + (port ? ' :' + port : ''); }
 
 function main(argv) {
-  const args = { port: Number(process.env.PORT) || 8080, localOnly: false, page: null, grace: 180, help: false, quiet: false, publicIp: true, name: null };
+  const args = { port: Number(process.env.PORT) || 8080, localOnly: false, page: null, grace: 180, help: false, quiet: false, publicIp: true, name: null, gameLog: true, gamesDir: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') args.help = true;
@@ -703,10 +725,13 @@ function main(argv) {
     else if (a === '--quiet') args.quiet = true;
     else if (a === '--no-public-ip') args.publicIp = false;
     else if (a === '--name') args.name = argv[++i];
+    else if (a === '--games-dir') args.gamesDir = argv[++i];
+    else if (a === '--no-game-log') args.gameLog = false;
     else { console.error(`Unknown option: ${a}`); args.help = true; args.bad = true; }
   }
   if (!Number.isInteger(args.port) || args.port < 0 || args.port > 65535) { console.error('--port must be a number from 0 to 65535'); args.help = args.bad = true; }
   if (args.name !== null && !(typeof args.name === 'string' && NAME_OK.test(args.name))) { console.error('--name must be 1 to 40 letters, digits, dots, dashes, underscores or colons (no spaces)'); args.help = args.bad = true; }
+  if (args.gamesDir !== null && !(typeof args.gamesDir === 'string' && args.gamesDir.length > 0 && args.gamesDir.length < 400)) { console.error('--games-dir needs a directory'); args.help = args.bad = true; }
   if (!(args.grace >= 5)) { console.error('--grace must be a number of seconds (at least 5)'); args.help = args.bad = true; }
   if (args.help) {
     console.log(`Mexican Train server
@@ -720,6 +745,8 @@ Usage: node server.js [options]
   --quiet          do not print what happens in games
   --no-public-ip   never ask an internet service (api.ipify.org and others) what this computer's public address is
                    (by default it is asked, only when you open the Host screen, to offer it as a way to join)
+  --games-dir DIR  where the log of every game is written (default: the games directory next to server.js; it is made if it is not there)
+  --no-game-log    do not keep a log of the games (by default every game's boneyard, hands, draws and plays are written to a file, one file per game, for debugging)
   --name LABEL     a label to tell this server from other processes: it is part of the command line and of the process name
                    (in ps -ef the server shows as "mexican-train-server LABEL :PORT"; with no label, "mexican-train-server :PORT")
   -h, --help       this help
@@ -730,7 +757,7 @@ Your firewall may ask whether to allow Node.js: say yes for private networks.`);
   }
   process.title = processTitle(args.name, args.port);                    // what ps shows (updated below when the port is known)
   const server = createGameServer({
-    localOnly: args.localOnly, checkBuild: true, publicIp: args.publicIp, graceMs: Math.round(args.grace * 1000),
+    localOnly: args.localOnly, checkBuild: true, publicIp: args.publicIp, gameLog: args.gameLog, gamesDir: args.gamesDir ? path.resolve(args.gamesDir) : path.join(__dirname, 'games'), graceMs: Math.round(args.grace * 1000),
     pagePath: args.page ? path.resolve(args.page) : path.join(__dirname, 'mexican-train.html'),
     log: args.quiet ? () => {} : msg => console.log(`[${new Date().toLocaleTimeString()}] ${msg}`),
   });
@@ -739,6 +766,9 @@ Your firewall may ask whether to allow Node.js: say yes for private networks.`);
     process.title = processTitle(args.name, port);
     console.log('\nMexican Train server is running.\n');
     console.log(`  Process name: ${process.title}   (find it with: ps -ef | grep mexican-train-server)\n`);
+    if (!args.gameLog) console.log('  Game logs: off (--no-game-log)\n');
+    else if (server.gameLogs && server.gameLogs.failed) console.log(`  Game logs: could NOT be started in ${server.gameLogDir} (is it writable?). The games are played as usual.\n`);
+    else console.log(`  Game logs: ${server.gameLogDir}\n  (every game's boneyard, hands, draws and plays, one file per game, each round written when it has ended,\n   so that a log cannot show a round that is still being played; node tools/check_gamelog.js FILE checks\n   that a log adds up, and --print reads it)\n`);
     const served = server.pageBuild ? server.pageBuild() : '';
     console.log(served ? `  Serving the game page, build ${served}. (A browser tab opened before the files were replaced has an older build: reload it.)\n` : '');
     if (args.localOnly) {

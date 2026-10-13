@@ -21,6 +21,7 @@
 require('./game.js');
 const G = globalThis.MexicanTrainGame;
 const E = G.Engine;
+const LOG_SENT = 120;                 // how many of the latest lines of the game's history every update carries (with where in the whole history they begin: the page keeps what it has been sent)
 const { newRound, playRound, longestFullChain, buildSteps, handPips, key, legalMoves, cpuChoose, cpuChooseAsync, cpuBuildAction, rateMove, drawAnyway } = E;
 const CHAT = G.CHAT;
 
@@ -61,6 +62,12 @@ class OnlineMatch {
     this.push = opts.push || (() => {});
     this.sleep = opts.sleep || (ms => new Promise(r => setTimeout(r, ms)));
     this.stepDelay = opts.stepDelay === undefined ? [500, 3000] : opts.stepDelay;   // between the plays of "Build my longest train"
+    this.gameLog = opts.gameLog || null;                   // where this game's log goes: { write(events) } (see gamelog.js), or nothing: no log
+    const held = G.createRoundBuffer(events => { if (this.gameLog) this.gameLog.write(events); });
+    // NOTHING of a round is written while it is being played (the log holds every hand and the boneyard: it must not be readable during the round): the events of a round
+    // are held here and written together when it ends, and the last ones when the game ends or is stopped (that round is dead then)
+    this.rec = this.gameLog ? G.createRecorder(ev => held.push(ev)) : null;
+    this._logEnded = false;
     this.seq = 0;
     this.totals = {};
     SEATS.slice(0, this.n).forEach(id => { this.totals[id] = 0; });
@@ -108,8 +115,8 @@ class OnlineMatch {
   /* ------------------------------ running the match ------------------------------ */
   start() {
     this.done = this._run().catch(err => {
-      if (err === ABORT) { this.over = this.over || 'aborted'; return; }
-      this.over = 'error'; this.error = err;                  // a fault in the game: free anyone waiting, and tell the players
+      if (err === ABORT) { this.over = this.over || 'aborted'; this._endLog('aborted'); return; }
+      this.over = 'error'; this.error = err; this._endLog('error');                  // a fault in the game: free anyone waiting, and tell the players
       this._hush();
       this.awaiting.forEach(a => { if (a) a.reject(ABORT); });
       this.awaiting = this.awaiting.map(() => null);
@@ -117,8 +124,11 @@ class OnlineMatch {
     });
     return this.done;
   }
+  /* The game's log ends (once): how it ended, and the totals at that point. */
+  _endLog(how) { if (this.rec && !this._logEnded) { this._logEnded = true; this.rec.gameEnd(this.totals, how); } }
   abort() {
     if (this.over) return;
+    this._endLog('aborted');
     this.over = 'aborted';
     this._hush();
     this.awaiting.forEach(a => { if (a) a.reject(ABORT); });
@@ -127,18 +137,21 @@ class OnlineMatch {
   setPaused(on) { this.paused = !!on; this._broadcast(this.noEvents()); }
 
   async _run() {
+    if (this.rec) this.rec.game({ mode: 'hosted', startedAt: new Date().toISOString(), rounds: this.rounds, hand: this.hand, theme: this.theme, allowHints: this.allowHints,
+      players: SEATS.slice(0, this.n).map((id, i) => ({ id, name: this.names[i], kind: this.computers[i] ? 'computer' : 'human', level: this.computers[i] ? this.computers[i].level : undefined })) });
     let startIndex = this.n === 2 ? (this.rng() < 0.5 ? 0 : 1) : Math.floor(this.rng() * this.n);
     for (let r = 0; r < this.rounds; r++) {
       this.roundIndex = r; this.startIndex = startIndex;
       const engine = MAX_PIP - r;
       this.game = newRound({ engine, handSize: this.hand, rng: this.rng, simultaneousOpening: true, players: this.n });
       this.game.players.forEach((p, i) => { p.name = this.names[i]; });
-      this.logs = this.logs.map(() => []); this.plans = this.plans.map(() => null); this.modal = null; this.unlucky = 0;
+      if (this.rec) this.rec.round(this.game, r, startIndex);                  // (the boneyard and every hand, as dealt)
+      this.plans = this.plans.map(() => null); this.modal = null; this.unlucky = 0;       // (the history is kept from round to round: each round's first line says where it begins)
       this._say(() => `Round ${r + 1}: the engine is double-${engine}. Everyone builds their train at the same time.`);
       this._log(seat => `${startIndex === seat ? 'You play' : `${this.names[startIndex]} plays`} first once the trains are built.`);
       this._broadcast(this.noEvents());
 
-      const result = await playRound(this.game, startIndex, this.controllers, this.hooks);
+      const result = await playRound(this.game, startIndex, this.controllers, this.rec ? G.recordingUi(this.hooks, this.rec) : this.hooks);
       const winnerSeat = result.winner ? SEATS.indexOf(result.winner.id) : -1;
       if (result.blocked) this._sayOwn('roundBlocked');
       this._say(seat => result.blocked ? 'The round is blocked.'
@@ -146,6 +159,7 @@ class OnlineMatch {
         : `${winnerSeat === seat ? 'You' : this.names[winnerSeat]} played the last tile.`);
       const rows = this.game.players.map(p => ({ id: p.id, name: p.name, hand: p.hand.map(t => t.slice()), pips: handPips(p) }));
       rows.forEach(row => { this.totals[row.id] += row.pips; });
+      if (this.rec) this.rec.roundEnd(this.game, result, this.totals);
       this._broadcast(this.noEvents());
       await this._modal({
         type: 'roundEnd', blocked: result.blocked, tie: !!result.tie, winnerId: result.winner ? result.winner.id : null,
@@ -153,6 +167,7 @@ class OnlineMatch {
       });
       startIndex = (startIndex + 1) % this.n;
     }
+    this._endLog('finished');
     this.modal = { type: 'final', totals: Object.assign({}, this.totals) };
     this.over = 'finished';
     this._hush();
@@ -196,7 +211,8 @@ class OnlineMatch {
       return {
         act: async (game, player, info) => {
           const action = cpuBuildAction(game, player, info, cpu.level);
-          await this._think(action.type === 'done' ? 'finish' : action.type === 'draw' ? 'draw' : 'place');
+          const second = game.opening && game.opening[player.id] && game.opening[player.id].lastWobble;       // (it has just taken a tile back because it changed its mind)
+          await this._think(action.type === 'done' ? 'finish' : action.type === 'draw' ? 'draw' : action.type === 'undo' ? 'undo' : second ? 'replace' : 'place');
           return action;
         },
         choose: async (game, player, moves) => {
@@ -217,7 +233,7 @@ class OnlineMatch {
           const chosen = await this._wait(seat, 'move', { moves: list, drewThisTurn: drewThisTurn_ });
           if (chosen && chosen.extraDraw) {                    // a draw the person did not have to make (hints off on their page): the tile joins their hand and the turn goes on
             const tile = drawAnyway(game, player);
-            if (tile) { drewThisTurn_ = true; list = legalMoves(game, player); await this.hooks.onDraw(game, player, tile); }
+            if (tile) { drewThisTurn_ = true; list = legalMoves(game, player); if (this.rec) this.rec.onDraw(game, player, tile); await this.hooks.onDraw(game, player, tile); }       // (this draw is made here, not by the engine, so the game log is told of it here)
             continue;
           }
           if (this.talker !== undefined) {                     // the computer has an opinion of that move (judged on the board as it was)
@@ -519,7 +535,7 @@ class OnlineMatch {
       seq: this.seq, round: this.roundIndex, rounds: this.rounds,
       me: { name: this.names[seat], seat }, opp: { name: opps[0].name }, opps,
       totals: flipTotals(this.totals), paused: this.paused, over: early ? 'finished' : this.over,
-      log: this.logs[seat].slice(-8), banner: this.banners[seat], modal, awaiting, game: null,
+      log: this.logs[seat].slice(-LOG_SENT), logFrom: Math.max(0, this.logs[seat].length - LOG_SENT), banner: this.banners[seat], modal, awaiting, game: null,
     };
     if (!g) return view;
     const hiddenOf = sx => !!g.opening && sx !== seat && !g.opening[SEATS[sx]].finished;       // another player's train, while they are still building

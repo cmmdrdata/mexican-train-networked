@@ -2,9 +2,11 @@ const vm = require('vm'), fs = require('fs');
 function loadEngine(path) {
   const ctx = vm.createContext({ console, Math, JSON, Object, Array, Number, String, Set, Map, Promise, Error, Float32Array, Float64Array, Uint32Array });
   vm.runInContext(fs.readFileSync(path, 'utf8'), ctx);
+  loadEngine.game = ctx.MexicanTrainGame;
   return ctx.MexicanTrainGame.Engine;
 }
 const NEW = loadEngine('./game.js');
+const NEW_GAME = loadEngine.game;                                  // (the whole game object of the new build: the computer's second thoughts, WOBBLE, are on it, not on the engine)
 const OLD = loadEngine('../game_v4_rule.js');                       // the engine from before the levels were added, plus ONLY the new rule that a double cannot go out
 
 let pass = 0, fail = 0;
@@ -35,6 +37,12 @@ async function duplicate(E, A, B, deals, seedBase) {
 
 (async () => {
   console.log('1. Normal is exactly what it was before (same deals, old engine vs new engine)');
+  // (with the computer's second thoughts in the opening switched off: they add steps, and both players build at once, so when somebody has to draw in the opening the draw
+  //  order moves and with it the hands. The decisions themselves are what is compared here; the second thoughts' own effect on strength is checked next.)
+  const GW = NEW_GAME.WOBBLE;                                          // (the computer's second thoughts)
+  if (!GW) throw new Error('the second thoughts are not exported');
+  const savedWobble = JSON.parse(JSON.stringify(GW));
+  for (const l of Object.keys(GW)) GW[l] = { p: 0, max: 0 };
   let same = 0, differ = 0;
   for (let i = 0; i < 400; i++) {
     const seed = 3000 + i, engine = 12 - (i % 13);
@@ -48,6 +56,17 @@ async function duplicate(E, A, B, deals, seedBase) {
   }
   ok(differ === 0, `400 whole rounds played identically move-for-move (${same} same, ${differ} differ)`);
   console.log(`   ${same}/400 rounds identical`);
+  for (const l of Object.keys(savedWobble)) GW[l] = savedWobble[l];
+  {
+    // with the second thoughts ON, Normal is as strong as without them: the same self-play, the pips left in hand at the end of a round, on average
+    const meanPips = async () => { const r = await duplicate(NEW, ctl(NEW, 'normal'), ctl(NEW, 'normal'), 200, 9100); return (r.pipsA + r.pipsB) / 2; };
+    const withThem = await meanPips();
+    for (const l of Object.keys(GW)) GW[l] = { p: 0, max: 0 };
+    const without = await meanPips();
+    for (const l of Object.keys(savedWobble)) GW[l] = savedWobble[l];
+    ok(Math.abs(withThem - without) / without < 0.06, `with its second thoughts, Normal leaves ${withThem.toFixed(1)} pips in hand at the end of a round, without them ${without.toFixed(1)}: as strong (within 6%)`);
+    ok(Object.keys(savedWobble).every(l => GW[l].p === savedWobble[l].p && GW[l].max === savedWobble[l].max), '(and the second thoughts are back on afterwards)');
+  }
 
   console.log('2. every level plays legally and keeps the board valid (all 16 pairings; the Expert, which thinks for longer, in fewer rounds)');
   let rounds = 0;

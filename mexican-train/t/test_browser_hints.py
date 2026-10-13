@@ -50,11 +50,14 @@ with sync_playwright() as pw:
     ok('on' in b.evaluate(HINTS)['toggleText'], '...and back on')
     print('2. the guest builds with Build my longest train: the opening finishes by itself')
     ok(b.query_selector('[data-action="autoBuild"]') is not None and b.query_selector('[data-action="endBuild"]') is not None, 'before: a Build button and a Done button')
+    import re
+    promised = re.search(r'\((\d+) tiles?\)', b.inner_text('[data-action="autoBuild"]'))             # the button says how long the train it will build is
+    promised = int(promised.group(1)) if promised else None
     b.click('[data-action="autoBuild"]')
     b.wait_for_function("() => { const g = window.MexicanTrainApp.state.game; return g && g.opening && g.opening.human.finished; }", timeout=30000)
     ok(b.query_selector('[data-action="endBuild"]') is None and b.query_selector('[data-action="autoBuild"]') is None, 'the guest\'s opening is finished with nobody pressing Done, and no Done or Build button is left')
     tiles = b.evaluate("() => window.MexicanTrainApp.state.game.trains.human.tiles.length")
-    ok(tiles >= 2, f'with the whole train down ({tiles} tiles)')
+    ok(tiles >= 1 and (promised is None or tiles == promised), f'with the whole train down: {tiles} tiles, as the button promised ({promised})')       # (a deal can have a longest train of just one tile, so "at least 2" was luck)
     a.wait_for_function("() => { const g = window.MexicanTrainApp.state.game; return g && g.opening && g.opening.cpu.finished; }", timeout=10000)
     shown = a.evaluate("() => window.MexicanTrainApp.state.game.trains.cpu.tiles.length")
     ok(shown == tiles and a.evaluate("() => window.MexicanTrainApp.state.game.trains.cpu.tiles.every(t => t[0] >= 0)"), 'and the host sees those tiles turned face up, as when anyone finishes')
