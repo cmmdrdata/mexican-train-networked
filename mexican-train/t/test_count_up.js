@@ -60,7 +60,9 @@ function makeApp(seed, extra) {
 }
 const shownIn = html => Array.from(html.matchAll(/<b data-count="(\d+)" aria-hidden="true">(\d+)<\/b>/g)).map(m => +m[2]);
 const finalIn = html => Array.from(html.matchAll(/<span class="sr-only">(\d+)(?: points,)?<\/span>/g)).map(m => +m[1]);
-function roundEnd(S, rows, totals) { S.modal = { type: 'roundEnd', blocked: false, tie: false, winnerId: rows[0].id, rows: rows.map(r => Object.assign({ name: r.id, hand: [] }, r)), totals, last: false }; }
+const tilesFor = n => { const h = []; while (n > 0) { const p = Math.min(n, 12); h.push([Math.min(6, p), p - Math.min(6, p)]); n -= p; } return h; };      // tiles adding up to n dots, the biggest first (45: 12, 12, 12, 9)
+function roundEnd(S, rows, totals) { S.modal = { type: 'roundEnd', blocked: false, tie: false, winnerId: rows[0].id, rows: rows.map(r => Object.assign({ name: r.id, hand: tilesFor(r.pips) }, r)), totals, last: false }; }
+const hiddenIn = html => (html.match(/class="mt hid"/g) || []).length, pipsIn = html => Array.from(html.matchAll(/<b data-pips="(\d+)" aria-hidden="true">\+(\d+)<\/b>/g)).map(m => +m[2]);
 (async () => {
   {
     const a = makeApp(1); a.d({ type: 'startGame', rounds: 2, hand: 8, style: 'pips', level: 'easy' }); await tick();
@@ -69,37 +71,36 @@ function roundEnd(S, rows, totals) { S.modal = { type: 'roundEnd', blocked: fals
     a.app.render(true);
     ok(JSON.stringify(shownIn(a.root.innerHTML)) === '[75,98]', 'the dialog opens showing what each player had BEFORE the round: ' + JSON.stringify(shownIn(a.root.innerHTML)));
     ok(JSON.stringify(finalIn(a.root.innerHTML)) === '[120,98]', 'with the real totals for a screen reader, in a hidden span (it need not hear the count)');
-    ok(/<b>\+45<\/b><span>this round<\/span>/.test(a.root.innerHTML), 'and the points of this round, which do not count');
+    ok(/<span class="sr-only">\+45<\/span><span>this round<\/span>/.test(a.root.innerHTML) && JSON.stringify(pipsIn(a.root.innerHTML)) === '[0,0]' && hiddenIn(a.root.innerHTML) === 4, 'the points of this round start at +0 (the real +45 is there for a screen reader) and the human\'s 4 tiles are in place but not shown yet');
     ok(a.S.count && JSON.stringify(a.S.count.from) === '[75,98]' && JSON.stringify(a.S.count.to) === '[120,98]', 'the count runs from total minus this round to the total');
     a.timer.advance(C.startMs - 1);
     ok(a.clicks.length === 0 && JSON.stringify(a.S.count.shown) === '[75,98]', `nothing for the first ${C.startMs - 1} ms: the dialog is let appear first`);
     // watch every step
     const steps = []; let last = a.S.count.shown.slice();
     for (let t = 0; t < 4000; t++) { a.timer.advance(1); const now = a.S.count.shown; if (now.some((v, i) => v !== last[i])) { steps.push({ t: a.timer.clock, i: now.findIndex((v, k) => v !== last[k]), v: now.find((v, k) => v !== last[k]) }); last = now.slice(); } }
-    const per = Math.ceil(45 / C.maxTicks);
-    ok(steps.length === Math.ceil(45 / per) && steps.every(s => s.i === 0) && steps.every((s, k) => k === 0 || s.v > steps[k - 1].v), `the human counts up first, 75 to 120, in ${steps.length} steps of ${per} (never more than ${C.maxTicks})`);
+    ok(steps.length === 4 && steps.every(s => s.i === 0) && JSON.stringify(steps.map(s => s.v)) === '[87,99,111,120]', `the human counts up first, 75 to 120, one tile at a time: ${steps.map(s => s.v).join(', ')} (tiles of 12, 12, 12 and 9 dots)`);
     ok(steps[steps.length - 1].v === 120 && steps.every(s => s.v <= 120 && s.v >= 75), 'landing exactly on 120, never above it');
     ok(a.S.count.shown[1] === 98 && !steps.some(s => s.i === 1), 'the computer, who scored nothing this round, is not counted: no steps, no clicks, no pause');
     ok(a.clicks.length === steps.length, `one click for each step (${a.clicks.length})`);
     const gaps = steps.slice(1).map((s, k) => s.t - steps[k].t);
-    ok(gaps.every(g => g === C.tickMs), `35 ms between clicks (${[...new Set(gaps)].join(', ')})`);
-    ok(a.clicks.every((c, k) => k === 0 || c.p >= a.clicks[k - 1].p) && a.clicks[a.clicks.length - 1].p === 1 && a.clicks[0].p > 0 && a.clicks[0].p < 0.2, 'the pitch rises with the count, from just above nothing to the top, on the last click');
-    ok(a.S.count.done === true && JSON.stringify(shownIn(a.root.innerHTML)) === '[120,98]', 'and when it is done the dialog shows the real totals');
+    ok(gaps.every(g => g === C.tileMs) && C.tileMs === 500, `half a second between tiles: two a second (${[...new Set(gaps)].join(', ')})`);
+    ok(a.clicks.every((c, k) => k === 0 || c.p >= a.clicks[k - 1].p) && a.clicks[a.clicks.length - 1].p === 1 && a.clicks[0].p > 0 && a.clicks[0].p <= 0.25, 'the pitch rises with the count, from just above nothing to the top, on the last click');
+    ok(a.S.count.done === true && JSON.stringify(shownIn(a.root.innerHTML)) === '[120,98]' && JSON.stringify(pipsIn(a.root.innerHTML)) === '[45,0]' && hiddenIn(a.root.innerHTML) === 0, 'and when it is done the dialog shows the real totals, all the tiles and +45');
   }
   {
     const a = makeApp(2); a.d({ type: 'startGame', rounds: 2, hand: 8, style: 'pips', level: 'easy', cpus: 2, level2: 'hard' }); await tick();
-    roundEnd(a.S, [{ id: 'human', pips: 12 }, { id: 'cpu', pips: 30 }, { id: 'cpu2', pips: 200 }], { human: 22, cpu: 80, cpu2: 410 });
+    roundEnd(a.S, [{ id: 'human', pips: 12 }, { id: 'cpu', pips: 30 }, { id: 'cpu2', pips: 90 }], { human: 22, cpu: 80, cpu2: 300 });
     a.app.render(true);
     const timeline = []; let last = a.S.count.shown.slice();
     for (let t = 0; t < 12000; t++) { a.timer.advance(1); const now = a.S.count.shown; const i = now.findIndex((v, k) => v !== last[k]); if (i >= 0) { timeline.push({ t: a.timer.clock, i, v: now[i] }); last = now.slice(); } }
     const order = timeline.map(s => s.i), counts = [0, 1, 2].map(i => timeline.filter(s => s.i === i).length);
     ok(order.join('') === [...order].sort().join(''), 'three players, one after another: every step of the first, then every step of the second, then the third');
-    ok(counts[0] === 12 && counts[1] === Math.ceil(30 / Math.ceil(30 / C.maxTicks)) && counts[2] <= C.maxTicks, `steps: ${counts.join(', ')} (a score of 12 step by 1; the biggest, 200, steps by more so it takes no more than ${C.maxTicks} clicks, not 200)`);
+    ok(counts[0] === 1 && counts[1] === 3 && counts[2] === 8, `steps: ${counts.join(', ')} (one for each tile left: 1, 3 and 8)`);
     const lastOf = i => timeline.filter(s => s.i === i).pop(), firstOf = i => timeline.find(s => s.i === i);
-    ok(firstOf(1).t - lastOf(0).t === C.gapMs && firstOf(2).t - lastOf(1).t === C.gapMs, `a pause of ${C.gapMs} ms between one player and the next`);
-    ok(lastOf(0).v === 22 && lastOf(1).v === 80 && lastOf(2).v === 410 && JSON.stringify(a.S.count.shown) === '[22,80,410]', 'each lands exactly on its total (22, 80, 410)');
+    ok(firstOf(1).t - lastOf(0).t === C.tileGapMs && firstOf(2).t - lastOf(1).t === C.tileGapMs, `a pause of ${C.tileGapMs} ms between one player and the next`);
+    ok(lastOf(0).v === 22 && lastOf(1).v === 80 && lastOf(2).v === 300 && JSON.stringify(a.S.count.shown) === '[22,80,300]', 'each lands exactly on its total (22, 80, 300)');
     const total = timeline[timeline.length - 1].t;
-    ok(total < C.startMs + 3 * (C.maxTicks * C.tickMs + C.gapMs) + 50, `the whole count takes ${(total / 1000).toFixed(1)} seconds, even with a score of 200`);
+    ok(total < C.startMs + 12 * C.tileMs + 3 * C.tileGapMs + 50, `the whole count takes ${(total / 1000).toFixed(1)} seconds for 12 tiles`);
     ok(a.clicks.length === timeline.length, `every step has its click (${a.clicks.length})`);
   }
   {
@@ -122,7 +123,7 @@ function roundEnd(S, rows, totals) { S.modal = { type: 'roundEnd', blocked: fals
     roundEnd(a.S, [{ id: 'human', pips: 7 }, { id: 'cpu', pips: 0 }], { human: 57, cpu: 30 });
     a.app.render(true);
     ok(JSON.stringify(a.S.count.shown) === '[50,30]' && a.S.count.done === false, 'the next round\'s dialog starts its own count, from 50');
-    a.timer.advance(5000); ok(JSON.stringify(a.S.count.shown) === '[57,30]' && a.clicks.length === 7, 'and counts the 7 points, with 7 clicks');
+    a.timer.advance(5000); ok(JSON.stringify(a.S.count.shown) === '[57,30]' && a.clicks.length === 1, 'and counts the 7 points (one tile), with a click');
     // the dialog goes away: nothing is left
     a.S.modal = null; a.app.render(true);
     ok(a.S.count === null, 'when there is no such dialog there is no count');
@@ -169,11 +170,12 @@ function roundEnd(S, rows, totals) { S.modal = { type: 'roundEnd', blocked: fals
           const c0 = a.clicks.length, startShown = S.count.shown.slice(); let last = S.count.shown.slice(), ord = [], ticks = 0;
           const wantFrom = isFinal ? startShown.map(() => 0) : S.modal.rows.map(r => S.modal.totals[r.id] - r.pips);
           if (JSON.stringify(startShown) !== JSON.stringify(wantFrom)) wrong++;
-          for (let t = 0; t < 15000 && !S.count.done; t++) { a.timer.advance(5); const now = S.count.shown; const k = now.findIndex((v, q) => v !== last[q]); if (k >= 0) { ord.push(k); ticks++; if (now[k] > S.count.to[k] || now[k] < S.count.from[k]) wrong++; last = now.slice(); } }
+          let lastRev = isFinal ? null : S.count.rev.slice();
+          for (let t = 0; t < 40000 && !S.count.done; t++) { a.timer.advance(5); const now = S.count.shown; let k = now.findIndex((v, q) => v !== last[q]); if (k < 0 && lastRev) k = S.count.rev.findIndex((v, q) => v !== lastRev[q]); if (k >= 0) { ord.push(k); ticks++; if (now[k] > S.count.to[k] || now[k] < S.count.from[k]) wrong++; last = now.slice(); if (lastRev) lastRev = S.count.rev.slice(); } }
           const want = isFinal ? ids.map(id => S.modal.totals[id]) : S.modal.rows.map(r => S.modal.totals[r.id]);
           if (JSON.stringify(S.count.shown) !== JSON.stringify(want) || JSON.stringify(shownIn(a.root.innerHTML)) !== JSON.stringify(want)) wrong++;
           if (ord.join('') !== [...ord].sort().join('')) notSeq++;
-          for (let k = 0; k < want.length; k++) if (ord.filter(x => x === k).length > C.maxTicks) tooMany++;
+          for (let k = 0; k < want.length; k++) if (ord.filter(x => x === k).length > (isFinal ? C.maxTicks : S.modal.rows[k].hand.length)) tooMany++;
           clicksTotal++; if (a.clicks.length - c0 === ticks) clicksOk++;
         }
         if (!A) continue;

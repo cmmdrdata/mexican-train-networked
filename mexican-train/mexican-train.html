@@ -298,7 +298,9 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 
 /* online play */
 .opp.three { grid-template-areas: "cpu yard" "cpu2 yard" "bubble yard"; }
+.opp.four { grid-template-areas: "cpu yard" "cpu2 yard" "cpu3 yard" "bubble yard"; }
 .cpu-hand.second { grid-area: cpu2; margin-top: 0.35rem; }
+.cpu-hand.second[data-player="cpu3"] { grid-area: cpu3; }
 .net-dot { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #8a8f8c; vertical-align: middle; flex: none; }
 .net-dot.up { background: #3ec27a; }
 .net-dot.down { background: #d8564b; }
@@ -388,12 +390,17 @@ select option { color: #1b2523; background: #fff; }
 
 .rows { display: grid; gap: 0.8rem; margin-bottom: 1rem; }
 .row {
-  display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto auto; gap: 0.6rem 0.9rem; align-items: center;
+  display: grid; grid-template-columns: 8rem minmax(0, 1fr) auto auto; gap: 0.6rem 0.9rem; align-items: center;
   padding-bottom: 0.8rem; border-bottom: 1px solid var(--dlg-line);
 }
-.row .who { font-family: var(--display); font-size: 1.1rem; }
+.row .who { font-family: var(--display); font-size: 1.1rem; min-width: 0; overflow-wrap: anywhere; }       /* a name gets its own column, wide enough for the names in the game; a longer one (up to 20 letters) wraps inside it instead of running into the tiles */
 .mini { display: flex; flex-wrap: wrap; gap: 3px; --s: 20px; min-height: 22px; }
 .mini .tile { filter: none; }
+.mini .mt { display: inline-flex; }
+.mini .mt.hid { visibility: hidden; }
+.mini .mt:not(.hid) { animation: mtIn 0.18s ease-out; }
+@keyframes mtIn { from { transform: scale(0.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mini .mt:not(.hid) { animation: none; } }
 .mini .none { color: var(--dlg-muted); font-size: 0.9rem; }
 .pts { display: grid; justify-items: end; line-height: 1.1; }
 .pts b { font: 700 1.35rem/1.1 var(--display); font-variant-numeric: tabular-nums; }
@@ -417,8 +424,8 @@ select option { color: #1b2523; background: #fff; }
   .track-info { grid-auto-flow: column; gap: 0.8rem; align-items: center; }
   .cover { display: none; }
   .track-tiles { min-height: calc(var(--s) * 2 + 18px); }
-  .row { grid-template-columns: 2.6rem minmax(0, 1fr); }
-  .row .pts { grid-column: 2; justify-items: start; grid-auto-flow: column; gap: 0.5rem; display: flex; align-items: baseline; }
+  .row { grid-template-columns: minmax(0, 1fr); }                    /* on a phone the name has its own line above the tiles and the points */
+  .row .pts { grid-column: 1; justify-items: start; grid-auto-flow: column; gap: 0.5rem; display: flex; align-items: baseline; }
   .dialog { padding: 1.1rem 1.1rem 1rem; }
 }
 
@@ -476,13 +483,31 @@ select option { color: #1b2523; background: #fff; }
 .join-choices .manual-box[hidden] { display: none; }
 .join-choices .manual-box input { width: 100%; box-sizing: border-box; }
 
+/* ---- Recent games (the list of games played on the server) ---- */
+.hist-count { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0 12px; color: var(--dlg-muted); }
+.hist-count .btn { padding: 4px 12px; min-width: 0; }
+.hist-note { color: var(--dlg-muted); margin: 18px 0; }
+.hist-list { display: grid; gap: 10px; max-height: min(58vh, 560px); overflow-y: auto; padding-right: 4px; }
+.hist-game { border: 1px solid var(--dlg-line, rgba(255,255,255,0.18)); border-radius: 10px; padding: 10px 12px; }
+.hist-game.stopped { opacity: 0.8; border-style: dashed; }
+.hist-game header { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 0.85rem; color: var(--dlg-muted); }
+.hist-game header time { font-weight: 600; color: inherit; }
+.hist-result { margin: 4px 0 6px; font-weight: 700; }
+.hist-game ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.hist-game li { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: baseline; }
+.hist-game li .hs { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
+.hist-game li .hr { font-size: 0.8rem; color: var(--dlg-muted); min-width: 9ch; text-align: right; }
+.hist-game li small { color: var(--dlg-muted); }
+.hist-game li.won .hn { font-weight: 700; }
+.hist-game .crown { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gold, #d6a644); margin-left: 4px; }
+
 </style>
 </head>
 <body>
 <div id="app"></div>
 <noscript>Mexican Train needs JavaScript turned on to run.</noscript>
 <script>
-window.MT_BUILD = "d5fcc896ba";
+window.MT_BUILD = "a328090cd1";
 (function (global) {
   'use strict';
 
@@ -521,13 +546,13 @@ window.MT_BUILD = "d5fcc896ba";
     return { id, tiles: [], end: engine, marker: false };
   }
 
-  // The ids of the players at the table, in turn order. Two players are "human" and "cpu"; a third is "cpu2".
+  // The ids of the players at the table, in turn order. Two players are "human" and "cpu"; a third is "cpu2" and a fourth "cpu3".
   // (The ids are also the ids of their trains. They are only names: any of the players may be a person.)
-  const PLAYER_IDS = ['human', 'cpu', 'cpu2'];
+  const PLAYER_IDS = ['human', 'cpu', 'cpu2', 'cpu3'];
 
   /* simultaneousOpening: every player builds their own train at the same time before the
    * first normal turn (see buildPhase). Off by default so the plain rules stay testable.
-   * players: 2 (the default) or 3 at the table; each is dealt handSize tiles. */
+   * players: 2 (the default), 3 or 4 at the table; each is dealt handSize tiles. */
   function newRound({ engine, handSize, rng, simultaneousOpening, players }) {
     const tiles = [];
     for (let a = 0; a <= MAX_PIP; a++) {
@@ -536,8 +561,8 @@ window.MT_BUILD = "d5fcc896ba";
       }
     }
     shuffle(tiles, rng);
-    const ids = PLAYER_IDS.slice(0, players === 3 ? 3 : 2);
-    const names = { human: 'You', cpu: 'CPU', cpu2: 'CPU 2' };
+    const ids = PLAYER_IDS.slice(0, players === 3 || players === 4 ? players : 2);
+    const names = { human: 'You', cpu: 'CPU', cpu2: 'CPU 2', cpu3: 'CPU 3' };
     const seated = ids.map(id => ({ id, name: names[id], hand: tiles.splice(0, handSize) }));   // (the first two hands are dealt exactly as in a two-player game)
     const trains = {};
     ids.forEach(id => { trains[id] = newTrain(id, engine); });
@@ -1442,8 +1467,10 @@ window.MT_BUILD = "d5fcc896ba";
    * came from. A tile in your hand lies down with its lower number on the left; one of the
    * computer's stands up. On a train a double stands across it, any other tile lies along it
    * with the end that matched first on the left. */
-  function flightRotation(placed, fromLyingDown) {
+  function flightRotation(placed, fromLyingDown, shown) {
     if (placed[0] === placed[1]) return fromLyingDown ? 90 : 0;
+    // `shown`: the halves as they are drawn in the hand, left then right (a tile the player turned round is drawn the other way): it flies without turning if it already lies the way it will lie
+    if (fromLyingDown && Array.isArray(shown) && shown.length === 2) return shown[0] === placed[0] ? 0 : 180;
     if (fromLyingDown) return placed[0] <= placed[1] ? 0 : 180;
     return placed[0] <= placed[1] ? 90 : -90;
   }
@@ -1500,8 +1527,8 @@ window.MT_BUILD = "d5fcc896ba";
     const rectOf = el => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
     // the last face-down tile in an opponent's row (with two opponents, each has a row of their own)
     const lastBack = pid => {
-      const two = root.querySelector && root.querySelector('.cpu-hand[data-player="cpu2"]');
-      const sel = pid === 'cpu2' ? '.cpu-hand[data-player="cpu2"] .back' : two ? '.cpu-hand[data-player="cpu"] .back' : '.cpu-hand .back';
+      const many = root.querySelector && root.querySelector('.cpu-hand[data-player="cpu2"]');
+      const sel = many ? `.cpu-hand[data-player="${pid}"] .back` : '.cpu-hand .back';
       const b = root.querySelectorAll(sel);
       return b && b.length ? b[b.length - 1] : null;
     };
@@ -1554,17 +1581,24 @@ window.MT_BUILD = "d5fcc896ba";
       holder.innerHTML = tileBackSVG(orient);
       return holder.firstChild || null;
     };
+    // how a tile of the hand is drawn, left half then right ("5 and 3": its label), or null
+    const shownOf = k => {
+      const b = root.querySelector && root.querySelector('.tile-btn[data-key="' + k + '"]');
+      const m = b && b.getAttribute && /^(\d+) and (\d+)/.exec(b.getAttribute('aria-label') || '');
+      return m ? [Number(m[1]), Number(m[2])] : null;
+    };
     const cleanFace = el => { const f = el.cloneNode(true); if (f.classList) { f.classList.remove('pop'); f.classList.remove('reveal'); } return f; };
 
     /* ---- a tile played onto a train ---- */
     function capture(spec) {
       if (!ok) return null;
       let el = null;
-      if (spec.playerId === 'human') el = root.querySelector('.tile-btn[data-key="' + spec.key + '"] .tile');
+      let shown = null;
+      if (spec.playerId === 'human') { el = root.querySelector('.tile-btn[data-key="' + spec.key + '"] .tile'); shown = shownOf(spec.key); }
       else el = lastBack(spec.playerId);
       if (!el) return null;
       const r = rectOf(el);
-      return r.width > 0 && r.height > 0 ? { from: r } : null;
+      return r.width > 0 && r.height > 0 ? { from: r, shown } : null;
     }
     function land(tok, spec, opts) {
       if (!ok || !tok) return;
@@ -1572,10 +1606,10 @@ window.MT_BUILD = "d5fcc896ba";
       const dest = find();
       if (!dest) return;
       // a computer tile that will be public on arrival starts face down and turns over in flight
-      const turnsOver = (spec.playerId === 'cpu' || spec.playerId === 'cpu2') && !spec.hidden;
+      const turnsOver = (spec.playerId === 'cpu' || spec.playerId === 'cpu2' || spec.playerId === 'cpu3') && !spec.hidden;
       const back = turnsOver ? backLayer(spec.placed[0] === spec.placed[1] ? 'v' : 'h') : null;
       const lyingDown = tok.from.width > tok.from.height;
-      fly(find, dest, tok.from, flightRotation(spec.placed, lyingDown), { face: cleanFace(dest), back }, opts && opts.fast ? 260 : 440);
+      fly(find, dest, tok.from, flightRotation(spec.placed, lyingDown, tok.shown), { face: cleanFace(dest), back }, opts && opts.fast ? 260 : 440);
     }
 
     /* ---- a tile drawn from the boneyard ---- */
@@ -1600,6 +1634,38 @@ window.MT_BUILD = "d5fcc896ba";
       }
     }
 
+    /* ---- a tile taken back from the end of a train, back to the hand it came from ---- */
+    // `nth`: when several come off in one go, the 0th is the last tile of the train, the 1st the one before it
+    function captureUndo(pid, nth) {
+      if (!ok) return null;
+      const tiles = Array.from(root.querySelectorAll('.scroller[data-train="' + pid + '"] .tile[data-idx]'));
+      tiles.sort((a, b) => Number(a.getAttribute ? a.getAttribute('data-idx') : 0) - Number(b.getAttribute ? b.getAttribute('data-idx') : 0));
+      const el = tiles[tiles.length - 1 - (nth || 0)];
+      if (!el) return null;
+      const r = rectOf(el);
+      if (!(r.width > 0 && r.height > 0)) return null;
+      const m = /^(\d+) and (\d+)/.exec((el.getAttribute && el.getAttribute('aria-label')) || '');      // (a face-down tile of the computer has no numbers)
+      return { from: r, nums: m ? [Number(m[1]), Number(m[2])] : null };
+    }
+    function landUndo(tok, pid, opts) {
+      if (!ok || !tok) return;
+      const dur = opts && opts.fast ? 240 : 380;
+      if (pid === 'human') {
+        if (!tok.nums) return;
+        const k = Math.min(tok.nums[0], tok.nums[1]) + '-' + Math.max(tok.nums[0], tok.nums[1]);
+        const find = () => root.querySelector('.hand .tile-btn[data-key="' + k + '"] .tile');
+        const dest = find();
+        if (!dest) return;
+        const shown = shownOf(k);
+        const rot = tok.nums[0] === tok.nums[1] ? 90 : (shown ? (shown[0] === tok.nums[0] ? 0 : 180) : 0);       // the tile leaves the train looking as it did there
+        fly(find, dest, tok.from, rot, { face: cleanFace(dest), back: null }, dur);
+      } else {
+        const dest = lastBack(pid);
+        if (!dest) return;
+        fly(() => lastBack(pid), dest, tok.from, tok.nums && tok.nums[0] === tok.nums[1] ? 0 : 90, { face: null, back: backLayer('v') }, dur);   // face down, as it went up
+      }
+    }
+
     // after any redraw: tiles still in flight must stay hidden where they will land
     function reapply() {
       flights.forEach(f => { const d = f.find(); if (d) d.style.visibility = 'hidden'; });
@@ -1611,7 +1677,7 @@ window.MT_BUILD = "d5fcc896ba";
         if (d) d.style.visibility = '';
       });
     }
-    return { capture, land, captureDraw, landDraw, reapply, cancelAll, get active() { return flights.length; } };
+    return { capture, shownOf, land, captureDraw, landDraw, captureUndo, landUndo, reapply, cancelAll, get active() { return flights.length; } };
   }
 
   /* Dragging tiles around in your hand with a mouse, finger or pen. Pointer events cover all three.
@@ -1658,15 +1724,16 @@ window.MT_BUILD = "d5fcc896ba";
       const legal = app.legalTrains ? app.legalTrains(st.key) : [];
       const over = hit && legal.includes(hit.dataset.train) ? hit.dataset.train : null;
       if (over !== st.over) { st.over = over; app.dispatch({ type: 'dragOver', train: over }); }
-      if (hit) return;                                          // over a train: not rearranging the hand
+      st.hit = hit ? hit.dataset.train : null;                  // (the train it is over, whether or not it can go there: to notice a try that cannot work)
+      if (hit) { app.dispatch({ type: 'dragMove', index: null }); return; }                // over a train: not rearranging the hand
       const tray = root.querySelector ? root.querySelector('.tray') : null;
-      if (tray && tray.getBoundingClientRect && !inside(rectOf(tray), e.clientX, e.clientY)) return;   // out on the table: leave the hand alone
+      if (tray && tray.getBoundingClientRect && !inside(rectOf(tray), e.clientX, e.clientY)) { app.dispatch({ type: 'dragMove', index: null }); return; }   // out on the table: leave the hand alone
       const els = Array.from(root.querySelectorAll('.hand .tile-btn, .hand .slot-empty.hole'));      // every slot of the hand: a tile, or an empty one
       if (els.length) app.dispatch({ type: 'dragMove', index: dropIndexAt(els.map(rectOf), e.clientX, e.clientY, els.findIndex(el => el.dataset.key === st.key)) });
     }
     function up(e, cancelled) {
       if (!st || (e && e.pointerId !== undefined && e.pointerId !== st.id)) return;
-      const wasDrag = st.active, over = cancelled ? null : st.over, k = st.key;
+      const wasDrag = st.active, over = cancelled ? null : st.over, k = st.key, hitTrain = st.hit;
       const from = e && e.clientX !== undefined ? { left: e.clientX - st.dx, top: e.clientY - st.dy, width: st.w, height: st.h } : null;   // where it was let go
       st = null;
       if (!wasDrag) return;
@@ -1675,7 +1742,10 @@ window.MT_BUILD = "d5fcc896ba";
       if (doc && doc.body && doc.body.classList) doc.body.classList.remove('dragging');
       try { if (root.releasePointerCapture && e) root.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
       if (over) app.dispatch({ type: 'dropOnTrain', key: k, train: over, from });     // let go over a train: play it there
-      else app.dispatch({ type: 'dragEnd' });
+      else {
+        app.dispatch({ type: 'dragEnd' });
+        if (!cancelled && hitTrain) app.dispatch({ type: 'invalidTry' });      // let go over a train it cannot go on
+      }
       setTimeout(() => { suppress = false; }, 0);    // swallow the click that follows a drag
     }
     root.addEventListener('pointerdown', down);
@@ -1694,7 +1764,7 @@ window.MT_BUILD = "d5fcc896ba";
   // gap (in evaluation points) below the best available move
   const RATING = { great: 0.5, good: 8, poor: 16, awful: 32 };
   /* The score counting up in the round-end and final dialogs: a click for each step, one player after another. */
-  const COUNT_UP = { startMs: 450, tickMs: 35, maxTicks: 28, gapMs: 260 };       // wait for the dialog to appear; between clicks; at most this many clicks for one player (bigger scores step by more); between players
+  const COUNT_UP = { startMs: 450, tickMs: 35, maxTicks: 28, gapMs: 260, tileMs: 500, tileGapMs: 450 };       // wait for the dialog to appear; between clicks; at most this many clicks for one player (bigger scores step by more); between players
   const OWN_SHORT = 2;                                  // a train of this many tiles or fewer is "very short" for the computer to grumble about
 
   /* Which kind of comment (if any) a rated move deserves. */
@@ -1814,6 +1884,12 @@ window.MT_BUILD = "d5fcc896ba";
       'A pass. Put the marker on my train. Go on, enjoy it.',
       'Boxed in with nowhere to go. I should have built something different.',
       'No move, no tile, no luck. Wonderful.',
+    ],
+    invalid: [
+      'Bold. Wrong, but bold.',
+      'That does not fit. The numbers are right there, you know.',
+      'Trying it on the wrong train? Creative.',
+      'Nope. Try reading the numbers.',
     ],
     ownShort: [
       'Look at that train. {built} tiles. It is basically a handshake.',
@@ -1945,6 +2021,12 @@ window.MT_BUILD = "d5fcc896ba";
       'Blocked! I feel like a bus in a very small tunnel.',
       'No move at all. A marker on my train. How embarrassing.',
     ],
+    invalid: [
+      'Oh! Um, I do not think that one goes there.',
+      'Hee, wrong train! Try another one.',
+      'That tile and that train do not match. I think. Maybe.',
+      'Whoops, it does not fit there!',
+    ],
     ownShort: [
       'My train is tiny. Tiny! It is more of a train station.',
       'Look at my little train. It is only {built} long. It is shy.',
@@ -2072,6 +2154,12 @@ window.MT_BUILD = "d5fcc896ba";
       'I am forced to pass. Enjoy my open train while it lasts.',
       'A dead end. I planned for many things. Not this.',
     ],
+    invalid: [
+      'That is not a legal move.',
+      'It does not fit. Pay attention.',
+      'Wrong train. Look before you place.',
+      'An illegal move. Sloppy.',
+    ],
     ownShort: [
       'A short train. It is a weakness and I know it.',
       'Only {built}. My hand did not give me the chain I wanted.',
@@ -2122,6 +2210,7 @@ window.MT_BUILD = "d5fcc896ba";
       ownDraw: [['Ничего не подходит. Придётся тянуть.', 'Nothing fits. I will have to draw.'], ['Опять не та фишка. Не везёт.', 'Not the right tile again. No luck.']],
       ownDrawAgain: [['Снова мимо! Куча надо мной издевается.', 'Wrong again! The pile is mocking me.'], ['Столько тянуть и всё не то. Невероятно.', 'Drawing so much and still not right. Incredible.']],
       ownBlocked: [['Ходов нет, тянуть нечего. Тупик.', 'No moves, nothing to draw. A dead end.'], ['Пас. Маркер на мой поезд. Обидно.', 'A pass. A marker on my train. Annoying.']],
+      invalid: [['Так нельзя. Эта фишка сюда не подходит.', 'You cannot do that. This tile does not fit there.'], ['Смотри на цифры. Они не совпадают.', 'Look at the numbers. They do not match.']],
       ownShort: [['Какой короткий поезд. Одно название.', 'What a short train. A train in name only.'], ['Мой поезд совсем маленький. Надо было лучше.', 'My train is tiny. It should have been better.']],
       roundBlocked: [['Всё заблокировано. Никто не может ходить.', 'Everything is blocked. Nobody can move.'], ['Тупик. Считаем очки.', 'A dead end. Let us count the points.']],
     },
@@ -2137,6 +2226,7 @@ window.MT_BUILD = "d5fcc896ba";
       ownDraw: [['合うのがない…山から引くしかない。', 'Nothing matches... I have no choice but to draw from the pile.'], ['また違う駒かあ。ついてないな。', 'Another wrong tile. Unlucky.']],
       ownDrawAgain: [['また外れ！山にからかわれてる気がする。', 'Wrong again! I feel like the pile is teasing me.'], ['引いても引いても合わない。信じられない。', 'No matter how much I draw, nothing fits. Unbelievable.']],
       ownBlocked: [['出せる駒も引く駒もない。行き詰まりだ。', 'No tile to play and nothing to draw. A dead end.'], ['パスか。列車にマーカーが付くのは悔しい。', 'A pass. It is frustrating to get a marker on my train.']],
+      invalid: [['そこには置けないよ。数字が合わない。', 'You cannot put it there. The numbers do not match.'], ['それは反則だよ。もう一度見て。', 'That is not allowed. Look again.']],
       ownShort: [['私の列車、短すぎる。名ばかりだ。', 'My train is too short. A train in name only.'], ['こんなに短い列車は久しぶりだ。', 'It has been a while since I had such a short train.']],
       roundBlocked: [['全員行き詰まり。誰も動けない。', 'Everybody is stuck. Nobody can move.'], ['手詰まりだ。点数を数えよう。', 'A stalemate. Let us count the points.']],
     },
@@ -2152,6 +2242,7 @@ window.MT_BUILD = "d5fcc896ba";
       ownDraw: [['没有能出的牌，只能摸牌了。', 'No tile I can play, so I have to draw.'], ['又不是我要的牌，运气真差。', 'Not the tile I wanted again. Such bad luck.']],
       ownDrawAgain: [['又摸错了！牌堆在捉弄我。', 'Wrong again! The pile is toying with me.'], ['摸了这么多还是不对，太离谱了。', 'I have drawn so many and still no match. Ridiculous.']],
       ownBlocked: [['没牌可出，也没牌可摸，被堵死了。', 'Nothing to play and nothing to draw. I am completely blocked.'], ['只能过牌，车上还要放标记，真烦。', 'I can only pass, and a marker goes on my train. How annoying.']],
+      invalid: [['不能放那儿，数字对不上。', 'You cannot put it there; the numbers do not match.'], ['这步不合规则，再看看。', 'That move is against the rules. Look again.']],
       ownShort: [['我的火车太短了，根本不像火车。', 'My train is so short it does not even look like a train.'], ['这么短的火车，真拿不出手。', 'A train this short is nothing to show off.']],
       roundBlocked: [['全都堵住了，谁也走不了。', 'Everything is blocked. Nobody can move.'], ['死局了，来数点数吧。', 'A deadlock. Let us count the points.']],
     },
@@ -2167,6 +2258,7 @@ window.MT_BUILD = "d5fcc896ba";
       ownDraw: [['낼 수 있는 패가 없네. 뽑아야겠다.', 'No tile I can play. I will have to draw.'], ['또 맞지 않는 패야. 운이 없어.', 'Another tile that does not fit. Bad luck.']],
       ownDrawAgain: [['또 틀렸어! 패 더미가 나를 놀리는 것 같아.', 'Wrong again! The pile seems to be teasing me.'], ['이렇게 뽑았는데도 안 맞다니, 말도 안 돼.', 'Drawing this much and still no match. Unbelievable.']],
       ownBlocked: [['낼 패도 뽑을 패도 없어. 꽉 막혔다.', 'No tile to play and none to draw. Totally blocked.'], ['패스라니. 내 기차에 표시가 붙는 게 분하다.', 'A pass. It is galling to get a marker on my train.']],
+      invalid: [['거기엔 못 놓아. 숫자가 안 맞잖아.', 'You cannot put it there. The numbers do not match.'], ['그건 안 되는 수야. 다시 봐.', 'That is not a legal move. Look again.']],
       ownShort: [['내 기차가 너무 짧아. 기차라고 하기도 민망해.', 'My train is too short. It is embarrassing to call it a train.'], ['이렇게 짧은 기차는 오랜만이야.', 'It has been a while since I had a train this short.']],
       roundBlocked: [['전부 막혔어. 아무도 움직일 수 없어.', 'Everything is blocked. Nobody can move.'], ['교착 상태야. 점수를 세어 보자.', 'A deadlock. Let us count the points.']],
     },
@@ -2182,6 +2274,7 @@ window.MT_BUILD = "d5fcc896ba";
       ownDraw: [['कोई टाइल नहीं बैठती। अब उठानी पड़ेगी।', 'No tile fits. Now I have to draw one.'], ['फिर से गलत टाइल। किस्मत ही ख़राब है।', 'The wrong tile again. My luck is just bad.']],
       ownDrawAgain: [['फिर गलत निकली! ढेर मुझे चिढ़ा रहा है।', 'Wrong again! The pile is teasing me.'], ['इतना उठाया, फिर भी कुछ नहीं बैठा। हद है।', 'I drew so much and still nothing fits. This is too much.']],
       ownBlocked: [['न चलने को टाइल है, न उठाने को। रास्ता बंद है।', 'No tile to play, none to draw. The way is shut.'], ['पास करना पड़ा। मेरी ट्रेन पर निशान लग गया।', 'I had to pass. A marker went on my train.']],
+      invalid: [['वहाँ नहीं लग सकता। संख्याएँ मेल नहीं खातीं।', 'It cannot go there. The numbers do not match.'], ['यह चाल सही नहीं है। फिर से देखो।', 'This move is not valid. Look again.']],
       ownShort: [['मेरी ट्रेन बहुत छोटी है। नाम की ही ट्रेन है।', 'My train is very short. A train only in name.'], ['इतनी छोटी ट्रेन तो बहुत दिन बाद बनी है।', 'It has been a long time since such a short train got built.']],
       roundBlocked: [['सब कुछ बंद है। कोई नहीं चल सकता।', 'Everything is blocked. Nobody can move.'], ['गतिरोध हो गया। चलो अंक गिनें।', 'A deadlock. Let us count the points.']],
     },
@@ -2197,6 +2290,7 @@ window.MT_BUILD = "d5fcc896ba";
       ownDraw: [['لا توجد قطعة مناسبة. سأسحب من الكومة.', 'No suitable tile. I will draw from the pile.'], ['مرة أخرى قطعة غير مناسبة. حظي سيئ.', 'Another unsuitable tile. My luck is bad.']],
       ownDrawAgain: [['مرة أخرى خطأ! الكومة تسخر مني.', 'Wrong again! The pile is mocking me.'], ['سحبت كثيرًا ولا شيء يناسب. أمر لا يصدق.', 'I drew a lot and nothing fits. Unbelievable.']],
       ownBlocked: [['لا قطعة للعب ولا شيء للسحب. الطريق مسدود.', 'No tile to play and nothing to draw. The road is blocked.'], ['عليّ أن أتخطى الدور، وعلامة على قطاري. مزعج.', 'I must pass, and a marker on my train. Annoying.']],
+      invalid: [['لا يمكنك وضعها هناك. الأرقام لا تتطابق.', 'You cannot put it there. The numbers do not match.'], ['هذه حركة غير صحيحة. انظر مرة أخرى.', 'That is not a valid move. Look again.']],
       ownShort: [['قطاري قصير جدًا. اسم قطار فقط.', 'My train is very short. A train in name only.'], ['منذ زمن لم أبنِ قطارًا بهذا القصر.', 'It has been a long time since I built a train this short.']],
       roundBlocked: [['كل شيء مسدود. لا أحد يستطيع التحرك.', 'Everything is blocked. Nobody can move.'], ['وصلنا إلى طريق مسدود. لنحسب النقاط.', 'We reached a dead end. Let us count the points.']],
     },
@@ -2416,6 +2510,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Nothing fits? Oh dear. Off I go to the boneyard.', 'I was sure I had a tile for that. I did not. Drawing!', 'Drawing! It is like a surprise, except usually a bad one.'],
           ownDrawAgain: ['Another wrong tile! I am beginning to think they dislike me.', 'Still nothing! I might have a snack while I draw.'],
           ownBlocked: ['I cannot play and there is nothing left to draw. What do I do now?', 'Stuck! Is stuck the same as lost? I hope not.', 'A pass, and a marker on my train. That sounds like a punishment.'],
+          invalid: ['Oh! Is that allowed? I do not think that is allowed.', 'That tile does not go there. I only know because I tried it once.', 'Ooh, not there! Try the other one. Or the other other one.'],
           ownShort: ['My train is only {built}! It will not even get us to second breakfast.', 'Look at my little train. It is very short. Like me, some say.', 'It is a bit short, is it not? I was hungry when I built it.'],
           roundBlocked: ['Nobody can move? Then nobody has to be good at it. Lovely!', 'Everyone is stuck! Even the tiles have gone quiet.'],
           openBest: ['That is a lovely long train. Mine is... shorter.', 'Wow, that train goes all the way to Bree!'],
@@ -2436,6 +2531,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Nothing fits. Pippin would say that is a surprise. It is not.', 'To the boneyard, then. Somebody has to go.', 'Drawing a tile. This is where I look unbothered.'],
           ownDrawAgain: ['Wrong again. Somebody has hidden the good tiles. Pippin, probably.', 'Another dud. The boneyard has a poor sense of humor.'],
           ownBlocked: ['Blocked! No tile, no draw, no hope. Still, I look good doing it.', 'I must pass. Put the marker on my train, if you must.', 'Stuck in a corner of my own making. Very hobbit of me.'],
+          invalid: ['Not there, Pip... I mean, not there. Look at the numbers.', 'A fine try, but the numbers do not agree.', 'That tile and that train are not on speaking terms.'],
           ownShort: ['{built} tiles. That is a short train. A hobbit-sized train.', 'My train is rather small. Do not tell Pippin; he would be pleased.', 'A very short train. I blame the tiles. Entirely.'],
           roundBlocked: ['Blocked all round! Nobody wins. Which is almost like me winning.', 'A standstill. Even the Shire is busier than this.'],
           openBest: ['Long train! Show-off.', 'Every tile laid out neat as a hobbit garden. Fine.'],
@@ -2456,6 +2552,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Nothing fits, precious. Nothing fits! We must draw from the nasty pile.', 'Where is the tile we want? Gollum must draw, yes, draw.', 'Wrong tiles, always wrong. We hates it.'],
           ownDrawAgain: ['Again, again! Nasty tiles, tricksy tiles. We hates them!', 'Still the wrong one. The boneyard is cheating us, precious.'],
           ownBlocked: ['No move! We is stuck, precious. Stuck in the dark!', 'We must pass. A marker on our train. Nasty, nasty marker.', 'Nothing to play, nothing to take. Gollum, gollum.'],
+          invalid: ['Foolish! It does not fit, precious. It does not fit!', 'Tries to cheat, does it? We saw it. We saw!', 'Nasty tile, wrong train. Gollum, gollum.'],
           ownShort: ['Only {built}! A little train, a poor little train. We wanted more.', 'Short, it is short! The tiles cheated Gollum, yes they did.', 'Such a tiny train. It is not fair, precious.'],
           roundBlocked: ['Everyone is stuck! Nobody takes it. Nobody has it. We hates a stalemate.', 'All blocked, precious. Dark and quiet. Not even a fish.'],
           openBest: ['Long train. Too long. We hates it.', 'All the tiles, all down. Nasty clever player.'],
@@ -2476,6 +2573,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Hrum. Nothing fits. I must draw, and drawing is not a hasty thing.', 'Hoom. The right tile is not here. I shall go and find it. Slowly.', 'No fit. Hrum. A long time ago this would not have troubled me.'],
           ownDrawAgain: ['Hoom. Another that does not fit. The pile is not being friendly.', 'Hrum. The wrong tile again. I have known trees with better luck.'],
           ownBlocked: ['Hrum. I cannot play and cannot draw. That is a very still place to be.', 'I must pass. Hoom. A marker on my train, like moss on a root.', 'Blocked. Even a tree can feel it. Hrum.'],
+          invalid: ['Hroom. That does not fit there. Do not be hasty.', 'Hrum. The numbers do not match. Look again, slowly.', 'Hoom. A tile in the wrong place is like a tree in the wrong forest.'],
           ownShort: ['Hrum. {built} tiles only. A short train, for an old Ent.', 'My train is not long. Hoom. I did not hurry, and I did not have the tiles.', 'A short train, hoom. Even a sapling has longer branches.'],
           roundBlocked: ['Hoom. Everything is stopped. That is a sensible rest, for once.', 'Nobody can move. Hrum. Like the forest in deep winter.'],
           openBest: ['A long train. Like a long name. I approve.', 'Hoom. Every tile in its place, like trees in an old forest.'],
@@ -2497,6 +2595,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Nothing fits. I will have to draw. I am so tired of drawing.', 'Another trip to the boneyard. I hope it is kind this time.', 'It is not the tile I need. It never is, when I need it.'],
           ownDrawAgain: ['Wrong again. It is a heavy thing, drawing the wrong tile twice.', 'I keep drawing the wrong ones. Perhaps this is my burden.'],
           ownBlocked: ['I cannot move, and there is nothing left to draw. It is a lonely feeling.', 'A pass. The marker goes on my train. I feel it, somehow.', 'Blocked. I did not choose this, but here we are.'],
+          invalid: ['I... do not think that goes there.', 'That is not the right train, I am fairly sure.', 'It does not fit. It is all right, I make mistakes too.'],
           ownShort: ['{built} tiles. It is such a short road. I hoped for more.', 'My train is very small. I wish I could have carried it further.', 'It does not go far, my train. It has not been my day.'],
           roundBlocked: ['Everyone is stuck. Perhaps a rest is not the worst thing.', 'Blocked. Nobody can go further. We shall have to count what we have.'],
           openBest: ['A long road of tiles. Well walked.', 'Every tile laid down. That was impressive.'],
@@ -2517,6 +2616,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Nothing fits, and the boneyard is the last place I want to be. Still, here I go.', 'The wrong tile again, and I am hungry, too. Drawing.', 'My old Gaffer used to say: if it does not fit, you draw. He never said it would be easy.'],
           ownDrawAgain: ['Another wrong one! I could have cooked a stew by now.', 'Still no luck. There must be a better tile in there somewhere. There must.'],
           ownBlocked: ['I cannot play and I cannot draw. I am proper stuck.', 'A pass, and a marker on my train. Well. It happens to the best of us.', 'Blocked in. Not even a bit of bread to cheer me up.'],
+          invalid: ['Beggin\' your pardon, but that one will not fit there.', 'Not there, Mr. Player. Have a look at the numbers.', 'Steady on. That tile and that train do not match.'],
           ownShort: ['{built} tiles. It is a short train. A very short one. Begging your pardon.', 'My train is so small it would not feed a hobbit. A little one, anyway.', 'Short, it is. I did my best with what I had, and that is the truth.'],
           roundBlocked: ['Everything is stuck! Nobody can budge. Not even for second breakfast.', 'Blocked, all of us. Well. Count the tiles, then, and have a cup of tea.'],
           openBest: ['Lovely long train. Proper job.', 'Every tile down. My gaffer would approve.'],
@@ -2537,6 +2637,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Nothing fits! Bah. I must draw, like a beardless boy.', 'Wrong tiles, always the wrong tiles. I will draw, and I will grumble.', 'Hrmph. No tile for that. Draw I must, and I do not like it.'],
           ownDrawAgain: ['Again the wrong tile! Axes and anvils, what a pile!', 'Still nothing. Never in all my years has a pile cheated me so.'],
           ownBlocked: ['Blocked! Nothing to play, nothing to draw. I could split something over this.', 'A pass! And a marker on my train. A dwarf does not enjoy being marked.', 'Stuck fast, like a stone in a tunnel. Bah.'],
+          invalid: ['Ha! That tile does not fit, and you know it!', 'Wrong train, you rascal. Even a dwarf could see that.', 'Not there! Count the dots, then try again.'],
           ownShort: ['{built} tiles! A short train indeed, and a poor one. A shame upon my beard.', 'My train is short. Do not say a word. Not one.', 'A short train! Even a dwarf wants a longer road than this.'],
           roundBlocked: ['Blocked all round! A fine stalemate. Count your pips, then.', 'Nobody can move. A stone wall of a round.'],
           openBest: ['A long, strong train. Fine work, I will admit it.', 'Every tile in place, like a well-built hall.'],
@@ -2557,6 +2658,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Nothing fits. How tiresome. I shall draw, and hope for a kinder tile.', 'The tile I wanted is not here. Strange, for a game so simple.', 'I will draw. Trees are patient. I am trying to be.'],
           ownDrawAgain: ['Another wrong tile. Even the wind finds its way better than I.', 'Still not the one. The pile does not hear me.'],
           ownBlocked: ['I cannot play, and I cannot draw. An unpleasant stillness.', 'A pass. The marker upon my train. It is not graceful.', 'Blocked. An elf does not enjoy a closed path.'],
+          invalid: ['That tile has no place there. Look closer.', 'The numbers do not agree. I can see that from here.', 'A wrong turn. It happens, even to the keen-eyed.'],
           ownShort: ['{built} tiles. A short train. I expected a longer path.', 'My train is small. A single swallow would cover it.', 'It is a brief train. I had hoped it would sing more.'],
           roundBlocked: ['No tile can move. A strange, silent end to the round.', 'All paths are blocked. Let us count the pips and be done.'],
           openBest: ['A long, flawless train. Elegant.', 'Every tile placed. Even I am impressed.'],
@@ -2577,6 +2679,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Nothing fits? A warrior of Gondor should not need the boneyard.', 'I must draw. It is not a thing I do gladly.', 'The wrong tile. I do not enjoy being told no by wood and paint.'],
           ownDrawAgain: ['Wrong again! Gondor has endured worse, but not much worse.', 'Another useless tile. Fortune is no friend of mine today.'],
           ownBlocked: ['I cannot move! Nothing to play and nothing to draw. That is no way to fight.', 'A pass, and a marker on my train. I have borne worse. Barely.', 'Blocked. A man cannot win a game he cannot play.'],
+          invalid: ['That tile does not go there. One does not simply place it anywhere.', 'A bold move, but an illegal one.', 'Wrong train. Choose again, and choose well.'],
           ownShort: ['{built} tiles. A short train for the son of a Steward. I am ashamed.', 'My train is short. A poor defense. A poor everything.', 'A short train. In Gondor we would call it a skirmish.'],
           roundBlocked: ['Nobody can move. A stalemate. I would rather have a battle.', 'The round is blocked. A siege with no winner.'],
           openBest: ['A long, proud train. Well built.', 'Every tile in its place. A worthy wall.'],
@@ -2598,6 +2701,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Nothing fits? Hm. A wizard has resources, but not, it seems, the right tile.', 'I must draw. Bother. Bother and tobacco.', 'The tile I wanted is not here. It is never where one needs it, is it?'],
           ownDrawAgain: ['Wrong again! I begin to suspect some mischief in the boneyard.', 'Another bad tile. Even a wizard may grumble now and then.'],
           ownBlocked: ['No move, and nothing to draw. This is a poor place for a wizard to be.', 'I pass. The marker goes upon my train. Hm. Very well.', 'Blocked! A wizard is not stopped by walls. A pile of tiles, apparently, is another matter.'],
+          invalid: ['That tile does not fit there. A wizard notices these things.', 'Think before you place. That is not a legal move.', 'Not there, my friend. The numbers are not in agreement.'],
           ownShort: ['{built} tiles. A short train, I admit. It will do what it must.', 'My train is brief. I have had worse beginnings, and better endings.', 'A short train. It was not the plan. It rarely is.'],
           roundBlocked: ['Everything is blocked. A pause, then. Count the pips, my friend.', 'No one can move. Even wizards must sit and wait sometimes.'],
           openBest: ['The longest possible. Well reckoned.', 'Every tile in its place. I am almost proud.'],
@@ -2618,6 +2722,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Nothing fits. A ranger does not fear a long road, but this one is tedious.', 'I must draw. I have waited longer for less.', 'No tile for that. I will find the one I need.'],
           ownDrawAgain: ['Wrong again. I have tracked orcs for days with better luck.', 'Still the wrong tile. Patience, Aragorn.'],
           ownBlocked: ['No move, and no tile to draw. This path is closed to me.', 'I pass. A marker upon my train. We shall see how you use it.', 'Blocked. Every road ends somewhere. Not usually here.'],
+          invalid: ['That is not a legal move. Look again.', 'It does not fit that train. Choose another path.', 'A misstep. Take your time and look at the numbers.'],
           ownShort: ['{built} tiles. A short train. It is not the road I wished to walk.', 'My train is short. I will make it count.', 'A brief train. Sometimes a ranger must make do.'],
           roundBlocked: ['Blocked. No one can pass. Count your pips with care.', 'The road is closed to all of us. Then the lowest hand it is.'],
           openBest: ['The longest road. Well tracked.', 'You missed nothing. Good.'],
@@ -2638,6 +2743,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Nothing fits. I have seen many things, but rarely a tile so unwilling.', 'I shall draw. The right tile will come. Or it will not.', 'The tile I sought is not in my hand. A small sorrow.'],
           ownDrawAgain: ['Again the wrong tile. Even a light grows dim when ill-served.', 'Still the pile denies me. I will not forget it.'],
           ownBlocked: ['There is no path and nothing to draw. I did not foresee this.', 'I pass. A marker upon my train. Let it be.', 'Blocked. Even the Lady of the Wood cannot walk through a closed door.'],
+          invalid: ['That tile does not belong there. I see it, as I see many things.', 'It is not a move that can be made. Think again.', 'Not that tile, and not on that train.'],
           ownShort: ['{built} tiles. A short train, and I had hoped for more. Hope is a thin thing.', 'My train is brief. It is a small light, but it still shines.', 'A short train. I have seen shorter roads end greater things.'],
           roundBlocked: ['No tile may move. A stillness has come over the table.', 'The round is blocked. Time will not move it. Count the pips.'],
           openBest: ['A perfect train. Truly, you have a gift.', 'The longest road, chosen well.'],
@@ -2658,6 +2764,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Nothing fits. I have seen ages pass with less annoyance, but not many.', 'I must draw. A small thing, in the long view, and still irritating.', 'The tile I needed is absent. I will not complain. Much.'],
           ownDrawAgain: ['Wrong again. In three thousand years I have learned patience. It is thin today.', 'Another unfit tile. I begin to doubt the pile.'],
           ownBlocked: ['There is no move, and nothing left to draw. A closed door, then.', 'I must pass. Let the marker stand upon my train. It will not be forever.', 'Blocked. I confess I did not foresee it.'],
+          invalid: ['That tile cannot be played there. Consider the numbers.', 'It does not match. Be patient, and look again.', 'An error of haste. The tile belongs elsewhere.'],
           ownShort: ['{built} tiles. A short train, and I counted on more.', 'My train is brief. A wise one makes the most of brief things.', 'A short train. It is a lesson in humility, and I did not ask for one.'],
           roundBlocked: ['No tile can move. A rare stillness. Count what remains.', 'The round is blocked. Even the long years have not made me love a stalemate.'],
           openBest: ['The longest train. That is wisdom.', 'Every tile placed. I am pleased.'],
@@ -2678,6 +2785,7 @@ window.MT_BUILD = "d5fcc896ba";
           ownDraw: ['Nothing fits. Outrageous. The tiles obey me no better than the Ents did.', 'I must draw? From a pile? Beneath me. Yet I will do it.', 'The wrong tile. Everything must be done by my own hand, it seems.'],
           ownDrawAgain: ['Wrong again! Someone has tampered with this pile. I shall find them.', 'Another worthless tile. I will remember this insult.'],
           ownBlocked: ['No move, no draw. A trap! And I did not make it.', 'I must pass. A marker on my train. You will pay for every inch of it.', 'Blocked! Do you know how long I planned this game?'],
+          invalid: ['Foolish. That tile cannot go there, and you know it.', 'An illegal move. Do you take me for a fool?', 'Wrong train. How sadly typical.'],
           ownShort: ['{built} tiles. A short train, unworthy of me. I will not dwell on it.', 'My train is small. My plans are not.', 'A short train. Do not mistake it for weakness. It is a feint.'],
           roundBlocked: ['Blocked. Nobody wins. Do not look so pleased about it.', 'A stalemate. Everyone stuck, and I am the one who planned for it.'],
           openBest: ['The longest train. You must have been lucky.', 'Every tile placed. I suppose even you can count.'],
@@ -2699,7 +2807,7 @@ window.MT_BUILD = "d5fcc896ba";
 
   const CHAT = {
     chance: { great: 0.45, good: 0.3, poor: 0.8, awful: 1, missedOut: 1, draw: 0.2, pass: 0.35, openBest: 0.8, openShort: 1, openNone: 1,
-      ownDraw: 0.3, ownDrawAgain: 0.6, ownBlocked: 0.55, ownShort: 0.7, roundBlocked: 0.8 },       // (the last five: the computer's own luck: it draws, it keeps drawing, it cannot move, its train is short, the round is blocked)
+      ownDraw: 0.3, ownDrawAgain: 0.6, ownBlocked: 0.55, ownShort: 0.7, roundBlocked: 0.8, invalid: 0.7 },       // (the last five: the computer's own luck: it draws, it keeps drawing, it cannot move, its train is short, the round is blocked)
     cooldownMs: 7000,                                         // at least this long between ordinary comments
     bypass: { awful: true, missedOut: true, openShort: true, openNone: true, ownShort: true, roundBlocked: true },   // these always get through
     showMs: 6000,                                             // how long a speech bubble stays up
@@ -2747,17 +2855,18 @@ window.MT_BUILD = "d5fcc896ba";
   const cpuName = S => S.cpuName || 'Computer';
   /* Who is at the table, in the order the screen shows them: you, then the opponent(s). Two players is the
    * usual game; three is an online game with a computer as the third player. */
-  const tableIds = S => (S.game && Array.isArray(S.game.players) && S.game.players.length === 3 ? ['human', 'cpu', 'cpu2'] : ['human', 'cpu']);
+  const tableIds = S => PLAYER_IDS.slice(0, S.game && Array.isArray(S.game.players) && (S.game.players.length === 3 || S.game.players.length === 4) ? S.game.players.length : 2);
   /* A player's train colour is the colour of their SEAT, so everybody sees the same colours: online, the host is always red,
    * the second person blue and the third seat yellow, on every screen (each screen only labels the players differently:
    * "you" is always at the bottom). Against the computer, you are red and it is blue. */
-  const trainColor = (S, id) => { const n = S.seats && S.seats[id]; return Number.isInteger(n) && n >= 0 && n <= 3 ? n : (id === 'cpu2' ? 2 : id === 'cpu' ? 1 : 0); };
+  const trainColor = (S, id) => { const n = S.seats && S.seats[id]; return Number.isInteger(n) && n >= 0 && n <= 3 ? n : Math.max(0, PLAYER_IDS.indexOf(id)); };
   /* The skill of each computer player: the first uses the "Computer skill" setting, the second (if there is one) its own. */
-  const levelFor = (S, id) => (id === 'cpu2' ? S.opts.level2 : S.opts.level);
-  const nameOf = (S, id) => (id === 'human' ? 'You' : id === 'cpu2' ? (S.cpu2Name || 'Computer') : cpuName(S));
+  const levelFor = (S, id) => (id === 'cpu3' ? S.opts.level3 : id === 'cpu2' ? S.opts.level2 : S.opts.level);
+  const nameOf = (S, id) => (id === 'human' ? 'You' : id === 'cpu3' ? (S.cpu3Name || 'Computer') : id === 'cpu2' ? (S.cpu2Name || 'Computer') : cpuName(S));
+  const listOf = a => (a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
 
   function trainName(S, id) {
-    return id === 'human' ? 'Your train' : id === 'cpu' ? `${cpuName(S)}'s train` : id === 'cpu2' ? `${nameOf(S, 'cpu2')}'s train` : 'Mexican train';
+    return id === 'human' ? 'Your train' : id === 'cpu' ? `${cpuName(S)}'s train` : id === 'cpu2' || id === 'cpu3' ? `${nameOf(S, id)}'s train` : 'Mexican train';
   }
 
   function trainRef(S, id, actor) {
@@ -2807,10 +2916,10 @@ window.MT_BUILD = "d5fcc896ba";
   function viewBar(S) {
     const g = S.game, on = S.online;
     const round = g
-      ? `<div class="round"><span>Round ${S.roundIndex + 1} of ${on ? on.rounds : S.opts.rounds}</span><span>Engine double-${g.engine}</span>${on ? '<span>Online game</span>' : tableIds(S).length === 3 ? `<span>Computers: ${LEVEL_LABEL[S.opts.level]} and ${LEVEL_LABEL[S.opts.level2]}</span>` : `<span>Computer: ${LEVEL_LABEL[S.opts.level]}</span>`}</div>`
+      ? `<div class="round"><span>Round ${S.roundIndex + 1} of ${on ? on.rounds : S.opts.rounds}</span><span>Engine double-${g.engine}</span>${on ? '<span>Online game</span>' : tableIds(S).length > 2 ? `<span>Computers: ${listOf(tableIds(S).slice(1).map(id => LEVEL_LABEL[levelFor(S, id)]))}</span>` : `<span>Computer: ${LEVEL_LABEL[S.opts.level]}</span>`}</div>`
       : '';
     return `<header class="bar">
-      <div class="brand"><h1>Mexican Train</h1><p class="sub">${on ? (themeNow(S) === 'lotr' ? 'Double-12 online, in Middle-earth' : 'Double-12 online') : S.opts.theme === 'lotr' ? 'Double-12 in Middle-earth' : tableIds(S).length === 3 ? 'Double-12 against two computers' : 'Double-12 against the computer'}</p></div>
+      <div class="brand"><h1>Mexican Train</h1><p class="sub">${on ? (themeNow(S) === 'lotr' ? 'Double-12 online, in Middle-earth' : 'Double-12 online') : S.opts.theme === 'lotr' ? 'Double-12 in Middle-earth' : tableIds(S).length === 3 ? 'Double-12 against two computers' : tableIds(S).length === 4 ? 'Double-12 against three computers' : 'Double-12 against the computer'}</p></div>
       ${round}
       <div class="totals" role="group" aria-label="Scores, lowest wins">
         ${tableIds(S).map(id => `<div class="tot"><b>${S.totals[id] || 0}</b><span>${nameOf(S, id)}</span></div>`).join('\n        ')}
@@ -2859,7 +2968,7 @@ window.MT_BUILD = "d5fcc896ba";
       ? `<div class="say-panel" role="group" aria-label="Say something"><form class="say-form" data-say-form><input id="say-text" type="text" maxlength="${CHAT_MAX}" placeholder="Type a message" aria-label="Your message" autocomplete="off"><button type="button" class="btn primary" data-action="sendText">Send</button></form>${ONLINE_PHRASES.map((ph, i) => `<button class="btn say" data-action="sendChat" data-key="${i}">${esc(ph)}</button>`).join('')}</div>` : '';
     const mine = on && S.mySay ? `<div class="you-said${S.mySay.failed ? ' not-sent' : ''}">${S.mySay.failed ? '' : 'You said: '}${esc(S.mySay.text)}</div>` : '';
     const speaker = c && c.from ? c.from : cpuName(S);
-    return `<section class="opp${ids.length > 1 ? ' three' : ''}" aria-label="Opponent and boneyard">
+    return `<section class="opp${ids.length > 2 ? ' four' : ids.length > 1 ? ' three' : ''}" aria-label="Opponent and boneyard">
       ${rows}
       <button class="boneyard${ready ? ' ready' : ''}" data-action="draw" data-focus-id="draw"${ready ? ` style="animation-delay:-${S.flashPhase || 0}ms"` : clickable ? '' : ' disabled'}
         aria-label="${ready ? 'Draw a tile. ' : ''}${g.boneyard.length} tiles in the boneyard">
@@ -2968,7 +3077,7 @@ window.MT_BUILD = "d5fcc896ba";
     const hidden = id !== 'human' && id !== 'mexican' && !!g.opening && !!g.opening[id] && !g.opening[id].finished;
 
     let note = '';
-    if (id === 'mexican') note = `<span class="shared">Open to ${tableIds(S).length === 3 ? 'all players' : 'both players'}</span>`;
+    if (id === 'mexican') note = `<span class="shared">Open to ${tableIds(S).length > 2 ? 'all players' : 'both players'}</span>`;
     else if (hidden) note = '<span class="shared">Building, tiles face down</span>';
     else if (tr.marker) {
       note = `<span class="lamp"><span>${id === 'human' ? `Open: ${tableIds(S).slice(1).map(x => nameOf(S, x)).join(' and ')} can play here` : 'Open: you can play here'}</span></span>`;
@@ -3187,13 +3296,15 @@ window.MT_BUILD = "d5fcc896ba";
       <div class="field"><label for="opt-hand">Tiles dealt to each player</label>
         <select id="opt-hand">${optionList([8, 12, 15], o.hand, v => v === 15 ? '15 (standard)' : String(v))}</select></div>
       <div class="field"><label for="opt-cpus">Computer players</label>
-        <select id="opt-cpus">${optionList([1, 2], o.cpus === 2 ? 2 : 1, v => v === 1 ? 'One computer player' : 'Two computer players')}</select></div>
+        <select id="opt-cpus">${optionList([1, 2, 3], o.cpus === 3 ? 3 : o.cpus === 2 ? 2 : 1, v => v === 1 ? 'One computer player' : v === 2 ? 'Two computer players' : 'Three computer players')}</select></div>
       <div class="field"><label for="opt-level">Computer skill</label>
         <select id="opt-level">${optionList(LEVELS, o.level, v => LEVEL_TEXT[v])}</select>
-        <p class="field-note">Easy often plays at random and builds short trains. Hard plans ahead, keeps long chains available so it can go out sooner, and avoids leaving you a play when it can. Expert also thinks several moves ahead about what you might be holding (it does that when it plays one other player: with two computers at the table it plays like Hard). Each level has its own computer players, who talk differently too.</p></div>
-      <div class="field" id="field-level2"${o.cpus === 2 ? '' : ' hidden'}><label for="opt-level2">Second computer's skill</label>
+        <p class="field-note">Easy often plays at random and builds short trains. Hard plans ahead, keeps long chains available so it can go out sooner, and avoids leaving you a play when it can. Expert also thinks several moves ahead about what you might be holding (it does that when it plays one other player: with more than two players at the table it plays like Hard). Each level has its own computer players, who talk differently too.</p></div>
+      <div class="field" id="field-level2"${o.cpus >= 2 ? '' : ' hidden'}><label for="opt-level2">Second computer's skill</label>
         <select id="opt-level2">${optionList(LEVELS, o.level2, v => LEVEL_TEXT[v])}</select>
         <p class="field-note">Each computer player has its own skill, so you can mix them: an easy one and a hard one, say.</p></div>
+      <div class="field" id="field-level3"${o.cpus === 3 ? '' : ' hidden'}><label for="opt-level3">Third computer's skill</label>
+        <select id="opt-level3">${optionList(LEVELS, o.level3, v => LEVEL_TEXT[v])}</select></div>
       <div class="field"><label for="opt-theme">Theme</label>
         <select id="opt-theme">${optionList(THEME_IDS, o.theme || 'classic', v => THEME_LABEL[v])}</select>
         <p class="field-note">The Lord of the Rings: your opponents are characters from Middle-earth (Pippin and Gollum are Easy, Sam and Gimli Medium, Aragorn and Elrond Hard, Gandalf and Galadriel Expert), each talking in their own way, and an open train is marked with a golden ring instead of a toy train.</p></div>
@@ -3203,10 +3314,40 @@ window.MT_BUILD = "d5fcc896ba";
       <details class="how"><summary>How to play</summary>${RULES_HTML}</details>
       <div class="actions">
         ${S.matchActive ? '<button class="btn" data-action="closeOverlay">Keep playing</button>' : ''}
+        <button class="btn" data-action="openHistory">Recent games</button>
         <button class="btn" data-action="openHost">Host online game</button>
         <button class="btn" data-action="openJoin">Join online game</button>
         <button class="btn primary" data-action="startGame" data-primary="1">Start game</button>
       </div></div></div>`;
+  }
+
+  /* The games played on the server this page came from: who, when, who won, the final scores. */
+  const HISTORY_COUNTS = [10, 25, 50, 100];
+  function whenText(ms) {
+    try { return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return new Date(ms).toISOString().replace('T', ' ').slice(0, 16); }
+  }
+  function durationText(a, b) {
+    const m = Math.round((b - a) / 60000);
+    return a > 0 && b > a ? (m < 1 ? 'under a minute' : m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min') : '';
+  }
+  function viewHistory(S) {
+    const h = S.history || { state: 'loading', games: [], n: 25 };
+    const picker = `<div class="hist-count" role="group" aria-label="How many games to show"><span>Show the last</span>${HISTORY_COUNTS.map(n => `<button type="button" class="btn${h.n === n ? ' primary' : ''}" data-action="historyCount" data-key="${n}" aria-pressed="${h.n === n ? 'true' : 'false'}">${n}</button>`).join('')}</div>`;
+    let body;
+    if (h.state === 'loading') body = '<p class="hist-note">Loading...</p>';
+    else if (h.state === 'unavailable') body = '<p class="hist-note">The list of games comes from the game server, and this page is not connected to one. Open the page from the server (the address node server.js shows) to see the games played on it.</p>';
+    else if (!h.games.length) body = '<p class="hist-note">No games have been played on this server yet.</p>';
+    else body = `<div class="hist-list">${h.games.map(g => {
+      const stopped = g.result !== 'finished';
+      const dur = durationText(g.startedAt, g.endedAt);
+      const players = (g.players || []).map(p => `<li class="${p.winner ? 'won' : ''}"><span class="hn">${esc(p.name)}${p.computer ? ' <small>(computer' + (p.level ? ', ' + esc(p.level) : '') + ')</small>' : ''}${p.winner ? ' <b class="crown">Winner</b>' : ''}</span><span class="hs">${p.score}</span><span class="hr">${p.roundsWon} round${p.roundsWon === 1 ? '' : 's'} won</span></li>`).join('');
+      return `<article class="hist-game${stopped ? ' stopped' : ''}"><header><time datetime="${new Date(g.endedAt).toISOString()}">${esc(whenText(g.endedAt))}</time><span>${stopped ? 'Stopped early' : 'Finished'} &middot; ${g.roundsPlayed} of ${g.rounds} rounds${dur ? ' &middot; ' + esc(dur) : ''}</span></header>
+        <p class="hist-result">${stopped ? 'Scores when it stopped (lowest wins)' : (g.winners && g.winners.length > 1 ? 'Tied: ' + g.winners.map(esc).join(' and ') : esc((g.winners || [])[0] || '') + ' won')}</p><ul>${players}</ul></article>`;
+    }).join('')}</div>`;
+    return `<div class="overlay"><div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+      <h2 id="dlg-title">Recent games</h2>${picker}${body}
+      <div class="actions"><button class="btn" data-action="openHistory" data-key="refresh">Refresh</button><button class="btn primary" data-action="closeOverlay" data-primary="1">Back</button></div>
+    </div></div>`;
   }
 
   function viewRules() {
@@ -3216,10 +3357,12 @@ window.MT_BUILD = "d5fcc896ba";
     </div></div>`;
   }
 
-  function miniTiles(hand, style) {
+  const sortedHand = hand => hand.slice().sort((x, y) => (y[0] + y[1]) - (x[0] + x[1]));
+  /* The tiles left in a hand, biggest first. `shownCount` is how many have been put on the screen so far while the count is running (the rest take their place
+   * but are not visible yet, so nothing moves); undefined shows them all. */
+  function miniTiles(hand, style, shownCount) {
     if (!hand.length) return '<span class="none">No tiles left</span>';
-    return hand.slice().sort((x, y) => (y[0] + y[1]) - (x[0] + x[1]))
-      .map(t => tileSVG(t[0], t[1], { orient: 'h', style })).join('');
+    return sortedHand(hand).map((t, k) => `<span class="mt${shownCount !== undefined && k >= shownCount ? ' hid' : ''}">${tileSVG(t[0], t[1], { orient: 'h', style })}</span>`).join('');
   }
 
   /* The number to show for a total in the round-end or final dialog: how far the count has got (index i, the nth player of the dialog), or the real number when
@@ -3235,8 +3378,8 @@ window.MT_BUILD = "d5fcc896ba";
     else title = m.winnerId === 'human' ? 'You went out first' : `${nameOf(S, m.winnerId)} went out first`;
     const rows = m.rows.map((r, i) => `<div class="row">
         <div class="who">${r.name}</div>
-        <div class="mini">${miniTiles(r.hand, S.opts.style)}</div>
-        <div class="pts"><b>+${r.pips}</b><span>this round</span></div>
+        <div class="mini" data-mini="${i}">${miniTiles(r.hand, S.opts.style, S.count && S.count.rev ? S.count.rev[i] : undefined)}</div>
+        <div class="pts"><b data-pips="${i}" aria-hidden="true">+${S.count && S.count.pipsShown ? S.count.pipsShown[i] : r.pips}</b><span class="sr-only">+${r.pips}</span><span>this round</span></div>
         <div class="pts"><b data-count="${i}" aria-hidden="true">${countShown(S, i, m.totals[r.id])}</b><span class="sr-only">${m.totals[r.id]}</span><span>total</span></div>
       </div>`).join('');
     return `<div class="overlay"><div class="dialog wide roundend" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
@@ -3256,7 +3399,7 @@ window.MT_BUILD = "d5fcc896ba";
     return `<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
       <h2 id="dlg-title">${title}</h2>
       <div class="final">${ids.map((id, i) => `<div class="tot"><b data-count="${i}" aria-hidden="true">${countShown(S, i, score(id))}</b><span class="sr-only">${score(id)} points,</span><span>${nameOf(S, id)}</span></div>`).join('')}</div>
-      <p>Lowest score wins. ${S.online ? `You played ${rivals} online.` : tableIds(S).length === 3 ? `You played ${cpuName(S)} (${LEVEL_LABEL[S.opts.level]}) and ${nameOf(S, 'cpu2')} (${LEVEL_LABEL[S.opts.level2]}).` : `You played ${cpuName(S)} on ${LEVEL_LABEL[S.opts.level]}.`}</p>
+      <p>Lowest score wins. ${S.online ? `You played ${rivals} online.` : tableIds(S).length > 2 ? `You played ${listOf(ids.slice(1).map(id => `${nameOf(S, id)} (${LEVEL_LABEL[levelFor(S, id)]})`))}.` : `You played ${cpuName(S)} on ${LEVEL_LABEL[S.opts.level]}.`}</p>
       ${S.online ? onlineAgainHTML(S) : '<div class="actions"><button class="btn primary" data-action="newGame" data-primary="1">Play again</button></div>'}
     </div></div>`;
   }
@@ -3290,6 +3433,7 @@ window.MT_BUILD = "d5fcc896ba";
   function viewOverlay(S) {
     switch (overlayId(S)) {
       case 'rules': return viewRules();
+      case 'history': return viewHistory(S);
       case 'setup': return viewSetup(S);
       case 'online-host': return viewOnlineForm(S, true);
       case 'online-join': return viewOnlineForm(S, false);
@@ -3326,6 +3470,9 @@ window.MT_BUILD = "d5fcc896ba";
       <div class="field"><label for="net-computer">Third player</label>
         <select id="net-computer">${(() => { const old = !!(S.hostInfo && S.hostInfo.state === 'ready' && S.hostInfo.maxHumans < 3); const o = optionList(['none'].concat(LEVELS, ['person']), old && f.computer === 'person' ? 'none' : f.computer || 'none', v => v === 'none' ? 'None' : v === 'person' ? 'Add a third person' : 'Add ' + aOrAn(LEVEL_LABEL[v]) + ' computer as a third player'); return old ? o.replace('<option value="person">Add a third person</option>', '<option value="person" disabled>Add a third person (this server must be restarted first)</option>') : o; })()}</select>
         <p class="field-note">With a computer player, all three are at the table from the start. (At a table of three the Expert plays like Hard: its looking ahead works against one other player.) With a third person, three people play, everyone joins with the same code, and the game starts when all three are in.${S.hostInfo && S.hostInfo.state === 'ready' && S.hostInfo.maxHumans < 3 ? ' <b>This game server is an older version and cannot seat a third person: stop it, start it again from the new files (<code>node server.js</code>), and reload this page.</b>' : ''}</p></div>
+      <div class="field"><label for="net-computer2">Fourth player</label>
+        <select id="net-computer2"${f.computer && f.computer !== 'none' ? '' : ' disabled'}>${(() => { const old = !!(S.hostInfo && S.hostInfo.state === 'ready' && !(S.hostInfo.maxPlayers >= 4)); const o = optionList(['none'].concat(LEVELS), old ? 'none' : f.computer2 || 'none', v => v === 'none' ? 'None' : 'Add ' + aOrAn(LEVEL_LABEL[v]) + ' computer as a fourth player'); return old ? o.replace(/<option value="(easy|normal|hard|expert)"/g, '<option disabled value="$1"') : o; })()}</select>
+        <p class="field-note">Four players is the most a table can have. A fourth player is a computer: it joins a table of two people and a computer, or three people. Choose a third player first.${S.hostInfo && S.hostInfo.state === 'ready' && !(S.hostInfo.maxPlayers >= 4) ? ' <b>This game server is an older version and cannot seat four players: stop it, start it again from the new files (<code>node server.js</code>), and reload this page.</b>' : ''}</p></div>
       <div class="field"><label for="net-theme">Theme</label>
         <select id="net-theme">${optionList(THEME_IDS, THEME_IDS.includes(f.theme) ? f.theme : 'classic', v => THEME_LABEL[v])}</select>
         <p class="field-note">The Lord of the Rings: the computer player is a character from Middle-earth, and an open train is marked with a golden ring on everyone's screen.</p></div>
@@ -3339,7 +3486,7 @@ window.MT_BUILD = "d5fcc896ba";
   }
   function viewOnlineLobby(S) {
     const o = S.online, host = o.host;
-    const players = (o.settings.computer || o.settings.humans === 3 ? [0, 1, 2] : [0, 1]).map(i => {
+    const players = Array.from({ length: Math.max(2, o.settings.humans + (o.settings.computer ? 1 : 0) + (o.settings.computer2 ? 1 : 0)) }, (_, i) => i).map(i => {
       const p = o.players[i];
       return `<li class="${p ? (p.connected ? 'up' : 'down') : 'empty'}"><i class="net-dot ${p ? (p.connected ? 'up' : 'down') : ''}"></i><span>${p ? p.name + (i === o.seat ? ' (you)' : '') + (i === 0 ? ', host' : '') + (p.computer ? `, computer, ${LEVEL_LABEL[p.level || o.settings.computer]}` : '') : 'Waiting for a player...'}</span></li>`;
     }).join('');
@@ -3359,7 +3506,7 @@ window.MT_BUILD = "d5fcc896ba";
         : '<p>This server is only reachable from this computer (it was started with <code>--local-only</code>, or has no network address).</p>')
       : '';
     // Nothing to set on this screen: the game was set up on the Host screen, and now the host is only waiting for the other player to join.
-    const summary = `${o.settings.rounds === 1 ? 'One round' : o.settings.rounds + ' rounds'}, ${o.settings.hand} tiles each${o.settings.computer ? `, with ${aOrAn(LEVEL_LABEL[o.settings.computer])} computer player` : o.settings.humans === 3 ? ', three people' : ', two people'}${o.settings.theme && o.settings.theme !== 'classic' ? `, theme: ${THEME_LABEL[o.settings.theme]}` : ''}.`;
+    const summary = `${o.settings.rounds === 1 ? 'One round' : o.settings.rounds + ' rounds'}, ${o.settings.hand} tiles each${o.settings.computer && !o.settings.computer2 && o.settings.humans !== 3 ? `, with ${aOrAn(LEVEL_LABEL[o.settings.computer])} computer player` : `${o.settings.humans === 3 ? ', three people' : ', two people'}${o.settings.computer ? ` and ${aOrAn(LEVEL_LABEL[o.settings.computer])} computer player` : ''}${o.settings.computer2 ? ` and ${aOrAn(LEVEL_LABEL[o.settings.computer2])} computer player` : ''}`}${o.settings.theme && o.settings.theme !== 'classic' ? `, theme: ${THEME_LABEL[o.settings.theme]}` : ''}.`;
     const hintsNote = o.settings.allowHints === false ? (host ? 'Hints are off.' : 'Hints are off (the host\'s choice).') : (host ? 'Hints are allowed.' : 'Hints are allowed: you can switch them off for yourself in the game.');
     const settings = `<p>${summary} ${hintsNote}${host ? '' : ` ${o.players[0] ? o.players[0].name : 'The host'} will start the game.`}</p>`;
     return `<div class="overlay"><div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
@@ -3739,7 +3886,7 @@ window.MT_BUILD = "d5fcc896ba";
 
   /* ================================= APP ================================== */
 
-  const DEFAULT_OPTS = { rounds: 4, hand: 15, style: 'pips', sound: true, level: 'normal', chat: true, allowHints: true, cpus: 1, level2: 'normal', theme: 'classic' };
+  const DEFAULT_OPTS = { rounds: 4, hand: 15, style: 'pips', sound: true, level: 'normal', chat: true, allowHints: true, cpus: 1, level2: 'normal', level3: 'normal', theme: 'classic' };
   const FLASH_MS = 1100;   // length of the draw-button flash; must match the CSS animation
 
   // Names the computer player can pick from (none ends in "s", so "Name's train" reads well).
@@ -3808,10 +3955,11 @@ window.MT_BUILD = "d5fcc896ba";
       const level = LEVELS.includes(o.level) ? o.level : DEFAULT_OPTS.level;
       const chat = !(o.chat === false || o.chat === 'false');
       const allowHints = !(o.allowHints === false || o.allowHints === 'false');
-      const cpus = o.cpus === 2 || o.cpus === '2' ? 2 : 1;                   // one computer player, or two
+      const cpus = o.cpus === 3 || o.cpus === '3' ? 3 : o.cpus === 2 || o.cpus === '2' ? 2 : 1;      // one computer player, two or three
+      const level3 = LEVELS.includes(o.level3) ? o.level3 : 'normal';          // the third computer's skill
       const level2 = LEVELS.includes(o.level2) ? o.level2 : 'normal';          // the second computer's skill
       const theme = THEME_IDS.includes(o.theme) ? o.theme : 'classic';             // who the computer players are
-      return { rounds, hand, style, sound: snd, level, chat, allowHints, cpus, level2, theme };
+      return { rounds, hand, style, sound: snd, level, chat, allowHints, cpus, level2, level3, theme };
     }
     function loadOpts() {
       try { return sanitize(Object.assign({}, DEFAULT_OPTS, JSON.parse(storage.get('mt-opts') || '{}'))); }
@@ -3826,7 +3974,7 @@ window.MT_BUILD = "d5fcc896ba";
       hoverKey: null, flashPhase: 0, handOrder: null, handArranged: false, slotMemory: {}, flips: {}, flipLocked: {}, handCols: 0, handColsUsed: 0, unlucky: {}, coverDraw: false, dragKey: null,
       dropTrain: null, dropFrom: null, comment: null, pendingRating: null, lastCommentAt: -Infinity, lastLine: null,
       banner: '', log: [], lastCounts: {}, lastDialog: null,
-      opps: null, cpu2Name: null, seats: null, hostInfo: null, netLog: [], debugNet: false, showHints: true, notice: '',
+      opps: null, cpu2Name: null, cpu3Name: null, seats: null, hostInfo: null, netLog: [], debugNet: false, showHints: true, notice: '',
       online: null, onlineError: '', form: null, sayOpen: false, mySay: null, dockMode: !!(env && env.dock), build: String((env && env.build) || ''), copied: false, qrIndex: 0,
     };
     S.opts = loadOpts();
@@ -3918,7 +4066,8 @@ window.MT_BUILD = "d5fcc896ba";
       const ids = m.type === 'roundEnd' ? (m.rows || []).map(r => r.id) : tableIds(S);
       const to = ids.map(id => Math.max(0, Number(m.totals[id]) || 0));
       const from = m.type === 'roundEnd' ? (m.rows || []).map((r, i) => Math.max(0, to[i] - Math.max(0, Number(r.pips) || 0))) : ids.map(() => 0);
-      return { ids, from, to };
+      const tiles = m.type === 'roundEnd' ? (m.rows || []).map(r => sortedHand(Array.isArray(r.hand) ? r.hand : [])) : null;
+      return { ids, from, to, tiles };
     }
     function cancelCount() { if (countTimer !== null) { timer.clear(countTimer); countTimer = null; } }
     function syncCount() {                              // called before every drawing: is there a dialog whose score should be counting?
@@ -3928,6 +4077,7 @@ window.MT_BUILD = "d5fcc896ba";
       cancelCount();
       if (!plan) { S.count = null; return; }
       S.count = { sig, from: plan.from, to: plan.to, shown: plan.from.slice(), active: -1, done: false };
+      if (plan.tiles) { S.count.tiles = plan.tiles; S.count.rev = plan.tiles.map(() => 0); S.count.pipsShown = plan.tiles.map(() => 0); }
       countTimer = timer.set(tickCount, COUNT_UP.startMs);
     }
     function paintCount() {                             // show the count in the dialog on the page: in place when there is a real page
@@ -3939,7 +4089,13 @@ window.MT_BUILD = "d5fcc896ba";
         if (el && typeof el.textContent === 'string') {
           if (el.textContent !== String(v)) el.textContent = String(v);
           if (el.classList && el.classList.toggle) el.classList.toggle('counting', c.active === i && !c.done);
-        } else if (el) stub = true;                    // something that is not a real element (a test's stand-in): draw the dialog again instead
+        } else if (el) stub = true;
+        if (c.rev) {
+          const pe = root.querySelector ? root.querySelector('[data-pips="' + i + '"]') : null;
+          if (pe && typeof pe.textContent === 'string' && pe.textContent !== '+' + c.pipsShown[i]) pe.textContent = '+' + c.pipsShown[i];
+          const mini = root.querySelector ? root.querySelector('[data-mini="' + i + '"]') : null;
+          if (mini && mini.querySelectorAll) Array.prototype.forEach.call(mini.querySelectorAll('.mt'), (t, k) => { if (t.classList && t.classList.toggle) t.classList.toggle('hid', k >= c.rev[i]); });
+        }                    // something that is not a real element (a test's stand-in): draw the dialog again instead
       });
       if (stub) render(true);
     }
@@ -3947,6 +4103,22 @@ window.MT_BUILD = "d5fcc896ba";
       countTimer = null;
       const c = S.count;
       if (!c || !S.modal) return;
+      if (c.rev) {                                      // the round-end dialog: each player's tiles go up one at a time, adding their dots to the score
+        const j = c.rev.findIndex((n, k) => n < c.tiles[k].length || c.shown[k] < c.to[k]);
+        if (j < 0) { c.done = true; c.active = -1; paintCount(); return; }
+        c.active = j;
+        const hand = c.tiles[j];
+        if (c.rev[j] < hand.length) {
+          const t = hand[c.rev[j]++];
+          const pts = Math.max(0, t[0] + t[1]);
+          c.pipsShown[j] += pts; c.shown[j] = Math.min(c.to[j], c.shown[j] + pts);
+        }
+        if (c.rev[j] >= hand.length) c.shown[j] = c.to[j];     // (whatever the dots added up to, it ends on the real total)
+        countClick(hand.length ? c.rev[j] / hand.length : 1);
+        paintCount();
+        countTimer = timer.set(tickCount, c.rev[j] >= hand.length ? COUNT_UP.tileGapMs : COUNT_UP.tileMs);
+        return;
+      }
       const i = c.shown.findIndex((v, k) => v < c.to[k]);
       if (i < 0) { c.done = true; c.active = -1; paintCount(); return; }
       if (c.active !== i) { c.active = i; c.stepBy = Math.max(1, Math.ceil((c.to[i] - c.from[i]) / COUNT_UP.maxTicks)); }
@@ -3961,7 +4133,11 @@ window.MT_BUILD = "d5fcc896ba";
     /* ---------- the computer's comments ---------- */
     let commentTimers = [], commentId = 0, slowTimer = null, slowCount = 0, slowDish = null, slowSpeaker = 'cpu';
     // With two computers, either may say something; with one it is always that one (and no random number is used)
-    function pickSpeaker() { return S.cpu2Name && S.game && S.game.players.length === 3 ? (chatRng() < 0.5 ? 'cpu' : 'cpu2') : 'cpu'; }
+    function pickSpeaker() {
+      const n = S.cpu2Name && S.game ? S.game.players.length - 1 : 1;                // how many computers can speak
+      if (n < 2) return 'cpu';
+      return n === 2 ? (chatRng() < 0.5 ? 'cpu' : 'cpu2') : ['cpu', 'cpu2', 'cpu3'][Math.min(2, Math.floor(chatRng() * 3))];
+    }
     function later(fn, ms) {
       const id = timer.set(() => { commentTimers = commentTimers.filter(x => x !== id); fn(); }, ms);
       commentTimers.push(id);
@@ -3986,7 +4162,7 @@ window.MT_BUILD = "d5fcc896ba";
       const put = () => {
         if (!S.opts.chat || !S.game) return;
         const id = ++commentId;
-        S.comment = Object.assign({ id, kind, text }, extra, S.cpu2Name && S.game && S.game.players.length === 3 ? { from: spkName } : {});
+        S.comment = Object.assign({ id, kind, text }, extra, S.cpu2Name && S.game && S.game.players.length > 2 ? { from: spkName } : {});
         if (render()) popBubble();
         later(() => { if (S.comment && S.comment.id === id) { S.comment = null; render(); } }, CHAT.showMs);
       };
@@ -4125,7 +4301,7 @@ window.MT_BUILD = "d5fcc896ba";
         }
         const spec = { playerId: player.id, trainId: move.trainId, index: S.lastPlay.index, key: key(move.tile), placed: move.placed, hidden: false };
         let tok = fx ? fx.capture(spec) : null;        // note where the tile is now, before the redraw
-        if (fx && S.dropFrom && S.dropFrom.key === spec.key) tok = { from: S.dropFrom.rect };   // dragged: from where it was let go
+        if (fx && S.dropFrom && S.dropFrom.key === spec.key) tok = { from: S.dropFrom.rect, shown: S.dropFrom.shown };   // dragged: from where it was let go
         S.dropFrom = null;
         render();
         if (fx) fx.land(tok, spec);                     // ...then fly it from there to its place
@@ -4141,7 +4317,7 @@ window.MT_BUILD = "d5fcc896ba";
         clack();   // the computer's face-down tiles click too; that gives nothing away
         const spec = { playerId: player.id, trainId: player.id, index: S.lastPlay.index, key: key(move.tile), placed: move.placed, hidden: player.id !== 'human' };
         let tok = fx ? fx.capture(spec) : null;
-        if (fx && S.dropFrom && S.dropFrom.key === spec.key) tok = { from: S.dropFrom.rect };
+        if (fx && S.dropFrom && S.dropFrom.key === spec.key) tok = { from: S.dropFrom.rect, shown: S.dropFrom.shown };
         S.dropFrom = null;
         render();   // no log line: the computer's tiles are face down, yours are on the board
         if (fx) fx.land(tok, spec, { fast: !!S.plan });
@@ -4149,7 +4325,9 @@ window.MT_BUILD = "d5fcc896ba";
       async onBuildUndo(game, player, tile) {
         if (player.id === 'human') S.freshKey = key(tile); else clack();      // (the computer's tile comes off with a click too: it gives nothing away)
         S.selectedKey = null; S.drawnKey = null;
+        const tok = fx && fx.captureUndo ? fx.captureUndo(player.id, 0) : null;       // where the tile is on the train now, before the redraw takes it away
         render();
+        if (fx && fx.landUndo) fx.landUndo(tok, player.id, { fast: !!S.plan });      // ...and back it flies, into the hand
       },
       async onBuildDraw(game, player, tile) {
         if (player.id === 'human') { say(`You drew ${fmt(tile)}.`); S.drawnKey = key(tile); S.freshKey = key(tile); }
@@ -4422,8 +4600,8 @@ window.MT_BUILD = "d5fcc896ba";
       const g = v.game;
       if (g === null || g === undefined) return true;
       const trainOk = t => t && Array.isArray(t.tiles) && t.tiles.every(tileOk);
-      if (!Array.isArray(g.players) || (g.players.length !== 2 && g.players.length !== 3)) return false;
-      const ids = PLAYER_IDS.slice(0, g.players.length);                       // human, cpu and (with a computer as the third player) cpu2
+      if (!Array.isArray(g.players) || (g.players.length < 2 || g.players.length > 4)) return false;
+      const ids = PLAYER_IDS.slice(0, g.players.length);                       // human, cpu, and up to cpu2 and cpu3
       return Number.isInteger(g.engine) && g.players.every((p, i) => p && p.id === ids[i] && Array.isArray(p.hand) && p.hand.every(tileOk))
         && Array.isArray(g.boneyard) && !!g.trains && ids.concat(['mexican']).every(id => trainOk(g.trains[id]))
         && (!g.opening || ids.every(id => g.opening[id])) && (!v.log || Array.isArray(v.log));
@@ -4440,6 +4618,13 @@ window.MT_BUILD = "d5fcc896ba";
           if (m.token) o.token = String(m.token);
           if (m.settings) o.settings = readOnlineSettings(m.settings);
           if (Array.isArray(m.addresses)) o.addresses = m.addresses.map(String).slice(0, 8);
+          if (m.t === 'created' && o.wantFourth && !(o.settings.humans === 3 ? o.settings.computer : o.settings.computer2)) {      // asked for a fourth player (a computer), and an older server left it out
+            leaveOnline(false);
+            openOnlineDialog('online-host');
+            S.onlineError = 'This game server cannot seat four players: it is an older version of the program. Stop it, start it again from the new files (node server.js), reload this page, and try again.';
+            render(true);
+            return;
+          }
           if (m.t === 'created' && o.wantHumans === 3 && o.settings.humans !== 3) {      // asked for a game for three people, and the server made one for two (an older server ignores the request): say so now, not when the second guest is turned away
             leaveOnline(false);
             openOnlineDialog('online-host');
@@ -4455,7 +4640,7 @@ window.MT_BUILD = "d5fcc896ba";
           return;
         }
         case 'lobby': {
-          o.players = (Array.isArray(m.players) ? m.players : []).slice(0, 3).map(p => (p && typeof p === 'object'
+          o.players = (Array.isArray(m.players) ? m.players : []).slice(0, 4).map(p => (p && typeof p === 'object'
             ? { name: clean(p.name), connected: !!p.connected, computer: !!p.computer, level: LEVELS.includes(p.level) ? p.level : null } : null));
           while (o.players.length < 2) o.players.push(null);
           o.canStart = !!m.canStart;
@@ -4482,7 +4667,7 @@ window.MT_BUILD = "d5fcc896ba";
         }
         case 'rematch': {                                    // a new game is starting with the same people: forget the finished one
           lastSeq = -1; o.round = null; o.again = null; o.againSent = false; o.lastActor = null; o.pending = null;
-          S.modal = null; S.awaiting = null; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0 }; S.matchActive = false;
+          S.modal = null; S.awaiting = null; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0, cpu3: 0 }; S.matchActive = false;
           S.comment = null; S.mySay = null; S.sayOpen = false; S.notice = ''; S.lastPlay = null;
           S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.handOrder = null; S.handArranged = false; S.flips = {}; S.flipLocked = {}; S.unlucky = {}; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
           clearChatTimers();
@@ -4536,18 +4721,22 @@ window.MT_BUILD = "d5fcc896ba";
       const prevKind = S.awaiting ? S.awaiting.kind : null;
 
       // 1. where the tiles that are about to move are now, before the screen changes
-      const flights = [];
+      const flights = [], undone = {};
       for (const ev of evs) {
         if (!ev || typeof ev !== 'object') continue;
         if (ev.e === 'play') {
-          const spec = { playerId: ev.who === 'me' ? 'human' : ev.who === 'opp2' ? 'cpu2' : 'cpu', trainId: ev.train, index: ev.index, key: ev.tile ? key(ev.tile) : null, placed: ev.placed, hidden: !!ev.hidden };
+          const spec = { playerId: ev.who === 'me' ? 'human' : ev.who === 'opp3' ? 'cpu3' : ev.who === 'opp2' ? 'cpu2' : 'cpu', trainId: ev.train, index: ev.index, key: ev.tile ? key(ev.tile) : null, placed: ev.placed, hidden: !!ev.hidden };
           let tok = fx ? fx.capture(spec) : null;
-          if (fx && ev.who === 'me' && S.dropFrom && S.dropFrom.key === spec.key) tok = { from: S.dropFrom.rect };   // dragged: from where it was let go
+          if (fx && ev.who === 'me' && S.dropFrom && S.dropFrom.key === spec.key) tok = { from: S.dropFrom.rect, shown: S.dropFrom.shown };   // dragged: from where it was let go
           if (ev.who === 'me') S.dropFrom = null;
           flights.push({ spec, tok, fast: evs.length > 1, draw: false });
         } else if (ev.e === 'draw') {
-          const spec = { playerId: ev.who === 'me' ? 'human' : ev.who === 'opp2' ? 'cpu2' : 'cpu', key: ev.tile ? key(ev.tile) : null };
+          const spec = { playerId: ev.who === 'me' ? 'human' : ev.who === 'opp3' ? 'cpu3' : ev.who === 'opp2' ? 'cpu2' : 'cpu', key: ev.tile ? key(ev.tile) : null };
           flights.push({ spec, tok: fx ? fx.captureDraw(spec) : null, draw: true });
+        } else if (ev.e === 'undo') {
+          const pid = ev.who === 'me' ? 'human' : ev.who === 'opp3' ? 'cpu3' : ev.who === 'opp2' ? 'cpu2' : 'cpu';
+          undone[pid] = (undone[pid] || 0) + 1;
+          flights.push({ undo: true, pid, tok: fx && fx.captureUndo ? fx.captureUndo(pid, undone[pid] - 1) : null, fast: evs.length > 1 });
         }
       }
       // 2. what each event means for the screen
@@ -4560,7 +4749,7 @@ window.MT_BUILD = "d5fcc896ba";
         } else if (ev.e === 'undo' && ev.who !== 'me') clack();
         else if (ev.e === 'draw' && ev.who === 'me' && ev.tile) { S.drawnKey = key(ev.tile); S.freshKey = key(ev.tile); }
         else if (ev.e === 'pass' && ev.who === 'me') { S.drawnKey = null; S.freshKey = null; }
-        else if (ev.e === 'reveal') S.revealed = ev.who === 'opp2' ? 'cpu2' : 'cpu';
+        else if (ev.e === 'reveal') S.revealed = ev.who === 'opp3' ? 'cpu3' : ev.who === 'opp2' ? 'cpu2' : 'cpu';
       }
       // whose move came last, to tell a new turn from the rest of the same turn (covering your own double, playing a drawn tile)
       // (Moves made while the trains were still being built are not part of the play: that includes the last of them, which can
@@ -4568,27 +4757,28 @@ window.MT_BUILD = "d5fcc896ba";
       const g0 = v.game, gPrev = S.game;
       const openingNow = !!(g0 && g0.opening && !g0.players.every(p => g0.opening[p.id].finished));
       const openingBefore = !!(gPrev && gPrev.opening && o.round === v.round && !gPrev.players.every(p => gPrev.opening[p.id] && gPrev.opening[p.id].finished));
-      if (!openingNow && !openingBefore) for (const ev of evs) if (ev && (ev.e === 'play' || ev.e === 'draw' || ev.e === 'pass') && (ev.who === 'me' || ev.who === 'opp' || ev.who === 'opp2')) o.lastActor = ev.who;
+      if (!openingNow && !openingBefore) for (const ev of evs) if (ev && (ev.e === 'play' || ev.e === 'draw' || ev.e === 'pass') && (ev.who === 'me' || ev.who === 'opp' || ev.who === 'opp2' || ev.who === 'opp3')) o.lastActor = ev.who;
       // 3. the new state
       if (o.round !== v.round) { S.handOrder = null; S.handArranged = false; S.flips = {}; S.flipLocked = {}; S.unlucky = {}; S.selectedKey = null; S.drawnKey = null; S.freshKey = null; o.round = v.round; o.lastActor = null; }
       o.rounds = Number(v.rounds) || o.rounds;
       o.phase = 'playing';
       S.game = v.game || null;
       // who the opponents are: one, or two when a computer is the third player (their names, and which one is the computer)
-      const opps = (Array.isArray(v.opps) ? v.opps : [v.opp]).slice(0, 2).map((x, i) => ({
-        id: i === 0 ? 'cpu' : 'cpu2', name: cleanPlayerName(x && x.name, 'Opponent'), computer: !!(x && x.computer), level: LEVELS.includes(x && x.level) ? x.level : 'normal',
+      const opps = (Array.isArray(v.opps) ? v.opps : [v.opp]).slice(0, 3).map((x, i) => ({
+        id: ['cpu', 'cpu2', 'cpu3'][i], name: cleanPlayerName(x && x.name, 'Opponent'), computer: !!(x && x.computer), level: LEVELS.includes(x && x.level) ? x.level : 'normal',
         seat: x && Number.isInteger(x.seat) && x.seat >= 0 && x.seat <= 3 ? x.seat : undefined,
       }));
       // which seat each player has: their colour follows the seat (anything missing or clashing falls back to the usual colours)
       const mySeat = v.me && Number.isInteger(v.me.seat) && v.me.seat >= 0 && v.me.seat <= 3 ? v.me.seat : undefined;
-      const seats = { human: mySeat, cpu: opps[0].seat, cpu2: opps[1] ? opps[1].seat : undefined };
+      const seats = { human: mySeat, cpu: opps[0].seat, cpu2: opps[1] ? opps[1].seat : undefined, cpu3: opps[2] ? opps[2].seat : undefined };
       const given = Object.values(seats).filter(n => n !== undefined);
       S.seats = given.length === (opps.length + 1) && new Set(given).size === given.length ? seats : null;
       S.opps = opps;
       S.cpuName = opps[0].name;
       S.cpu2Name = opps[1] ? opps[1].name : null;
+      S.cpu3Name = opps[2] ? opps[2].name : null;
       const T = v.totals || {};
-      S.totals = { human: Number(T.human) || 0, cpu: Number(T.cpu) || 0, cpu2: Number(T.cpu2) || 0 };
+      S.totals = { human: Number(T.human) || 0, cpu: Number(T.cpu) || 0, cpu2: Number(T.cpu2) || 0, cpu3: Number(T.cpu3) || 0 };
       S.roundIndex = Number(v.round) || 0;
       const logFrom = Number.isInteger(v.logFrom) && v.logFrom >= 0 ? v.logFrom : null;
       if (logFrom === null) S.log = (v.log || []).map(clean);                   // (a server that sends only the latest lines: show those)
@@ -4617,7 +4807,7 @@ window.MT_BUILD = "d5fcc896ba";
       if (S.overlay === 'setup' || S.overlay === 'online-host' || S.overlay === 'online-join') S.overlay = null;
       // 4. draw it, then fly the tiles from where they were to where they are now
       render();
-      if (fx) for (const f of flights) { if (f.draw) fx.landDraw(f.tok, f.spec); else fx.land(f.tok, f.spec, { fast: f.fast }); }
+      if (fx) for (const f of flights) { if (f.undo) { if (fx.landUndo) fx.landUndo(f.tok, f.pid, { fast: f.fast }); } else if (f.draw) fx.landDraw(f.tok, f.spec); else fx.land(f.tok, f.spec, { fast: f.fast }); }
     }
 
     // The prompt the server is waiting on, shaped like the ones the single-player game uses, so every
@@ -4651,7 +4841,7 @@ window.MT_BUILD = "d5fcc896ba";
 
     // the room's settings as the server sends them (anything missing or odd gets the usual value)
     function readOnlineSettings(m) {
-      return { rounds: Number(m.rounds) || 4, hand: Number(m.hand) || 15, computer: LEVELS.includes(m.computer) ? m.computer : null, theme: THEME_IDS.includes(m.theme) ? m.theme : 'classic', allowHints: m.allowHints !== false, humans: Number(m.humans) === 3 ? 3 : 2 };
+      return { rounds: Number(m.rounds) || 4, hand: Number(m.hand) || 15, computer: LEVELS.includes(m.computer) ? m.computer : null, theme: THEME_IDS.includes(m.theme) ? m.theme : 'classic', allowHints: m.allowHints !== false, humans: Number(m.humans) === 3 ? 3 : 2, computer2: Number(m.humans) !== 3 && m.computer && LEVELS.includes(m.computer2) ? m.computer2 : null };
     }
     function showChat(text, from) {
       const id = ++commentId;
@@ -4703,7 +4893,7 @@ window.MT_BUILD = "d5fcc896ba";
       // how the other player will join: the host's choice on the Host screen
       const via = hosting ? (JOIN_VIAS.includes(a.joinVia) ? a.joinVia : JOIN_VIAS.includes(S.form && S.form.joinVia) ? S.form.joinVia : 'local') : 'local';
       const typed = hosting ? String(a.joinManual !== undefined ? a.joinManual : (S.form && S.form.joinManual) || '').trim() : '';
-      S.form = { server: hosting && server ? server : String(a.server || ''), name: String(a.name || ''), code: String(a.code || ''), rounds: a.rounds, hand: a.hand, computer: a.computer, theme: a.theme, allowHints: a.allowHints !== false, joinVia: via, joinManual: typed };
+      S.form = { server: hosting && server ? server : String(a.server || ''), name: String(a.name || ''), code: String(a.code || ''), rounds: a.rounds, hand: a.hand, computer: a.computer, computer2: a.computer2, theme: a.theme, allowHints: a.allowHints !== false, joinVia: via, joinManual: typed };
       let join = null;
       if (hosting && server) {
         join = { via };
@@ -4720,8 +4910,8 @@ window.MT_BUILD = "d5fcc896ba";
       try { storage.set('mt-name', name); storage.set('mt-server', server); } catch (e) { /* ignore */ }
       S.onlineError = '';
       lastSeq = -1; tries = 0; S.qrIndex = 0; S.showHints = true;
-      S.online = { phase: 'connecting', kind, server, name, join, wantHumans: hosting && a.computer === 'person' ? 3 : 2, code: '', display: '', token: '', seat: kind === 'create' ? 0 : 1, host: kind === 'create', settings: { rounds: 4, hand: 15, computer: null, theme: 'classic', allowHints: true }, players: [null, null], canStart: false, addresses: [], conn: 'connecting', oppConnected: true, graceUntil: null, ended: null, rounds: 4, pending: null, round: -1, oppName: '', lastActor: null };
-      const first = kind === 'create' ? { t: 'create', name, rounds: Number(a.rounds), hand: Number(a.hand), computer: LEVELS.includes(a.computer) ? a.computer : null, humans: a.computer === 'person' ? 3 : 2, theme: THEME_IDS.includes(a.theme) ? a.theme : 'classic', allowHints: a.allowHints !== false, build } : { t: 'join', code: String(a.code), name, build };
+      S.online = { phase: 'connecting', kind, server, name, join, wantHumans: hosting && a.computer === 'person' ? 3 : 2, wantFourth: !!(hosting && a.computer && a.computer !== 'none' && LEVELS.includes(a.computer2)), code: '', display: '', token: '', seat: kind === 'create' ? 0 : 1, host: kind === 'create', settings: { rounds: 4, hand: 15, computer: null, computer2: null, theme: 'classic', allowHints: true }, players: [null, null], canStart: false, addresses: [], conn: 'connecting', oppConnected: true, graceUntil: null, ended: null, rounds: 4, pending: null, round: -1, oppName: '', lastActor: null };
+      const first = kind === 'create' ? { t: 'create', name, rounds: Number(a.rounds), hand: Number(a.hand), computer: a.computer === 'person' ? (LEVELS.includes(a.computer2) ? a.computer2 : null) : LEVELS.includes(a.computer) ? a.computer : null, computer2: LEVELS.includes(a.computer) && LEVELS.includes(a.computer2) ? a.computer2 : null, humans: a.computer === 'person' ? 3 : 2, theme: THEME_IDS.includes(a.theme) ? a.theme : 'classic', allowHints: a.allowHints !== false, build } : { t: 'join', code: String(a.code), name, build };
       netConnect(first);
     }
     function resumeOnline() {
@@ -4739,7 +4929,7 @@ window.MT_BUILD = "d5fcc896ba";
       if (o) { o.leaving = true; if (!quiet && o.token) netSend({ t: 'leave' }); }
       netClose(); if (!keepSession) clearSession();      // (the window that took over still needs the saved game)
       S.online = null; S.game = null; S.modal = null; S.awaiting = null; S.matchActive = false;
-      S.comment = null; S.mySay = null; S.sayOpen = false; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0 }; S.opps = null; S.cpu2Name = null; S.seats = null;
+      S.comment = null; S.mySay = null; S.sayOpen = false; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0, cpu3: 0 }; S.opps = null; S.cpu2Name = null; S.cpu3Name = null; S.seats = null;
       S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.handOrder = null; S.handArranged = false; S.flips = {}; S.flipLocked = {}; S.unlucky = {}; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
       lastSeq = -1;
       clearChatTimers();
@@ -4758,7 +4948,7 @@ window.MT_BUILD = "d5fcc896ba";
           const list = (Array.isArray(j && j.addresses) ? j.addresses : []).map(parseServerAddress).filter(Boolean);
           const best = parseServerAddress(j && j.preferred) || list[0] || null;
           if (!best) return fail();
-          S.hostInfo = { state: 'ready', address: best, addresses: list.length ? list : [best], maxHumans: Number(j && j.maxHumans) === 3 ? 3 : 2, build: String((j && j.build) || ''), public: { state: 'checking' } };
+          S.hostInfo = { state: 'ready', address: best, addresses: list.length ? list : [best], maxHumans: Number(j && j.maxHumans) === 3 ? 3 : 2, maxPlayers: Number(j && j.maxPlayers) >= 4 ? 4 : 3, build: String((j && j.build) || ''), public: { state: 'checking' } };
           if (S.overlay === 'online-host') render(true);
           loadPublicIp(mine);
         }).catch(fail);
@@ -4782,6 +4972,27 @@ window.MT_BUILD = "d5fcc896ba";
           else set({ state: j && j.state === 'off' ? 'off' : 'unavailable' });
         }).catch(() => set({ state: 'unavailable' }));
     }
+    /* The list of past games: asked of the server this page came from (n: how many; undefined asks again for the same number). */
+    let historyToken = 0;
+    function openHistory(n) {
+      const mine = ++historyToken;
+      const count = HISTORY_COUNTS.includes(n) ? n : (S.history && S.history.n) || 25;
+      S.overlay = 'history';
+      S.history = { state: 'loading', games: [], n: count };
+      render(true);
+      if (!fetchImpl) { S.history.state = 'unavailable'; return render(true); }
+      return Promise.resolve().then(() => fetchImpl((env.historyUrl || '/history') + '?n=' + count, { cache: 'no-store' })).then(r => (r && r.ok ? r.json() : Promise.reject(new Error('no'))))
+        .then(j => {
+          if (mine !== historyToken || !S.history) return;
+          const games = (Array.isArray(j && j.games) ? j.games : []).filter(g => g && Array.isArray(g.players) && g.players.length).map(g => ({
+            result: g.result === 'finished' ? 'finished' : 'stopped', startedAt: Number(g.startedAt) || 0, endedAt: Number(g.endedAt) || 0, rounds: Number(g.rounds) || 0, roundsPlayed: Number(g.roundsPlayed) || 0,
+            winners: (Array.isArray(g.winners) ? g.winners : []).map(x => cleanPlayerName(x, '')),
+            players: g.players.slice(0, 4).map(p => ({ name: cleanPlayerName(p && p.name, 'Player'), computer: !!(p && p.computer), level: LEVELS.includes(p && p.level) ? p.level : undefined, score: Number(p && p.score) || 0, roundsWon: Number(p && p.roundsWon) || 0, winner: !!(p && p.winner) })),
+          }));
+          S.history = { state: 'ready', games, n: count };
+          if (S.overlay === 'history') render(true);
+        }).catch(() => { if (mine === historyToken && S.history) { S.history.state = 'unavailable'; if (S.overlay === 'history') render(true); } });
+    }
     function openOnlineDialog(which, code) {
       if (S.online && S.online.phase === 'connecting') leaveOnline(true);
       S.overlay = which; S.onlineError = '';
@@ -4789,7 +5000,7 @@ window.MT_BUILD = "d5fcc896ba";
       if (!S.form) {                                  // the address of the server this page came from, else the one used last time
         let sv = '', nm = '';
         try { sv = String(storage.get('mt-server') || ''); nm = String(storage.get('mt-name') || ''); } catch (e) { /* ignore */ }
-        S.form = { server: defaultServer || sv, name: nm, code: '', rounds: S.opts.rounds, hand: S.opts.hand, computer: 'none', theme: S.opts.theme, allowHints: S.opts.allowHints };      // (the host's own setting on the main screen is the starting point)
+        S.form = { server: defaultServer || sv, name: nm, code: '', rounds: S.opts.rounds, hand: S.opts.hand, computer: 'none', computer2: 'none', theme: S.opts.theme, allowHints: S.opts.allowHints };      // (the host's own setting on the main screen is the starting point)
       }
       if (code) {                                     // from a scanned link: the code is filled in, nothing else to type
         const c = String(code).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
@@ -4835,6 +5046,7 @@ window.MT_BUILD = "d5fcc896ba";
       },
       cpu: cpuController('cpu'),
       cpu2: cpuController('cpu2'),                              // (only used when there are two computers)
+      cpu3: cpuController('cpu3'),                              // (only used when there are three)
     };
 
     /* ---------- the match ---------- */
@@ -4868,7 +5080,8 @@ window.MT_BUILD = "d5fcc896ba";
       gameRec = createRecorder(ev => held.push(ev), now);
       gameRec.game({ mode: 'local', build: env.build || '', startedAt: new Date(now()).toISOString(), rounds: S.opts.rounds, hand: S.opts.hand, theme: S.opts.theme, allowHints: S.opts.allowHints !== false,
         players: [{ id: 'human', name: 'You', kind: 'human' }, { id: 'cpu', name: S.cpuName, kind: 'computer', level: S.opts.level }]
-          .concat(S.opts.cpus === 2 ? [{ id: 'cpu2', name: S.cpu2Name, kind: 'computer', level: S.opts.level2 }] : []) });
+          .concat(S.opts.cpus >= 2 ? [{ id: 'cpu2', name: S.cpu2Name, kind: 'computer', level: S.opts.level2 }] : [])
+          .concat(S.opts.cpus === 3 ? [{ id: 'cpu3', name: S.cpu3Name, kind: 'computer', level: S.opts.level3 }] : []) });
       return gameRec;
     }
     function endGameLog(how) {                                    // 'finished', or 'aborted' when a new game is started over it (the game is over either way: its last round is let go)
@@ -4880,7 +5093,7 @@ window.MT_BUILD = "d5fcc896ba";
     async function runMatch() {
       S.matchActive = true;
       const rec = startGameLog();
-      const n = S.opts.cpus === 2 ? 3 : 2;                              // players at the table
+      const n = S.opts.cpus + 1;                                        // players at the table
       let startIndex = n === 2 ? (rng() < 0.5 ? 0 : 1) : Math.floor(rng() * n);
       for (let r = 0; r < S.opts.rounds; r++) {
         S.roundIndex = r;
@@ -4921,7 +5134,7 @@ window.MT_BUILD = "d5fcc896ba";
     function startGame(a) {
       if (S.online) leaveOnline(true);
       abortMatch();
-      S.opts = sanitize(Object.assign({}, a, { sound: S.opts.sound, chat: S.opts.chat, allowHints: a.allowHints === undefined ? S.opts.allowHints : a.allowHints, cpus: a.cpus === undefined ? S.opts.cpus : a.cpus, level2: a.level2 === undefined ? S.opts.level2 : a.level2, theme: a.theme === undefined ? S.opts.theme : a.theme, style: a.style === undefined ? S.opts.style : a.style }));   // the setup form has no sound or tile-face field (that is the "Show numbers" button in the game): keep the current setting
+      S.opts = sanitize(Object.assign({}, a, { sound: S.opts.sound, chat: S.opts.chat, allowHints: a.allowHints === undefined ? S.opts.allowHints : a.allowHints, cpus: a.cpus === undefined ? S.opts.cpus : a.cpus, level2: a.level2 === undefined ? S.opts.level2 : a.level2, level3: a.level3 === undefined ? S.opts.level3 : a.level3, theme: a.theme === undefined ? S.opts.theme : a.theme, style: a.style === undefined ? S.opts.style : a.style }));   // the setup form has no sound or tile-face field (that is the "Show numbers" button in the game): keep the current setting
       S.showHints = true; S.notice = '';
       saveOpts();
       // a fresh random name for the computer: not one already at the table, and not last game's
@@ -4930,9 +5143,10 @@ window.MT_BUILD = "d5fcc896ba";
       S.cpuName = pickCpuName(S.opts.level, rng, new Set(['you', previous.toLowerCase()]), S.opts.theme);
       try { storage.set('mt-last-cpu', S.cpuName); } catch (e) { /* ignore */ }
       // a second computer, if asked for: a name of its own skill, different from the first (no random numbers are used for it otherwise)
-      S.cpu2Name = S.opts.cpus === 2 ? pickCpuName(S.opts.level2, rng, new Set(['you', previous.toLowerCase(), S.cpuName.toLowerCase()]), S.opts.theme) : null;
+      S.cpu2Name = S.opts.cpus >= 2 ? pickCpuName(S.opts.level2, rng, new Set(['you', previous.toLowerCase(), S.cpuName.toLowerCase()]), S.opts.theme) : null;
+      S.cpu3Name = S.opts.cpus === 3 ? pickCpuName(S.opts.level3, rng, new Set(['you', previous.toLowerCase(), S.cpuName.toLowerCase(), S.cpu2Name.toLowerCase()]), S.opts.theme) : null;
       S.overlay = null; S.modal = null; S.game = null;
-      S.totals = S.opts.cpus === 2 ? { human: 0, cpu: 0, cpu2: 0 } : { human: 0, cpu: 0 }; S.roundIndex = 0; S.log = []; S.banner = '';
+      S.totals = S.opts.cpus === 3 ? { human: 0, cpu: 0, cpu2: 0, cpu3: 0 } : S.opts.cpus === 2 ? { human: 0, cpu: 0, cpu2: 0 } : { human: 0, cpu: 0 }; S.roundIndex = 0; S.log = []; S.banner = '';
       runMatch().catch(err => {
         if (err === ABORT) return;
         S.banner = 'Something went wrong: ' + (err && err.message ? err.message : err);
@@ -5006,19 +5220,26 @@ window.MT_BUILD = "d5fcc896ba";
       render();
     }
 
+    // You tried to put a tile where it does not go: the computer notices (a computer that is at the table, by chance and the usual cooldown). Online, the server's computer says it.
+    function triedInvalid() {
+      const a = S.awaiting;
+      if (!a || (a.kind !== 'move' && a.kind !== 'build' && a.kind !== 'draw')) return;
+      if (S.online) { if (S.online.conn === 'open') netSend({ t: 'tried' }); return; }
+      maybeComment('invalid');
+    }
     function playOn(trainId) {
       const a = S.awaiting;
       if (!hintsOn(S)) {                       // no hints: the player chose the tile and now the train; a wrong guess is just told so
         if (!a || !S.selectedKey || (a.kind !== 'move' && a.kind !== 'build' && a.kind !== 'draw')) return;
         const mv = (a.moves || []).find(x => key(x.tile) === S.selectedKey && x.trainId === trainId);
-        if (!mv) { S.notice = 'That tile cannot be played on that train.'; render(); return; }
+        if (!mv) { S.notice = 'That tile cannot be played on that train.'; render(); triedInvalid(); return; }
         S.selectedKey = null; S.notice = '';
         a.resolve(a.kind === 'build' ? { type: 'play', move: mv } : mv);
         return;
       }
       if (!a || a.kind !== 'move' || !S.selectedKey) return;
       const m = a.moves.find(x => key(x.tile) === S.selectedKey && x.trainId === trainId);
-      if (!m) return;
+      if (!m) { triedInvalid(); return; }
       S.selectedKey = null;
       a.resolve(m);
     }
@@ -5094,19 +5315,19 @@ window.MT_BUILD = "d5fcc896ba";
       const order = handKeys();
       if (!order.includes(k)) return;
       S.prevHandOrder = S.handOrder; S.prevHandArranged = S.handArranged;      // dragging a tile out to play it must not rearrange the hand
-      S.handOrder = order; S.handArranged = true; S.dragKey = k; S.hoverKey = k;   // hoverKey lights the trains this tile could go on
+      S.handOrder = order; S.handArranged = true; S.dragKey = k; S.dragIndex = null; S.hoverKey = k;   // hoverKey lights the trains this tile could go on
       render();
     }
+    // Nothing in the hand moves while a tile is being dragged: the slot under the pointer is only remembered (null: the pointer is not over the hand), and the tile goes there
+    // when it is let go
     function dragMove(index) {
-      if (!S.dragKey || !S.handOrder || !(index >= 0)) return;
-      const next = moveToSlot(S.handOrder, S.dragKey, index);
-      if (next.join() === S.handOrder.join()) return;
-      S.handOrder = next;
-      render();
+      if (!S.dragKey) return;
+      S.dragIndex = Number.isInteger(index) && index >= 0 ? index : null;
     }
     function dragEnd() {
       if (!S.dragKey) return;
-      S.dragKey = null; S.dropTrain = null; S.hoverKey = null;
+      if (S.dragIndex !== null && S.dragIndex !== undefined && S.handOrder) S.handOrder = moveToSlot(S.handOrder, S.dragKey, S.dragIndex);
+      S.dragKey = null; S.dragIndex = null; S.dropTrain = null; S.hoverKey = null;
       render();
     }
 
@@ -5124,16 +5345,16 @@ window.MT_BUILD = "d5fcc896ba";
       render();
     }
     function dropOnTrain(k, trainId, from) {
-      S.dragKey = null; S.dropTrain = null; S.hoverKey = null;
+      S.dragKey = null; S.dragIndex = null; S.dropTrain = null; S.hoverKey = null;
       if (S.prevHandOrder !== undefined) { S.handOrder = S.prevHandOrder; S.handArranged = !!S.prevHandArranged; S.prevHandOrder = undefined; }
       const a = S.awaiting;
       const mv = a && (a.kind === 'move' || a.kind === 'build') && a.moves ? a.moves.find(m => key(m.tile) === k && m.trainId === trainId) : null;
       if (!mv) {                                      // not a legal place for it: it simply goes back to the hand
         if (!hintsOn(S) && a && (a.kind === 'move' || a.kind === 'build' || a.kind === 'draw')) S.notice = 'That tile cannot be played on that train.';
-        render(); return;
+        render(); triedInvalid(); return;
       }
       S.notice = '';
-      S.dropFrom = from ? { key: k, rect: from } : null;   // the tile flies from where it was let go
+      S.dropFrom = from ? { key: k, rect: from, shown: fx && fx.shownOf ? fx.shownOf(k) : null } : null;   // the tile flies from where it was let go
       S.selectedKey = null;
       a.resolve(a.kind === 'build' ? { type: 'play', move: mv } : mv);
     }
@@ -5191,8 +5412,11 @@ window.MT_BUILD = "d5fcc896ba";
         case 'closeOverlay':
           if (S.overlay === 'online-host' || S.overlay === 'online-join') { if (S.online && S.online.phase === 'connecting') leaveOnline(true); S.overlay = 'setup'; render(true); return; }
           if (S.overlay === 'online-leave') { S.overlay = null; render(true); return; }
+          if (S.overlay === 'history') { S.overlay = 'setup'; render(true); return; }
           if (S.overlay && (S.matchActive || S.overlay === 'rules')) { S.overlay = null; render(true); }
           return;
+        case 'openHistory': return openHistory(a.key === 'refresh' ? undefined : null);
+        case 'historyCount': return openHistory(Number(a.key));
         case 'openHost': return openOnlineDialog('online-host');
         case 'openJoin': return openOnlineDialog('online-join', a.code);
         case 'hostGame':                                     // (waits for the server's address if it has not arrived yet)
@@ -5214,6 +5438,7 @@ window.MT_BUILD = "d5fcc896ba";
         case 'dragStart': return dragStart(a.key);
         case 'dragMove': return dragMove(a.index);
         case 'dragEnd': return dragEnd();
+        case 'invalidTry': return triedInvalid();
         case 'dragOver': return dragOver(a.train);
         case 'dropOnTrain': return dropOnTrain(a.key, a.train, a.from);
         case 'moveTile': return moveTile(a.key, a.delta);
@@ -5310,10 +5535,10 @@ window.MT_BUILD = "d5fcc896ba";
         }
         if (d.action === 'startGame') {
           const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
-          app.dispatch({ type: 'startGame', rounds: val('#opt-rounds'), hand: val('#opt-hand'), level: val('#opt-level'), cpus: val('#opt-cpus'), level2: val('#opt-level2'), theme: val('#opt-theme') });
+          app.dispatch({ type: 'startGame', rounds: val('#opt-rounds'), hand: val('#opt-hand'), level: val('#opt-level'), cpus: val('#opt-cpus'), level2: val('#opt-level2'), level3: val('#opt-level3'), theme: val('#opt-theme') });
         } else if (d.action === 'hostGame' || d.action === 'joinGame') {
           const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
-          app.dispatch({ type: d.action, server: val('#net-server'), name: val('#net-name'), code: val('#net-code'), rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer'), theme: val('#net-theme'), allowHints: !(app.state.form && app.state.form.allowHints === false),
+          app.dispatch({ type: d.action, server: val('#net-server'), name: val('#net-name'), code: val('#net-code'), rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer'), computer2: val('#net-computer2'), theme: val('#net-theme'), allowHints: !(app.state.form && app.state.form.allowHints === false),
             joinVia: (root.querySelector('input[name="net-via"]:checked') || {}).value, joinManual: val('#join-manual') });
         } else if (d.action === 'sendText') {                  // (the in-page box, used only when there is no separate one)
           const n = root.querySelector('#say-text');
@@ -5353,9 +5578,15 @@ window.MT_BUILD = "d5fcc896ba";
         return;
       }
       const id = e.target && e.target.id;
+      if (id === 'net-computer') {                       // a fourth player needs a third first
+        const f4 = root.querySelector('#net-computer2');
+        if (f4) f4.disabled = String(e.target.value) === 'none';
+        return;
+      }
       if (id === 'opt-cpus') {                           // the second computer's skill only matters with two computers
-        const f = root.querySelector('#field-level2');
-        if (f) f.hidden = String(e.target.value) !== '2';
+        const f = root.querySelector('#field-level2'), f3 = root.querySelector('#field-level3');
+        if (f) f.hidden = String(e.target.value) === '1';
+        if (f3) f3.hidden = String(e.target.value) !== '3';
         return;
       }
     });

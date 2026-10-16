@@ -283,8 +283,8 @@ async function lobby(port, settings, level) {
     ok(sent.find(m => m.t === 'create').computer === 'hard', 'the page asks the server for a Hard computer player when creating the game');
     const f = FakeWS.last, X = '<img src=x onerror=alert(1)>';
     f.say({ t: 'created', code: 'ABCDEF', display: 'ABC-DEF', token: 't', seat: 0, settings: { rounds: 4, hand: 15, computer: 'hard' }, addresses: [] });
-    f.say({ t: 'lobby', code: 'ABCDEF', seat: 0, settings: { rounds: 4, hand: 15, computer: 'hard' }, players: [{ name: 'Me', connected: true }, { name: X, connected: true }, { name: X, connected: true, computer: true, level: '<b>' }, { name: 'extra' }], canStart: true, addresses: [], state: 'lobby' });
-    ok(!/<img src=x/.test(c.html()) && /&lt;img/.test(c.html()) && c.S.online.players.length === 3, 'hostile names in a three-player lobby are escaped, and a fourth entry is ignored');
+    f.say({ t: 'lobby', code: 'ABCDEF', seat: 0, settings: { rounds: 4, hand: 15, computer: 'hard' }, players: [{ name: 'Me', connected: true }, { name: X, connected: true }, { name: X, connected: true, computer: true, level: '<b>' }, { name: 'fourth' }, { name: 'extra' }], canStart: true, addresses: [], state: 'lobby' });
+    ok(!/<img src=x/.test(c.html()) && /&lt;img/.test(c.html()) && c.S.online.players.length === 4, 'hostile names in a lobby are escaped, and a fifth entry is ignored (four players at most)');
     ok(/, computer, Hard/.test(c.html()), '(a computer entry with a level that does not exist is shown at the lobby\'s own level)');
     const T = (a, b) => [a, b];
     const train = (id, tiles) => ({ id, marker: false, tiles: tiles || [], end: 12 });

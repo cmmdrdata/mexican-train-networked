@@ -135,13 +135,13 @@ const handHtml = h => h.slice(h.indexOf('class="tray"'), h.indexOf('class="log"'
   fire('pointerdown', { pointerId: 1, button: 0, clientX: 65, clientY: 620, target: { closest: s => (s === '.tile-btn' ? tilesNow()[0] : null) } });
   fire('pointermove', { pointerId: 1, clientX: 90, clientY: 650 });
   fire('pointermove', { pointerId: 1, clientX: 20 + 8 * 100 - 60 + 40, clientY: 695 });   // over the last tile of the second row
-  ok(keys()[n - 1] === start[0] && keys()[0] === start[n - 1] && keys().slice(1, n - 1).join() === start.slice(1, n - 1).join(), 'dragged from the first row to the second row\'s last place: the two swap, and nothing else moves');
+  ok(keys().join() === start.join(), 'dragged over the second row\'s last place: nothing in the hand moves while the tile is held');
   fire('pointermove', { pointerId: 1, clientX: 65 + 3 * 100, clientY: 695 });             // over the 4th tile of row two
-  ok(keys().indexOf(start[0]) === 8 + 3, 'moved along the second row to the fourth place of that row');
+  ok(keys().join() === start.join(), '(nor along the second row)');
   fire('pointermove', { pointerId: 1, clientX: 20 + 7 * 100 + 45, clientY: 620 });         // over the last tile of the first row
-  ok(keys().indexOf(start[0]) === 7, 'and back up into the first row');
+  ok(keys().join() === start.join(), '(nor back up into the first row)');
   fire('pointerup', { pointerId: 1, clientX: 20 + 7 * 100 + 45, clientY: 620 });
-  ok(t.S.dragKey === null && keys().indexOf(start[0]) === 7 && new Set(keys()).size === n, 'dropped: it stays where it was left, nothing lost or duplicated');
+  ok(t.S.dragKey === null && keys().indexOf(start[0]) === 7 && keys()[0] === start[7] && new Set(keys()).size === n, 'let go: it takes the place under it (swapping with the tile there) and only then, nothing lost or duplicated');
   // drag to the empty end of a short row
   const mid = keys();
   fire('pointerdown', { pointerId: 2, button: 0, clientX: 65, clientY: 620, target: { closest: s => (s === '.tile-btn' ? tilesNow()[0] : null) } });
@@ -149,6 +149,17 @@ const handHtml = h => h.slice(h.indexOf('class="tray"'), h.indexOf('class="log"'
   fire('pointermove', { pointerId: 2, clientX: 20 + 7 * 100 + 45, clientY: 695 });         // beyond the seven tiles of row two? (cell 8 of row two is empty space)
   fire('pointerup', { pointerId: 2, clientX: 20 + 7 * 100 + 45, clientY: 695 });
   ok(keys().indexOf(mid[0]) === n - 1 && new Set(keys()).size === n, 'dropped in the empty spot at the end of the second row: it goes to the end of that row');
+
+  console.log('6. a tile you turned round does not turn again as it flies to the train');
+  ok(G.flightRotation([5, 7], true, [5, 7]) === 0 && G.flightRotation([5, 7], true, [7, 5]) === 180, 'drawn 5|7 and placed 5|7: no turn; drawn 7|5 (you turned it) and placed 5|7: a half turn');
+  ok(G.flightRotation([7, 5], true, [7, 5]) === 0 && G.flightRotation([7, 5], true, [5, 7]) === 180, 'drawn 7|5 and placed 7|5: no turn (the old rule always turned it); drawn 5|7 and placed 7|5: a half turn');
+  ok(G.flightRotation([6, 6], true, [6, 6]) === 90 && G.flightRotation([5, 7], false, [5, 7]) === 90, 'doubles and tiles standing up are as before');
+  {
+    const buttons = { '5-7': { getAttribute: () => '7 and 5, playable' }, '3-3': { getAttribute: () => '3 and 3' } };
+    const fakeRoot = { querySelector: sel => { const m = /data-key="([^"]+)"/.exec(sel); const b = m && buttons[m[1]]; return b ? Object.assign({ getBoundingClientRect: () => R(0, 0, 90, 46) }, b) : null; }, querySelectorAll: () => [] };
+    const fx = G.createFx(fakeRoot, { createElement: () => ({}), body: {} });
+    ok(JSON.stringify(fx.shownOf('5-7')) === '[7,5]' && JSON.stringify(fx.shownOf('3-3')) === '[3,3]' && fx.shownOf('9-9') === null, 'the page reads how a hand tile is drawn from its label ("7 and 5": a 5|7 you turned round shows 7 on the left)');
+  }
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

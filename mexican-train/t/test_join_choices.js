@@ -228,7 +228,7 @@ const linkOf = c => (c.html.match(/<p class="field-note"><code>(http[^<]+)<\/cod
   console.log('6b. a game for three people against a server that cannot seat three (an older server still running)');
   {
     const fresh = make(); fresh.d({ type: 'openHost' }); await wait(10);
-    ok(/<option value="person">Add a third person<\/option>/.test(fresh.html) && !/older version and cannot seat/.test(fresh.html), 'a server that says it can seat three: "Add a third person" is offered, with no warning');
+    ok(/<option value="person">Add a third person<\/option>/.test(fresh.html) && !/cannot seat a third/.test(fresh.html), 'a server that says it can seat three: "Add a third person" is offered, with no warning');
     const old = make({ maxHumans: null }); old.d({ type: 'openHost' }); await wait(10);
     ok(/<option value="person" disabled>Add a third person \(this server must be restarted first\)<\/option>/.test(old.html) && /This game server is an older version and cannot seat a third person: stop it, start it again from the new files \(<code>node server\.js<\/code>\), and reload this page\./.test(old.html), 'an older server (it says nothing about it): the option cannot be chosen, and the Host screen says to restart the server');
     old.S.form.computer = 'person'; old.d({ type: 'closeOverlay' }); old.d({ type: 'openHost' }); await wait(10);

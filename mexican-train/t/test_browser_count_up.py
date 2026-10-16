@@ -46,7 +46,7 @@ RECORD = """() => {
     window.__rec.push({ t: performance.now() - t0, v: cur.map(e => +e.textContent), same: cur.length === els.length && cur.every((e, i) => e.__tok === 'n' + i), focus: !!(document.activeElement && document.activeElement.dataset && document.activeElement.dataset.primary === '1'), counting: cur.map(e => e.classList.contains('counting')) }); }, 8);
   window.__stopRec = () => clearInterval(iv);
   const S = window.MexicanTrainApp.state, m = S.modal;
-  return { type: m.type, totals: m.totals, rows: m.rows ? m.rows.map(r => ({ id: r.id, pips: r.pips })) : null, shown: els.map(e => +e.textContent), sr: Array.from(document.querySelectorAll('.dialog .sr-only')).map(e => e.textContent) };
+  return { type: m.type, totals: m.totals, rows: m.rows ? m.rows.map(r => ({ id: r.id, pips: r.pips })) : null, tiles: m.rows ? m.rows.reduce((n, r) => n + (r.hand || []).length, 0) : 0, shown: els.map(e => +e.textContent), sr: Array.from(document.querySelectorAll('.dialog [data-count] + .sr-only')).map(e => e.textContent) };
 }"""
 errors = []
 
@@ -105,12 +105,12 @@ with sync_playwright() as pw:
             if b[i] != a[i]: change_order.append(i)
     ok(change_order == sorted(change_order) and len(set(change_order)) >= 1, f'one player after another: the order of the changes is {sorted(set(change_order))} with no going back')
     steps = len(change_order)
-    ok(abs(len(clicks) - steps) <= 1 and len(clicks) >= 1, f'a click for each step: {len(clicks)} clicks for {steps} steps')
+    ok(len(clicks) >= 1 and abs(len(clicks) - info['tiles']) <= 1, f"a click for each tile put up: {len(clicks)} clicks for {info['tiles']} tiles")
     rates = [c['rate'] for c in clicks]
     ok(all(0.919 <= r <= 1.221 for r in rates), f'at a pitch within range ({min(rates):.2f} to {max(rates):.2f})')
     gaps = [b['t'] - a['t'] for a, b in zip(clicks, clicks[1:])]
-    within = [g for g in gaps if g < 100]
-    ok(within and 20 <= sorted(within)[len(within) // 2] <= 80, f'quick: about {sorted(within)[len(within) // 2]:.0f} ms between clicks' if within else 'quick')
+    within = [g for g in gaps if g < 700]
+    ok(within and 400 <= sorted(within)[len(within) // 2] <= 600, f'two tiles a second: about {sorted(within)[len(within) // 2]:.0f} ms between tiles' if within else 'two tiles a second')
     ok(all(r['same'] for r in rec), 'the numbers are changed IN PLACE: the very same elements all through (the dialog is not drawn again)')
     ok(all(r['focus'] for r in rec), 'and the focus stays on the dialog\'s button the whole time')
     ok(any(any(r['counting']) for r in rec) and not any(rec[-1]['counting']), 'the number being counted swells while it counts, and not when done')

@@ -286,7 +286,9 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 
 /* online play */
 .opp.three { grid-template-areas: "cpu yard" "cpu2 yard" "bubble yard"; }
+.opp.four { grid-template-areas: "cpu yard" "cpu2 yard" "cpu3 yard" "bubble yard"; }
 .cpu-hand.second { grid-area: cpu2; margin-top: 0.35rem; }
+.cpu-hand.second[data-player="cpu3"] { grid-area: cpu3; }
 .net-dot { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #8a8f8c; vertical-align: middle; flex: none; }
 .net-dot.up { background: #3ec27a; }
 .net-dot.down { background: #d8564b; }
@@ -376,12 +378,17 @@ select option { color: #1b2523; background: #fff; }
 
 .rows { display: grid; gap: 0.8rem; margin-bottom: 1rem; }
 .row {
-  display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto auto; gap: 0.6rem 0.9rem; align-items: center;
+  display: grid; grid-template-columns: 8rem minmax(0, 1fr) auto auto; gap: 0.6rem 0.9rem; align-items: center;
   padding-bottom: 0.8rem; border-bottom: 1px solid var(--dlg-line);
 }
-.row .who { font-family: var(--display); font-size: 1.1rem; }
+.row .who { font-family: var(--display); font-size: 1.1rem; min-width: 0; overflow-wrap: anywhere; }       /* a name gets its own column, wide enough for the names in the game; a longer one (up to 20 letters) wraps inside it instead of running into the tiles */
 .mini { display: flex; flex-wrap: wrap; gap: 3px; --s: 20px; min-height: 22px; }
 .mini .tile { filter: none; }
+.mini .mt { display: inline-flex; }
+.mini .mt.hid { visibility: hidden; }
+.mini .mt:not(.hid) { animation: mtIn 0.18s ease-out; }
+@keyframes mtIn { from { transform: scale(0.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mini .mt:not(.hid) { animation: none; } }
 .mini .none { color: var(--dlg-muted); font-size: 0.9rem; }
 .pts { display: grid; justify-items: end; line-height: 1.1; }
 .pts b { font: 700 1.35rem/1.1 var(--display); font-variant-numeric: tabular-nums; }
@@ -405,8 +412,8 @@ select option { color: #1b2523; background: #fff; }
   .track-info { grid-auto-flow: column; gap: 0.8rem; align-items: center; }
   .cover { display: none; }
   .track-tiles { min-height: calc(var(--s) * 2 + 18px); }
-  .row { grid-template-columns: 2.6rem minmax(0, 1fr); }
-  .row .pts { grid-column: 2; justify-items: start; grid-auto-flow: column; gap: 0.5rem; display: flex; align-items: baseline; }
+  .row { grid-template-columns: minmax(0, 1fr); }                    /* on a phone the name has its own line above the tiles and the points */
+  .row .pts { grid-column: 1; justify-items: start; grid-auto-flow: column; gap: 0.5rem; display: flex; align-items: baseline; }
   .dialog { padding: 1.1rem 1.1rem 1rem; }
 }
 
@@ -463,3 +470,21 @@ select option { color: #1b2523; background: #fff; }
 .join-choices .manual-box { margin: 0.15rem 0 0.2rem 1.7rem; }
 .join-choices .manual-box[hidden] { display: none; }
 .join-choices .manual-box input { width: 100%; box-sizing: border-box; }
+
+/* ---- Recent games (the list of games played on the server) ---- */
+.hist-count { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0 12px; color: var(--dlg-muted); }
+.hist-count .btn { padding: 4px 12px; min-width: 0; }
+.hist-note { color: var(--dlg-muted); margin: 18px 0; }
+.hist-list { display: grid; gap: 10px; max-height: min(58vh, 560px); overflow-y: auto; padding-right: 4px; }
+.hist-game { border: 1px solid var(--dlg-line, rgba(255,255,255,0.18)); border-radius: 10px; padding: 10px 12px; }
+.hist-game.stopped { opacity: 0.8; border-style: dashed; }
+.hist-game header { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 0.85rem; color: var(--dlg-muted); }
+.hist-game header time { font-weight: 600; color: inherit; }
+.hist-result { margin: 4px 0 6px; font-weight: 700; }
+.hist-game ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.hist-game li { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: baseline; }
+.hist-game li .hs { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
+.hist-game li .hr { font-size: 0.8rem; color: var(--dlg-muted); min-width: 9ch; text-align: right; }
+.hist-game li small { color: var(--dlg-muted); }
+.hist-game li.won .hn { font-weight: 700; }
+.hist-game .crown { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gold, #d6a644); margin-left: 4px; }

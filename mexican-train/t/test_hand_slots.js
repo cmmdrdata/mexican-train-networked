@@ -97,15 +97,19 @@ const show = cells => cells.map(k => (k === null ? '_' : k)).join(' ');
     ok(gridOf(c.html).cells.join() === [A, null, Cc, D, null, F].join(), 'a layout with two empty slots: ' + show(gridOf(c.html).cells));
     c.d({ type: 'dragStart', key: A });
     c.d({ type: 'dragMove', index: 1 });
-    ok(gridOf(c.html).cells.join() === [null, A, Cc, D, null, F].join(), 'a tile dragged over an empty slot MOVES into it, and the slot it came from is empty: ' + show(gridOf(c.html).cells));
-    c.d({ type: 'dragMove', index: 4 });
+    ok(gridOf(c.html).cells.join() === [A, null, Cc, D, null, F].join(), 'while the tile is held, nothing in the hand moves: ' + show(gridOf(c.html).cells));
+    c.d({ type: 'dragMove', index: 4 }); c.d({ type: 'dragMove', index: 2 });
+    ok(gridOf(c.html).cells.join() === [A, null, Cc, D, null, F].join(), '(not even as it passes over other slots)');
+    c.d({ type: 'dragMove', index: 1 }); c.d({ type: 'dragEnd' });
+    ok(gridOf(c.html).cells.join() === [null, A, Cc, D, null, F].join(), 'let go over an empty slot, a tile MOVES into it, and the slot it came from is empty: ' + show(gridOf(c.html).cells));
+    c.d({ type: 'dragStart', key: A }); c.d({ type: 'dragMove', index: 4 }); c.d({ type: 'dragEnd' });
     ok(gridOf(c.html).cells.join() === [null, null, Cc, D, A, F].join(), 'on to the other empty slot: ' + show(gridOf(c.html).cells));
-    c.d({ type: 'dragMove', index: 2 });
-    ok(gridOf(c.html).cells.join() === [null, null, A, D, Cc, F].join(), 'over a slot with a tile in it, the two swap places, and no other tile is disturbed: ' + show(gridOf(c.html).cells));
-    c.d({ type: 'dragMove', index: 2 });
-    ok(gridOf(c.html).cells.join() === [null, null, A, D, Cc, F].join(), '(over the same slot again: nothing changes)');
-    c.d({ type: 'dragEnd' });
-    ok(gridOf(c.html).cells.join() === [null, null, A, D, Cc, F].join() && c.S.handArranged === true, 'letting go leaves it there, and the hand counts as arranged by you');
+    c.d({ type: 'dragStart', key: A }); c.d({ type: 'dragMove', index: 2 }); c.d({ type: 'dragEnd' });
+    ok(gridOf(c.html).cells.join() === [null, null, A, D, Cc, F].join(), 'let go over a slot with a tile in it, the two swap places, and no other tile is disturbed: ' + show(gridOf(c.html).cells));
+    c.d({ type: 'dragStart', key: A }); c.d({ type: 'dragMove', index: 2 }); c.d({ type: 'dragEnd' });
+    ok(gridOf(c.html).cells.join() === [null, null, A, D, Cc, F].join(), '(let go over its own slot again: nothing changes)');
+    c.d({ type: 'dragStart', key: A }); c.d({ type: 'dragMove', index: 5 }); c.d({ type: 'dragMove', index: null }); c.d({ type: 'dragEnd' });
+    ok(gridOf(c.html).cells.join() === [null, null, A, D, Cc, F].join() && c.S.handArranged === true, 'let go away from the hand (the last slot passed over does not count): it stays, and the hand counts as arranged by you');
     c.d({ type: 'moveTile', key: F, delta: -1 });
     ok(gridOf(c.html).cells.join() === [null, null, A, D, F, Cc].join(), 'the keyboard (Shift + arrow) moves a tile one slot, swapping with the tile there: ' + show(gridOf(c.html).cells));
     c.d({ type: 'moveTile', key: A, delta: -1 });
@@ -116,7 +120,9 @@ const show = cells => cells.map(k => (k === null ? '_' : k)).join(' ');
     ok(gridOf(c.html).cells.join() === [A, null, null, D, F, Cc].join(), '(and the last tile cannot go past the last slot)');
     // the same hand, a tile dragged out to play it: the layout is not rearranged by the drag, only the slot it leaves is empty
     c.d({ type: 'dragStart', key: D }); c.d({ type: 'dragMove', index: 1 });
-    ok(gridOf(c.html).cells.join() === [A, D, null, null, F, Cc].join(), '(mid-drag it is in the slot under it)');
+    ok(gridOf(c.html).cells.join() === [A, null, null, D, F, Cc].join(), '(mid-drag nothing has moved)');
+    c.d({ type: 'dragEnd' });
+    ok(gridOf(c.html).cells.join() === [A, D, null, null, F, Cc].join(), '(and it goes to the slot under it when it is let go)');
   }
 
   console.log('4. a whole real game: no tile of yours ever changes slot, and the row never changes width');

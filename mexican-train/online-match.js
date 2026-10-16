@@ -51,10 +51,12 @@ class OnlineMatch {
     this.rounds = [1, 4, 13].includes(Number(opts.rounds)) ? Number(opts.rounds) : 4;
     this.hand = [8, 12, 15].includes(Number(opts.hand)) ? Number(opts.hand) : 15;
     this.allowHints = opts.allowHints !== false;                    // the host's choice for the whole table: with it off nobody is shown (or can ask for) the longest train
-    this.n = opts.names && opts.names.length === 3 ? 3 : 2;
+    this.n = opts.names && (opts.names.length === 3 || opts.names.length === 4) ? opts.names.length : 2;
     this.names = Array.from({ length: this.n }, (_, i) => cleanName(opts.names && opts.names[i], `Player ${i + 1}`));
     this.computers = {};                                   // seat -> { level }: seats played by the computer
-    if (this.n === 3 && opts.computer) this.computers[2] = { level: E.LEVELS.includes(opts.computer.level) ? opts.computer.level : 'normal' };
+    // the computers sit in the last seats: one (as before, at a table of three), or two (a table of four with two people), or one at a table of three people
+    const comps = (Array.isArray(opts.computers) ? opts.computers : opts.computer ? [opts.computer] : []).slice(0, this.n - 2);
+    if (this.n >= 3) comps.slice(0, this.n - 2).forEach((c, k) => { this.computers[this.n - comps.length + k] = { level: E.LEVELS.includes(c && c.level) ? c.level : 'normal' }; });
     this.humans = [];
     for (let i = 0; i < this.n; i++) if (!this.computers[i]) this.humans.push(i);
     this.rng = opts.rng || Math.random;
@@ -73,6 +75,9 @@ class OnlineMatch {
     SEATS.slice(0, this.n).forEach(id => { this.totals[id] = 0; });
     this.roundIndex = 0;
     this.startIndex = 0;
+    this.startedAt = Date.now();
+    this.roundsPlayed = 0;
+    this.roundWins = {};                                  // rounds each seat went out first in (a tie or a blocked round with a tie counts for nobody)
     this.game = null;
     const blank = f => Array.from({ length: this.n }, f);
     this.awaiting = blank(() => null);
@@ -107,9 +112,9 @@ class OnlineMatch {
   cid(viewer, engineId) {
     if (engineId === 'mexican') return 'mexican';
     const seat = SEATS.indexOf(engineId);
-    return seat === viewer ? 'human' : (this.others(viewer).indexOf(seat) === 0 ? 'cpu' : 'cpu2');
+    return seat === viewer ? 'human' : ['cpu', 'cpu2', 'cpu3'][this.others(viewer).indexOf(seat)];
   }
-  who(viewer, actor) { return actor === viewer ? 'me' : (this.others(viewer).indexOf(actor) === 0 ? 'opp' : 'opp2'); }
+  who(viewer, actor) { return actor === viewer ? 'me' : ['opp', 'opp2', 'opp3'][this.others(viewer).indexOf(actor)]; }
   noEvents() { return Array.from({ length: this.n }, () => []); }
 
   /* ------------------------------ running the match ------------------------------ */
@@ -126,6 +131,13 @@ class OnlineMatch {
   }
   /* The game's log ends (once): how it ended, and the totals at that point. */
   _endLog(how) { if (this.rec && !this._logEnded) { this._logEnded = true; this.rec.gameEnd(this.totals, how); } }
+  /* What the server keeps of this game once it is over (see history.js). */
+  summary() {
+    return {
+      startedAt: this.startedAt, endedAt: Date.now(), result: this.over === 'finished' ? 'finished' : 'stopped', rounds: this.rounds, roundsPlayed: this.roundsPlayed, hand: this.hand, theme: this.theme,
+      players: SEATS.slice(0, this.n).map((id, i) => ({ name: this.names[i], computer: !!this.computers[i], level: this.computers[i] ? this.computers[i].level : undefined, score: this.totals[id], roundsWon: this.roundWins[id] || 0 })),
+    };
+  }
   abort() {
     if (this.over) return;
     this._endLog('aborted');
@@ -159,6 +171,8 @@ class OnlineMatch {
         : `${winnerSeat === seat ? 'You' : this.names[winnerSeat]} played the last tile.`);
       const rows = this.game.players.map(p => ({ id: p.id, name: p.name, hand: p.hand.map(t => t.slice()), pips: handPips(p) }));
       rows.forEach(row => { this.totals[row.id] += row.pips; });
+      this.roundsPlayed++;
+      if (result.winner && !result.tie) this.roundWins[result.winner.id] = (this.roundWins[result.winner.id] || 0) + 1;
       if (this.rec) this.rec.roundEnd(this.game, result, this.totals);
       this._broadcast(this.noEvents());
       await this._modal({
@@ -530,7 +544,7 @@ class OnlineMatch {
         };
       }
     }
-    const opps = this.others(seat).map((sx, i) => ({ id: i === 0 ? 'cpu' : 'cpu2', name: this.names[sx], seat: sx, computer: !!this.computers[sx], level: this.computers[sx] ? this.computers[sx].level : null }));
+    const opps = this.others(seat).map((sx, i) => ({ id: ['cpu', 'cpu2', 'cpu3'][i], name: this.names[sx], seat: sx, computer: !!this.computers[sx], level: this.computers[sx] ? this.computers[sx].level : null }));
     const view = {
       seq: this.seq, round: this.roundIndex, rounds: this.rounds,
       me: { name: this.names[seat], seat }, opp: { name: opps[0].name }, opps,
@@ -561,6 +575,11 @@ class OnlineMatch {
   }
 
   /* ------------------------------ intents ------------------------------ */
+  /* A person tried to put a tile where it does not go (their page noticed): the computer may remark on it. Only on their turn, and only if there is a computer. */
+  tried(seat) {
+    if (this.over || this.paused || !this.humans.includes(seat) || !this.awaiting[seat]) return;
+    this._maybeSay(seat, 'invalid');
+  }
   intent(seat, msg) {
     const bad = (code, message) => ({ ok: false, code, message });
     if (this.over) return bad('over', 'The game is over.');
@@ -570,7 +589,7 @@ class OnlineMatch {
     if (!aw) return bad('not_now', 'It is not your turn to act.');
     const a = msg.a;
     const others = this.others(seat);
-    const engineTrain = id => (id === 'mexican' ? 'mexican' : id === 'human' ? SEATS[seat] : id === 'cpu' ? SEATS[others[0]] : id === 'cpu2' && others[1] !== undefined ? SEATS[others[1]] : null);
+    const engineTrain = id => (id === 'mexican' ? 'mexican' : id === 'human' ? SEATS[seat] : id === 'cpu' ? SEATS[others[0]] : id === 'cpu2' && others[1] !== undefined ? SEATS[others[1]] : id === 'cpu3' && others[2] !== undefined ? SEATS[others[2]] : null);
     const findMove = moves => {
       if (!isTile(msg.tile)) return null;
       const tid = engineTrain(msg.train);

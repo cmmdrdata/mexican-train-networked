@@ -49,7 +49,7 @@ function checkLog(events) {
         summary.mode = ev.mode || null; summary.players = Array.isArray(ev.players) ? ev.players : [];
         ids = summary.players.map(p => p.id); ids.forEach(id => { totals[id] = 0; });
         if (ev.version !== 1) bad(ev, `a log of version ${ev.version}: this tool reads version 1`);
-        if (ids.length < 2 || ids.length > 3) bad(ev, 'a game has two or three players');
+        if (ids.length < 2 || ids.length > 4) bad(ev, 'a game has two, three or four players');
         break;
       case 'round': {
         summary.rounds++;

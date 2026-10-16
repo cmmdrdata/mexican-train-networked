@@ -250,6 +250,8 @@ const R = (left, top, width, height) => ({ left, top, width, height });
       land(tok, spec, opts) { log.push(['land', spec, opts || {}, tok]); },
       captureDraw(spec) { log.push(['captureDraw', spec]); return { spec }; },
       landDraw(tok, spec) { log.push(['landDraw', spec, tok]); },
+      captureUndo(pid, nth) { log.push(['captureUndo', pid, nth]); return { from: { left: 1, top: 1, width: 10, height: 10 }, nums: null }; },
+      landUndo(tok, pid) { log.push(['landUndo', pid, tok]); },
       reapply() { log.push(['reapply']); },
       cancelAll() { log.push(['cancelAll']); },
     };
@@ -259,7 +261,7 @@ const R = (left, top, width, height) => ({ left, top, width, height });
       storage: { get: k => (k in store ? store[k] : null), set: (k, v) => { store[k] = v; } }, now: () => 1 }, extra));
     return { app, root, log, mock };
   }
-  let placements = 0, totalLands = 0, fastSeen = 0, hiddenSeen = 0, publicCpu = 0, humanPlays = 0, drawsSeen = 0, humanDraws = 0, cpuDraws = 0;
+  let totalUndo = 0, placements = 0, totalLands = 0, fastSeen = 0, hiddenSeen = 0, publicCpu = 0, humanPlays = 0, drawsSeen = 0, humanDraws = 0, cpuDraws = 0;
   for (let seed = 1; seed <= 10; seed++) {
     const t = makeApp(seed);
     let n = 0;
@@ -304,7 +306,7 @@ const R = (left, top, width, height) => ({ left, top, width, height });
       }
       if (L[i][0] === 'land') lands++;
     }
-    let dcaps = 0, dlands = 0;
+    let dcaps = 0, dlands = 0, undoCaps = 0, undoLands = 0;
     for (let i = 0; i < L.length; i++) {
       if (L[i][0] === 'captureDraw') {
         dcaps++;
@@ -317,11 +319,15 @@ const R = (left, top, width, height) => ({ left, top, width, height });
     ok(dcaps === nd && dlands === nd, `seed ${seed}: one draw flight per tile drawn (${dcaps} captures, ${dlands} lands, ${nd} draws)`);
     placements += n; totalLands += lands;
     ok(caps === n && lands === n, `seed ${seed}: one flight per placed tile (${caps} captures, ${lands} lands, ${n} placements)`);
+    for (let i = 0; i < L.length; i++) if (L[i][0] === 'captureUndo') { undoCaps++; if (L[i + 1] && L[i + 1][0] === 'render' && L.slice(i + 1, i + 4).some(e => e[0] === 'landUndo' && e[1] === L[i][1])) undoLands++; }
     ok(L.filter(e => e[0] === 'reapply').length === L.filter(e => e[0] === 'render').length, `seed ${seed}: reapply follows every redraw`);
+    ok(undoCaps === undoLands && undoCaps === L.filter(e => e[0] === 'landUndo').length, `seed ${seed}: every tile taken back in the opening is noted, the page redrawn, and the tile flown back (${undoCaps})`);
+    totalUndo += undoCaps;
     ok(L.some(e => e[0] === 'cancelAll'), `seed ${seed}: starting a game clears any flying tiles`);
   }
   console.log(`   ${placements} placements, ${totalLands} flights | computer tiles flown face down (opening)=${hiddenSeen}, public=${publicCpu} | human=${humanPlays} | fast (auto-build) flights=${fastSeen}`);
   console.log(`   draw flights: ${drawsSeen} (you ${humanDraws}, computer ${cpuDraws})`);
+  ok(totalUndo > 0, `tiles taken back were seen in the games (${totalUndo})`);
   ok(placements > 300 && hiddenSeen > 30 && publicCpu > 30 && fastSeen > 5 && humanDraws > 50 && cpuDraws > 50, 'every kind of flight was exercised');
   {
     // the destination index really is the new tile's position on its train, and the placed tile matches
@@ -377,16 +383,16 @@ const R = (left, top, width, height) => ({ left, top, width, height });
     ok(S.dragKey === k0 && eq(S.handOrder, base), 'dragStart records the current order');
     ok(new RegExp(`tile-btn[^"]*drag-src[^"]*"[^>]*data-key="${k0}"`).test(t.root.innerHTML.replace(/\s+/g, ' ')) || /drag-src/.test(t.root.innerHTML), 'the tile being dragged is marked so it can be dimmed');
     t.app.dispatch({ type: 'dragMove', index: 2 });
-    ok(eq(order(t.root.innerHTML).slice(0, 3), [k2, k1, k0]), 'dragging over the third tile moves it there (the tile that was there takes its old place)');
+    ok(eq(order(t.root.innerHTML), base), 'dragging over the third tile moves NOTHING while the tile is still held');
     const r0 = t.root.renders;
     t.app.dispatch({ type: 'dragMove', index: 2 });
-    ok(t.root.renders === r0, 'the same position again: no redraw');
+    ok(t.root.renders === r0, 'and there is no redraw at all');
     t.app.dispatch({ type: 'dragMove', index: -1 }); t.app.dispatch({ type: 'dragMove', index: NaN });
-    ok(t.root.renders === r0, 'invalid positions are ignored');
+    ok(t.root.renders === r0 && S.dragIndex === null, 'invalid positions are ignored (the pointer is not over a slot)');
     t.app.dispatch({ type: 'hoverTile', key: k1 });
     ok(S.hoverKey === k0, 'while dragging, only the dragged tile lights up trains; hovering other tiles is ignored');
     t.app.dispatch({ type: 'dragMove', index: 14 });
-    ok(order(t.root.innerHTML)[14] === k0, 'can be dragged all the way to the end');
+    ok(eq(order(t.root.innerHTML), base), 'dragged all the way to the end: still nothing has moved');
     t.app.dispatch({ type: 'dragEnd' });
     ok(S.dragKey === null && !/drag-src/.test(t.root.innerHTML), 'dropping clears the marker');
     const arranged = order(t.root.innerHTML);
@@ -482,11 +488,12 @@ const R = (left, top, width, height) => ({ left, top, width, height });
     ok(fl && fr.doc.body.classList.contains('dragging'), 'a floating copy follows the pointer and the page shows a grabbing cursor');
     ok(/translate\(\d+px, \d+px\)/.test(fl.style.transform) && near(parseFloat(fl.style.transform.match(/translate\(([\d.-]+)px/)[1]), 75 - 20, 1e-6), 'the copy keeps the grab point under the pointer');
     fire('pointermove', { pointerId: 1, clientX: 20 + 2 * 60 + 20, clientY: 640 });
-    ok(keysNow()[2] === start[0] && keysNow()[0] === start[1], 'over the third tile: the dragged tile takes that place, the others shuffle');
+    ok(keysNow().join() === start.join(), 'over the third tile: nothing in the hand moves while the tile is held');
     fire('pointermove', { pointerId: 1, clientX: 20 + 14 * 60 + 20, clientY: 640 });
-    ok(keysNow()[14] === start[0], 'carried to the far end');
+    ok(keysNow().join() === start.join(), 'carried to the far end: still nothing moves');
     fire('pointerup', { pointerId: 1, clientX: 20 + 14 * 60 + 20, clientY: 640 });
     ok(app.state.dragKey === null && fl.removed && !fr.doc.body.classList.contains('dragging') && fr.captured === false && !drag.dragging, 'dropping ends it cleanly');
+    ok(keysNow()[14] === start[0], 'and only now does the tile take the place it was let go over');
     ok(drag.consumeClick() === true && drag.consumeClick() === false, 'the click that follows a drag is swallowed once (so it does not play the tile)');
     const afterDrag = keysNow();
 
@@ -615,6 +622,43 @@ const R = (left, top, width, height) => ({ left, top, width, height });
     for (let i = 0; i < 40; i++) await tick();
     const trainEl = sc.find(e => e.dataset.train === m.trainId);
     ok(trainEl.scrollLeft === 1800 && trainEl.classList.contains('more-left'), 'a new tile on a train scrolls it to show that tile');
+  }
+
+  console.log('3c. a tile taken back from a train flies back to the hand it came from');
+  {
+    const { root, doc } = fakeEnv();
+    const fx = G.createFx(root, doc);
+    const label = (v, idx) => { const e = new FakeEl('svg'); e.rect = R(100 + idx * 90, 200, 88, 44); e.attrs = { 'aria-label': v, 'data-idx': String(idx) }; e.getAttribute = n => e.attrs[n]; return e; };
+    const t0 = label('3 and 8', 0), t1 = label('8 and 5', 1);
+    root.mapAll['.scroller[data-train="human"] .tile[data-idx]'] = [t1, t0];                 // (in any order: the last by index is the one that comes off)
+    const tok = fx.captureUndo('human', 0);
+    ok(tok && eq(tok.from, t1.rect) && eq(tok.nums, [8, 5]), 'the tile that comes off is the last one on the train, and it is noted where it lies');
+    ok(eq(fx.captureUndo('human', 1).from, t0.rect), 'when two come off at once, the second is the one before it');
+    ok(fx.captureUndo('human', 2) === null && fx.captureUndo('cpu', 0) === null, 'nothing there: nothing to fly');
+    const dest = new FakeEl('svg'); dest.rect = R(500, 600, 88, 44);
+    const btn = new FakeEl('button'); btn.attrs = { 'aria-label': '5 and 8, playable' }; btn.getAttribute = n => btn.attrs[n]; btn.rect = dest.rect;
+    root.map['.hand .tile-btn[data-key="5-8"] .tile'] = dest; root.map['.tile-btn[data-key="5-8"]'] = btn;
+    fx.landUndo(tok, 'human');
+    const w = doc.body.children[0];
+    ok(w && w.className === 'flying' && w.children.length === 1 && w.anims.length === 1 && dest.style.visibility === 'hidden', 'it flies: a copy of the hand tile starts on the train, and the real one waits hidden');
+    ok(w.anims[0].kf[0].transform.includes('rotate(180deg)'), 'a tile that lies 8|5 on the train but is drawn 5|8 in the hand starts half turned, so it does not seem to spin');
+    w.anims[0].resolve(); await tick(); await tick();
+    ok(dest.style.visibility === '' && doc.body.children.length === 0, 'and when it arrives the copy goes and the real tile shows');
+    // and no turn when the hand draws it the same way
+    btn.attrs['aria-label'] = '8 and 5, playable'; fx.landUndo(tok, 'human');
+    ok(doc.body.children[0].anims[0].kf[0].transform.includes('rotate(0deg)'), 'drawn the same way in both places: it flies without turning');
+    fx.cancelAll();
+    // the computer's tiles go back face down into the end of its row
+    const b1 = new FakeEl('i'); b1.rect = R(400, 70, 15, 26); root.mapAll['.cpu-hand .back'] = [b1];
+    const c0 = new FakeEl('svg'); c0.rect = R(150, 260, 88, 44); c0.attrs = { 'aria-label': 'face-down tile', 'data-idx': '0' }; c0.getAttribute = n => c0.attrs[n];
+    root.mapAll['.scroller[data-train="cpu"] .tile[data-idx]'] = [c0];
+    const ct = fx.captureUndo('cpu', 0);
+    ok(ct && ct.nums === null, 'a face-down tile of the computer has no numbers');
+    fx.landUndo(ct, 'cpu');
+    const w3 = doc.body.children[0];
+    ok(w3 && w3.children.length === 1 && w3.children[0].markup !== undefined && b1.style.visibility === 'hidden', 'it flies back face down (nothing is revealed) to the end of the computer\'s row');
+    fx.cancelAll();
+    ok(G.createFx(fakeEnv().root, { createElement: null }).captureUndo('human', 0) === null, 'with no usable page, nothing happens');
   }
 
   Object.keys(failCounts).forEach(m => console.log(`  (x${failCounts[m]}) ${m}`));

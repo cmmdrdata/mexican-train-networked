@@ -50,12 +50,12 @@ console.log('3. the end-of-round dialog: the ordinary off-white tiles');
     app.dispatch({ type: 'startGame', rounds: 2, hand: 8, style, level: 'easy' });
     app.state.modal = { type: 'roundEnd', blocked: false, tie: false, winnerId: 'cpu', last: false, totals: { human: 40, cpu: 10 }, rows: [{ id: 'human', name: 'You', hand: [[3, 4], [6, 6], [0, 9], [12, 11]], pips: 40 }, { id: 'cpu', name: 'Nadia', hand: [], pips: 0 }] };
     app.render(true);
-    const h = root.innerHTML, mini = (h.match(/<div class="mini">([^]*?)<\/div>/g) || []).join('');
+    const h = root.innerHTML, mini = (h.match(/<div class="mini"[^>]*>([^]*?)<\/div>/g) || []).join('');
     const faces = Array.from(mini.matchAll(/<svg class="tile[^>]*>\s*<rect [^>]*fill="(#[0-9a-f]{6})"/gi)).map(m => m[1].toLowerCase());
     ok(/class="dialog wide roundend"/.test(h), `${style}: the end-of-round dialog has its own look (class "roundend")`);
     ok(faces.length === 4 && faces.every(f => f === '#f6f0e0'), `${style}: all four of the tiles shown in it have the off-white face of a blank tile (${faces.join(' ')})`);
     ok(!/#ffffff/i.test(mini), `${style}: and none is pure white`);
-    ok(/No tiles left/.test(h) && /<b>\+40<\/b>/.test(h), `${style}: the rest of the dialog is as it was (the points, "No tiles left")`);
+    ok(/No tiles left/.test(h) && /<b data-pips="0" aria-hidden="true">\+40<\/b>/.test(h), `${style}: the rest of the dialog is as it was (the points, "No tiles left")`);
     // the dialog that shows the final score is not changed
     app.state.modal = { type: 'final', totals: { human: 40, cpu: 10 } }; app.render(true);
     ok(!/roundend/.test(root.innerHTML) && /class="dialog"/.test(root.innerHTML), `${style}: the final-score dialog keeps its own look`);

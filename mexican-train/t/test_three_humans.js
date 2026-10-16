@@ -186,7 +186,7 @@ const resume = async (port, code, token) => { const c = await connect(port); c.s
     ok(s.created.settings.humans === 3, 'anything but 3 means two ("3" as text counts)'); s.c.close();
     const comp = await host(T.port, 'Ann', { humans: 3, computer: 'hard' });
     const lc = await comp.c.next(m => m.t === 'lobby');
-    ok(comp.created.settings.computer === null && lc.players.length === 3 && !lc.players.some(p => p && p.computer), 'a computer player is not added to a game for three people (that would be four)');
+    ok(comp.created.settings.computer === 'hard' && lc.players.length === 4 && lc.players.filter(p => p && p.computer).length === 1, 'a computer player can be added to a game for three people (four players in all)');
     [two.c, j2.c, x.c, comp.c].forEach(y => y.close());
     await T.srv.close();
   }
@@ -267,7 +267,7 @@ const resume = async (port, code, token) => { const c = await connect(port); c.s
     h.c.send({ t: 'settings', humans: 2 });
     ok((await h.c.next(m => m.t === 'lobby' && m.settings.humans === 2)).players.length === 2, 'with the seat empty it can');
     h.c.send({ t: 'settings', humans: 3, computer: 'easy' });
-    ok(((await h.c.next(m => m.t === 'lobby' && m.settings.humans === 3)).settings.computer === null), 'asking for three people takes any computer player away');
+    ok(((await h.c.next(m => m.t === 'lobby' && m.settings.humans === 3)).settings.computer === 'easy'), 'asking for three people keeps the computer player (four players in all)');
     [h.c, b.c, c.c].forEach(x => x.close());
     await T.srv.close();
   }
