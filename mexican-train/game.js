@@ -142,6 +142,7 @@
 
   /* One normal turn: a tile (plus the forced follow-up after a double). */
   async function playTurn(game, player, controller, ui) {
+    if (ui.onTurnStart) ui.onTurnStart(game, player);                  // (once per turn, not again for the cover of a double or a draw: the page plays its "your turn" sound here)
     for (;;) {
       let moves = legalMoves(game, player);
       let drew = null;
@@ -1011,17 +1012,21 @@
    * capture*() is called just BEFORE the page is redrawn (while the tile is still where it was)
    * and land*() just AFTER, once the tile exists in its new place. The real tile is hidden until
    * the flying copy arrives, and hidden again if a redraw happens mid-flight. */
-  function createFx(root, doc) {
+  function createFx(root, doc, rng) {
+    const rand = typeof rng === 'function' ? rng : Math.random;      // (only for where in a computer's hand a tile comes from or goes to: it has nothing to do with the game)
     const flights = [];
     const ok = !!(doc && doc.createElement && doc.body && root.querySelector);
     const rectOf = el => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
     // the last face-down tile in an opponent's row (with two opponents, each has a row of their own)
-    const lastBack = pid => {
+    const backsOf = pid => {
       const many = root.querySelector && root.querySelector('.cpu-hand[data-player="cpu2"]');
       const sel = many ? `.cpu-hand[data-player="${pid}"] .back` : '.cpu-hand .back';
       const b = root.querySelectorAll(sel);
-      return b && b.length ? b[b.length - 1] : null;
+      return b ? Array.from(b) : [];
     };
+    // A computer holds its tiles in a row, face down, and it does not play or draw at the end of the row every time: a tile leaves from, or arrives at, a random place in it.
+    const pickSlot = n => (n > 0 ? Math.min(n - 1, Math.floor(rand() * n)) : -1);
+    const backAt = (pid, i) => { const b = backsOf(pid); return b.length ? b[Math.max(0, Math.min(i, b.length - 1))] : null; };
 
     // one flight: a copy built from `layers` ({face, back}) goes from `from` to `dest`
     function fly(find, dest, from, rotate, layers, duration) {
@@ -1085,7 +1090,7 @@
       let el = null;
       let shown = null;
       if (spec.playerId === 'human') { el = root.querySelector('.tile-btn[data-key="' + spec.key + '"] .tile'); shown = shownOf(spec.key); }
-      else el = lastBack(spec.playerId);
+      else { const b = backsOf(spec.playerId); el = b.length ? b[pickSlot(b.length)] : null; }
       if (!el) return null;
       const r = rectOf(el);
       return r.width > 0 && r.height > 0 ? { from: r, shown } : null;
@@ -1118,9 +1123,9 @@
         if (!dest) return;
         fly(find, dest, tok.from, 0, { face: cleanFace(dest), back: backLayer('h') }, 480);   // arrives face down, turns face up in your hand
       } else {
-        const dest = lastBack(spec.playerId);
+        const at = pickSlot(backsOf(spec.playerId).length), dest = backAt(spec.playerId, at);
         if (!dest) return;
-        fly(() => lastBack(spec.playerId), dest, tok.from, 0, { face: null, back: backLayer('v') }, 480);         // the computer's draw stays face down
+        fly(() => backAt(spec.playerId, at), dest, tok.from, 0, { face: null, back: backLayer('v') }, 480);         // the computer's draw stays face down
       }
     }
 
@@ -1150,9 +1155,9 @@
         const rot = tok.nums[0] === tok.nums[1] ? 90 : (shown ? (shown[0] === tok.nums[0] ? 0 : 180) : 0);       // the tile leaves the train looking as it did there
         fly(find, dest, tok.from, rot, { face: cleanFace(dest), back: null }, dur);
       } else {
-        const dest = lastBack(pid);
+        const at = pickSlot(backsOf(pid).length), dest = backAt(pid, at);
         if (!dest) return;
-        fly(() => lastBack(pid), dest, tok.from, tok.nums && tok.nums[0] === tok.nums[1] ? 0 : 90, { face: null, back: backLayer('v') }, dur);   // face down, as it went up
+        fly(() => backAt(pid, at), dest, tok.from, tok.nums && tok.nums[0] === tok.nums[1] ? 0 : 90, { face: null, back: backLayer('v') }, dur);   // face down, as it went up
       }
     }
 
@@ -1255,6 +1260,7 @@
   const RATING = { great: 0.5, good: 8, poor: 16, awful: 32 };
   /* The score counting up in the round-end and final dialogs: a click for each step, one player after another. */
   const COUNT_UP = { startMs: 450, tickMs: 35, maxTicks: 28, gapMs: 260, tileMs: 500, tileGapMs: 450 };       // wait for the dialog to appear; between clicks; at most this many clicks for one player (bigger scores step by more); between players
+  const VIBRATE_MS = 70;                               // the short buzz at the start of your turn, on a phone that can vibrate
   const OWN_SHORT = 2;                                  // a train of this many tiles or fewer is "very short" for the computer to grumble about
 
   /* Which kind of comment (if any) a rated move deserves. */
@@ -1356,6 +1362,12 @@
       'A marker on your train. How welcoming.',
       'Thanks for leaving the door open.',
       'A pass? I will happily take that train for a spin.',
+    ],
+    doubleResent: [
+      'Seriously? A double? Now I have to go and draw a tile for it.',
+      'Thanks a lot. A double, and I am the one who pays for it.',
+      'Oh, a double. How thoughtful. I have nothing to cover it with.',
+      'I resent that double. Truly. Drawing now.',
     ],
     ownDraw: [
       'Of course nothing fits. Why would it?',
@@ -1493,6 +1505,12 @@
       'You passed! I do that all the time and it never helps.',
       'Passing, huh? Brave. Or lost.',
     ],
+    doubleResent: [
+      'Oh please, a double? And I am stuck drawing for it. Unbelievable.',
+      'That double was played on purpose, was it not? I can feel it.',
+      'Nothing to cover that double with. I hope somebody is proud of themselves.',
+      'A double. Lovely. Off to the boneyard I go, resenting every step.',
+    ],
     ownDraw: [
       'Nothing fits? Oh no. Off to the boneyard I go!',
       'Aw, not again. Digging for tiles, here we go.',
@@ -1629,6 +1647,12 @@
       'You passed. I will use that.',
       'No play. Your train is mine to use now.',
     ],
+    doubleResent: [
+      'A double? How convenient that I cannot cover it. I noted that.',
+      'I resent the double. Remember this when it is your turn to draw.',
+      'Playing a double and making me draw. Cold, but I respect it. A little.',
+      'Fine. I draw. But that double has been entered in the ledger.',
+    ],
     ownDraw: [
       'Nothing fits. Irritating. The boneyard will pay for it.',
       'A draw. I dislike giving a turn to chance.',
@@ -1697,6 +1721,7 @@
       slow: [['Эй, ты ещё здесь?', 'Hey, are you still there?'], ['Я успел состариться, пока ты думал.', 'I have grown old while you were thinking.'], ['Фишки сами не сыграют, знаешь ли.', 'The tiles will not play themselves, you know.'], ['Пойду заварю чай. Скажешь, когда решишь.', 'I will go and make tea. Tell me when you decide.']],
       draw: [['Ничего не подходит? Тяни из кучи.', 'Nothing fits? Draw from the pile.'], ['Опять тянешь? Это твой главный талант.', 'Drawing again? That is your greatest talent.']],
       pass: [['Пасуешь? Спасибо, что оставил дверь открытой.', 'Passing? Thanks for leaving the door open.'], ['Маркер на твоём поезде. Как мило.', 'A marker on your train. How sweet.']],
+      doubleResent: [['Двойная? Теперь мне тянуть из-за неё. Обидно.', 'A double? Now I have to draw because of it. How annoying.'], ['Мне нечем закрыть этот дубль. Я это запомню.', 'I have nothing to cover that double. I will remember that.']],
       ownDraw: [['Ничего не подходит. Придётся тянуть.', 'Nothing fits. I will have to draw.'], ['Опять не та фишка. Не везёт.', 'Not the right tile again. No luck.']],
       ownDrawAgain: [['Снова мимо! Куча надо мной издевается.', 'Wrong again! The pile is mocking me.'], ['Столько тянуть и всё не то. Невероятно.', 'Drawing so much and still not right. Incredible.']],
       ownBlocked: [['Ходов нет, тянуть нечего. Тупик.', 'No moves, nothing to draw. A dead end.'], ['Пас. Маркер на мой поезд. Обидно.', 'A pass. A marker on my train. Annoying.']],
@@ -1713,6 +1738,7 @@
       slow: [['もしもーし、まだいる？', 'Hello, are you still there?'], ['待ってる間に歳をとったよ。', 'I aged while waiting.'], ['ドミノは勝手に動かないよ。', 'The dominoes will not move by themselves.'], ['お茶を入れてくるね。決まったら教えて。', 'I will go and make tea. Tell me when you decide.']],
       draw: [['出せるのがないの？山から引いてきなよ。', 'Nothing to play? Go draw from the pile.'], ['また引くの？得意技だね。', 'Drawing again? Your specialty.']],
       pass: [['パス？扉を開けてくれてありがとう。', 'Pass? Thanks for leaving the door open.'], ['マーカーがついたよ。親切だね。', 'A marker on your train. How kind.']],
+      doubleResent: [['ダブルを出されて、引くはめになった。ひどいな。', 'A double was played and now I have to draw. That is harsh.'], ['そのダブル、根に持つからね。', 'I am going to hold a grudge about that double.']],
       ownDraw: [['合うのがない…山から引くしかない。', 'Nothing matches... I have no choice but to draw from the pile.'], ['また違う駒かあ。ついてないな。', 'Another wrong tile. Unlucky.']],
       ownDrawAgain: [['また外れ！山にからかわれてる気がする。', 'Wrong again! I feel like the pile is teasing me.'], ['引いても引いても合わない。信じられない。', 'No matter how much I draw, nothing fits. Unbelievable.']],
       ownBlocked: [['出せる駒も引く駒もない。行き詰まりだ。', 'No tile to play and nothing to draw. A dead end.'], ['パスか。列車にマーカーが付くのは悔しい。', 'A pass. It is frustrating to get a marker on my train.']],
@@ -1729,6 +1755,7 @@
       slow: [['喂，你还在吗？', 'Hey, are you still there?'], ['等你等得我都老了。', 'I have aged waiting for you.'], ['骨牌自己是不会动的哦。', 'Dominoes will not move by themselves, you know.'], ['我去泡杯茶，你想好了叫我。', 'I will go make tea, call me when you have decided.']],
       draw: [['没牌可出？去牌堆里摸吧。', 'Nothing to play? Go draw from the pile.'], ['又摸牌？这可是你的拿手好戏。', 'Drawing again? That is your specialty.']],
       pass: [['跳过？谢谢你替我开门。', 'A pass? Thanks for opening the door for me.'], ['你的牌路上放了标记，真贴心。', 'There is a marker on your train, how thoughtful.']],
+      doubleResent: [['有人出了双牌，我却得摸牌，真讨厌。', 'Somebody plays a double and I have to draw. How annoying.'], ['这张双牌我记下了。', 'I have noted that double.']],
       ownDraw: [['没有能出的牌，只能摸牌了。', 'No tile I can play, so I have to draw.'], ['又不是我要的牌，运气真差。', 'Not the tile I wanted again. Such bad luck.']],
       ownDrawAgain: [['又摸错了！牌堆在捉弄我。', 'Wrong again! The pile is toying with me.'], ['摸了这么多还是不对，太离谱了。', 'I have drawn so many and still no match. Ridiculous.']],
       ownBlocked: [['没牌可出，也没牌可摸，被堵死了。', 'Nothing to play and nothing to draw. I am completely blocked.'], ['只能过牌，车上还要放标记，真烦。', 'I can only pass, and a marker goes on my train. How annoying.']],
@@ -1745,6 +1772,7 @@
       slow: [['여보세요, 아직 있어?', 'Hello, are you still there?'], ['기다리다 늙겠어.', 'I will grow old waiting.'], ['도미노는 저절로 안 움직여.', 'Dominoes do not move by themselves.'], ['차 한잔 하고 올게. 정하면 불러.', 'I will go have some tea. Call me when you decide.']],
       draw: [['낼 게 없어? 더미에서 뽑아.', 'Nothing to play? Draw from the pile.'], ['또 뽑아? 네 특기네.', 'Drawing again? Your specialty.']],
       pass: [['패스? 문을 열어줘서 고마워.', 'Pass? Thanks for opening the door.'], ['네 기차에 마커가 놓였네. 친절하기도 하지.', 'A marker on your train. How kind.']],
+      doubleResent: [['더블을 내서 내가 뽑아야 하다니, 얄밉네.', 'Somebody plays a double and I have to draw. How spiteful.'], ['그 더블, 잊지 않을 거야.', 'I will not forget that double.']],
       ownDraw: [['낼 수 있는 패가 없네. 뽑아야겠다.', 'No tile I can play. I will have to draw.'], ['또 맞지 않는 패야. 운이 없어.', 'Another tile that does not fit. Bad luck.']],
       ownDrawAgain: [['또 틀렸어! 패 더미가 나를 놀리는 것 같아.', 'Wrong again! The pile seems to be teasing me.'], ['이렇게 뽑았는데도 안 맞다니, 말도 안 돼.', 'Drawing this much and still no match. Unbelievable.']],
       ownBlocked: [['낼 패도 뽑을 패도 없어. 꽉 막혔다.', 'No tile to play and none to draw. Totally blocked.'], ['패스라니. 내 기차에 표시가 붙는 게 분하다.', 'A pass. It is galling to get a marker on my train.']],
@@ -1761,6 +1789,7 @@
       slow: [['अरे, कोई है?', 'Hey, is anyone there?'], ['इंतज़ार करते-करते उम्र निकल गई।', 'A whole lifetime has passed waiting.'], ['डोमिनो अपने आप नहीं चलते, पता है न?', 'Dominoes do not move by themselves, you know?'], ['चाय बन रही है। फ़ैसला हो जाए तो बताना।', 'Tea is brewing. Tell me when you have decided.']],
       draw: [['कुछ नहीं चल रहा? ढेर से उठा लो।', 'Nothing playable? Pick from the pile.'], ['फिर से उठा रहे हो? यही तुम्हारी खासियत है।', 'Drawing again? That is your specialty.']],
       pass: [['पास? दरवाज़ा खुला छोड़ने के लिए शुक्रिया।', 'Pass? Thanks for leaving the door open.'], ['तुम्हारी ट्रेन पर मार्कर लग गया। कितनी मेहरबानी!', 'A marker on your train. How kind!']],
+      doubleResent: [['डबल चल दिया, और अब मुझे उठाना पड़ेगा। बहुत बुरा।', 'A double was played and now I must draw. Very unkind.'], ['इस डबल का बदला याद रखूँगा।', 'I will remember this double and get even.']],
       ownDraw: [['कोई टाइल नहीं बैठती। अब उठानी पड़ेगी।', 'No tile fits. Now I have to draw one.'], ['फिर से गलत टाइल। किस्मत ही ख़राब है।', 'The wrong tile again. My luck is just bad.']],
       ownDrawAgain: [['फिर गलत निकली! ढेर मुझे चिढ़ा रहा है।', 'Wrong again! The pile is teasing me.'], ['इतना उठाया, फिर भी कुछ नहीं बैठा। हद है।', 'I drew so much and still nothing fits. This is too much.']],
       ownBlocked: [['न चलने को टाइल है, न उठाने को। रास्ता बंद है।', 'No tile to play, none to draw. The way is shut.'], ['पास करना पड़ा। मेरी ट्रेन पर निशान लग गया।', 'I had to pass. A marker went on my train.']],
@@ -1777,6 +1806,7 @@
       slow: [['مرحبًا؟ هل ما زلت هنا؟', 'Hello? Are you still here?'], ['كبرتُ عامًا وأنا أنتظر.', 'I have aged a year while waiting.'], ['الأحجار لن تلعب نفسها.', 'The tiles will not play themselves.'], ['سأحضّر الشاي الآن، وسيكون جاهزًا قبل قرارك.', 'I will make tea now, and it will be ready before your decision.']],
       draw: [['لا شيء يصلح؟ حان وقت السحب من الكومة.', 'Nothing fits? Time to draw from the pile.'], ['سحب مرة أخرى؟ هذه موهبتك الكبرى.', 'Drawing again? That is your great talent.']],
       pass: [['تمرير؟ شكرًا على ترك الباب مفتوحًا.', 'Pass? Thanks for leaving the door open.'], ['مصباح على قطارك. يا للكرم!', 'A lamp on your train. How generous!']],
+      doubleResent: [['لُعب دبل وعليّ أنا أن أسحب. مزعج جدًا.', 'A double was played and I am the one who has to draw. Very annoying.'], ['سأتذكر هذا الدبل جيدًا.', 'I will remember this double well.']],
       ownDraw: [['لا توجد قطعة مناسبة. سأسحب من الكومة.', 'No suitable tile. I will draw from the pile.'], ['مرة أخرى قطعة غير مناسبة. حظي سيئ.', 'Another unsuitable tile. My luck is bad.']],
       ownDrawAgain: [['مرة أخرى خطأ! الكومة تسخر مني.', 'Wrong again! The pile is mocking me.'], ['سحبت كثيرًا ولا شيء يناسب. أمر لا يصدق.', 'I drew a lot and nothing fits. Unbelievable.']],
       ownBlocked: [['لا قطعة للعب ولا شيء للسحب. الطريق مسدود.', 'No tile to play and nothing to draw. The road is blocked.'], ['عليّ أن أتخطى الدور، وعلامة على قطاري. مزعج.', 'I must pass, and a marker on my train. Annoying.']],
@@ -1997,6 +2027,7 @@
           slow3: ['I have started making up a song about your turn. It is a very long song.', 'If you do not move soon, I am going to start poking things.'],
           draw: ['Off to the boneyard? Bring me back something good!', 'Drawing again? I do that all the time. It is fun!'],
           pass: ['A pass! Can I play on your train now? I can, can I not?', 'Ooh, your train is open. I love an open door.'],
+          doubleResent: ['A double?! Oh, that is not fair. I have to go and draw for it.', 'That double was played on purpose. I am quite sure of it.'],
           ownDraw: ['Nothing fits? Oh dear. Off I go to the boneyard.', 'I was sure I had a tile for that. I did not. Drawing!', 'Drawing! It is like a surprise, except usually a bad one.'],
           ownDrawAgain: ['Another wrong tile! I am beginning to think they dislike me.', 'Still nothing! I might have a snack while I draw.'],
           ownBlocked: ['I cannot play and there is nothing left to draw. What do I do now?', 'Stuck! Is stuck the same as lost? I hope not.', 'A pass, and a marker on my train. That sounds like a punishment.'],
@@ -2018,6 +2049,7 @@
           slow3: ['I have drawn a map of your turn. It just goes round in circles.', 'At this rate the trees will start walking before you do.'],
           draw: ['Boneyard again? You are a regular.', 'Shopping for tiles? Get something nice.'],
           pass: ['A pass! Your train is open, and I am coming aboard.', 'Leaving the gate open? Very hospitable.'],
+          doubleResent: ['A double, and I have nothing for it. Pippin would have been cross, and so am I.', 'Drawing, because of that double. I shall remember that, I think.'],
           ownDraw: ['Nothing fits. Pippin would say that is a surprise. It is not.', 'To the boneyard, then. Somebody has to go.', 'Drawing a tile. This is where I look unbothered.'],
           ownDrawAgain: ['Wrong again. Somebody has hidden the good tiles. Pippin, probably.', 'Another dud. The boneyard has a poor sense of humor.'],
           ownBlocked: ['Blocked! No tile, no draw, no hope. Still, I look good doing it.', 'I must pass. Put the marker on my train, if you must.', 'Stuck in a corner of my own making. Very hobbit of me.'],
@@ -2039,6 +2071,7 @@
           slow3: ['We has waited a hundred dark years, it feels like.', 'Wakey, wakey! Gollum! Gollum!'],
           draw: ['Draws from the bones. Bones, yes. We likes bones.', 'Nothing fits? Poor thing. Ha!'],
           pass: ['It passes! Its train is open! Ours now, precious.', 'Open train, open train. We creeps in, yes.'],
+          doubleResent: ['A double, precious! And we has nothing to cover it. Nasty, nasty double.', 'We hates that double. We hates it, yes.'],
           ownDraw: ['Nothing fits, precious. Nothing fits! We must draw from the nasty pile.', 'Where is the tile we want? Gollum must draw, yes, draw.', 'Wrong tiles, always wrong. We hates it.'],
           ownDrawAgain: ['Again, again! Nasty tiles, tricksy tiles. We hates them!', 'Still the wrong one. The boneyard is cheating us, precious.'],
           ownBlocked: ['No move! We is stuck, precious. Stuck in the dark!', 'We must pass. A marker on our train. Nasty, nasty marker.', 'Nothing to play, nothing to take. Gollum, gollum.'],
@@ -2060,6 +2093,7 @@
           slow3: ['Hoom. I am an Ent, and even I am bored. That is quite something.', 'I began a sentence when your turn started, and I have only now finished it.'],
           draw: ['Drawing? Hoom. Gathering more leaves.', 'A new tile. Let it put down roots.'],
           pass: ['A pass. Hoom. Your path is open to travelers.', 'Hm, you rest. Resting is good. And your train is open.'],
+          doubleResent: ['Hrum. A double. And a tile I must go and fetch for it. I do not thank whoever played it.', 'That double was played in haste. I shall draw in my own time. Hoom.'],
           ownDraw: ['Hrum. Nothing fits. I must draw, and drawing is not a hasty thing.', 'Hoom. The right tile is not here. I shall go and find it. Slowly.', 'No fit. Hrum. A long time ago this would not have troubled me.'],
           ownDrawAgain: ['Hoom. Another that does not fit. The pile is not being friendly.', 'Hrum. The wrong tile again. I have known trees with better luck.'],
           ownBlocked: ['Hrum. I cannot play and cannot draw. That is a very still place to be.', 'I must pass. Hoom. A marker on my train, like moss on a root.', 'Blocked. Even a tree can feel it. Hrum.'],
@@ -2082,6 +2116,7 @@
           slow3: ['I think I have aged a whole year. Again.', 'Please. Any tile. Just to have it over with.'],
           draw: ['To the boneyard again. Keep going.', 'Nothing fits? It happens to us all.'],
           pass: ['A pass. Your train stands open now.', 'You have left the door open. I will try not to take advantage. Much.'],
+          doubleResent: ['A double... and nothing to cover it. I resent that, a little.', 'Now I must draw because of that double. It is a heavy thing.'],
           ownDraw: ['Nothing fits. I will have to draw. I am so tired of drawing.', 'Another trip to the boneyard. I hope it is kind this time.', 'It is not the tile I need. It never is, when I need it.'],
           ownDrawAgain: ['Wrong again. It is a heavy thing, drawing the wrong tile twice.', 'I keep drawing the wrong ones. Perhaps this is my burden.'],
           ownBlocked: ['I cannot move, and there is nothing left to draw. It is a lonely feeling.', 'A pass. The marker goes on my train. I feel it, somehow.', 'Blocked. I did not choose this, but here we are.'],
@@ -2103,6 +2138,7 @@
           slow3: ['I have weeded half the Shire while you were thinking.', 'I do not mean to hurry you, but this is a very long turn.'],
           draw: ['Back to the boneyard? Pack a lunch.', 'Nothing fits? Plenty more where that came from.'],
           pass: ['A pass. That leaves your train open, it does.', 'Open train! I will just hop on, if it is all the same to you.'],
+          doubleResent: ['A double! And me with nothing to cover it. Well, I will not say what I think.', 'Drawing for that double. That is not what I call a kindness.'],
           ownDraw: ['Nothing fits, and the boneyard is the last place I want to be. Still, here I go.', 'The wrong tile again, and I am hungry, too. Drawing.', 'My old Gaffer used to say: if it does not fit, you draw. He never said it would be easy.'],
           ownDrawAgain: ['Another wrong one! I could have cooked a stew by now.', 'Still no luck. There must be a better tile in there somewhere. There must.'],
           ownBlocked: ['I cannot play and I cannot draw. I am proper stuck.', 'A pass, and a marker on my train. Well. It happens to the best of us.', 'Blocked in. Not even a bit of bread to cheer me up.'],
@@ -2124,6 +2160,7 @@
           slow3: ['My beard has grown an inch waiting on you!', 'That is it. I am keeping score of your thinking time, and I am winning.'],
           draw: ['Digging in the boneyard? A dwarf approves.', 'Nothing fits? Then dig deeper!'],
           pass: ['A pass! Your train is open. I will march right in.', 'Leaving your door open? Bold. Foolish, but bold.'],
+          doubleResent: ['A double! And I must draw for it! Bah! I will remember this.', 'A double is played, and I draw. A dwarf keeps count of such things.'],
           ownDraw: ['Nothing fits! Bah. I must draw, like a beardless boy.', 'Wrong tiles, always the wrong tiles. I will draw, and I will grumble.', 'Hrmph. No tile for that. Draw I must, and I do not like it.'],
           ownDrawAgain: ['Again the wrong tile! Axes and anvils, what a pile!', 'Still nothing. Never in all my years has a pile cheated me so.'],
           ownBlocked: ['Blocked! Nothing to play, nothing to draw. I could split something over this.', 'A pass! And a marker on my train. A dwarf does not enjoy being marked.', 'Stuck fast, like a stone in a tunnel. Bah.'],
@@ -2145,6 +2182,7 @@
           slow3: ['A whole age of the world may pass before you play.', 'I have composed a long song about this turn. It is a lament.'],
           draw: ['Searching the boneyard? Look carefully.', 'Nothing fits? The wind will change.'],
           pass: ['A pass. Your train lies open to us now.', 'You leave your path unguarded. Unwise.'],
+          doubleResent: ['A double, and I cannot cover it. I resent it, though I will say it gently.', 'I must draw because of that double. I will not forget.'],
           ownDraw: ['Nothing fits. How tiresome. I shall draw, and hope for a kinder tile.', 'The tile I wanted is not here. Strange, for a game so simple.', 'I will draw. Trees are patient. I am trying to be.'],
           ownDrawAgain: ['Another wrong tile. Even the wind finds its way better than I.', 'Still not the one. The pile does not hear me.'],
           ownBlocked: ['I cannot play, and I cannot draw. An unpleasant stillness.', 'A pass. The marker upon my train. It is not graceful.', 'Blocked. An elf does not enjoy a closed path.'],
@@ -2166,6 +2204,7 @@
           slow3: ['I am this close to sounding the horn. Truly.', 'Gondor has waited long for a king. You are testing even that.'],
           draw: ['Back to the boneyard? Gather your strength.', 'Nothing fits? Regroup.'],
           pass: ['A pass! Your defenses are open.', 'Your train is undefended. I will not hesitate.'],
+          doubleResent: ['A double, and I have nothing for it! That is no way to treat a man of Gondor.', 'I must draw because of that double. I do not take it lightly.'],
           ownDraw: ['Nothing fits? A warrior of Gondor should not need the boneyard.', 'I must draw. It is not a thing I do gladly.', 'The wrong tile. I do not enjoy being told no by wood and paint.'],
           ownDrawAgain: ['Wrong again! Gondor has endured worse, but not much worse.', 'Another useless tile. Fortune is no friend of mine today.'],
           ownBlocked: ['I cannot move! Nothing to play and nothing to draw. That is no way to fight.', 'A pass, and a marker on my train. I have borne worse. Barely.', 'Blocked. A man cannot win a game he cannot play.'],
@@ -2188,6 +2227,7 @@
           slow3: ['Must I light a fire under that chair?', 'I have outwaited dragons. You are coming close.'],
           draw: ['To the boneyard, then. Choose more wisely.', 'Nothing fits? Then fetch something that does.'],
           pass: ['A pass. Your road lies open to all.', 'You have left the gate unguarded. Careless.'],
+          doubleResent: ['A double. Hm. And I must draw for it. A wizard does not forget.', 'That double sends me to the boneyard. I resent it, quietly.'],
           ownDraw: ['Nothing fits? Hm. A wizard has resources, but not, it seems, the right tile.', 'I must draw. Bother. Bother and tobacco.', 'The tile I wanted is not here. It is never where one needs it, is it?'],
           ownDrawAgain: ['Wrong again! I begin to suspect some mischief in the boneyard.', 'Another bad tile. Even a wizard may grumble now and then.'],
           ownBlocked: ['No move, and nothing to draw. This is a poor place for a wizard to be.', 'I pass. The marker goes upon my train. Hm. Very well.', 'Blocked! A wizard is not stopped by walls. A pile of tiles, apparently, is another matter.'],
@@ -2209,6 +2249,7 @@
           slow3: ['I waited many years for my throne. This feels longer.', 'Choose, or the choice will be made for you.'],
           draw: ['Searching for a way forward? Take what comes.', 'Nothing fits. Draw, and press on.'],
           pass: ['A pass. Your road is open.', 'You leave your flank unguarded.'],
+          doubleResent: ['A double, and nothing to cover it. I resent that, though I will not show it.', 'I must draw because of that double. Remember it when the tables turn.'],
           ownDraw: ['Nothing fits. A ranger does not fear a long road, but this one is tedious.', 'I must draw. I have waited longer for less.', 'No tile for that. I will find the one I need.'],
           ownDrawAgain: ['Wrong again. I have tracked orcs for days with better luck.', 'Still the wrong tile. Patience, Aragorn.'],
           ownBlocked: ['No move, and no tile to draw. This path is closed to me.', 'I pass. A marker upon my train. We shall see how you use it.', 'Blocked. Every road ends somewhere. Not usually here.'],
@@ -2230,6 +2271,7 @@
           slow3: ['Ages of the world have turned while you chose.', 'I have passed many tests of patience. You are setting another.'],
           draw: ['The boneyard calls. Answer it.', 'Nothing fits. Seek, and you may find.'],
           pass: ['A pass. Your path lies open to us.', 'You leave your gate unwatched.'],
+          doubleResent: ['A double, and I must draw for it. I saw it coming, and I resent it still.', 'A double was played and I must draw. It was foreseen, and no less unkind.'],
           ownDraw: ['Nothing fits. I have seen many things, but rarely a tile so unwilling.', 'I shall draw. The right tile will come. Or it will not.', 'The tile I sought is not in my hand. A small sorrow.'],
           ownDrawAgain: ['Again the wrong tile. Even a light grows dim when ill-served.', 'Still the pile denies me. I will not forget it.'],
           ownBlocked: ['There is no path and nothing to draw. I did not foresee this.', 'I pass. A marker upon my train. Let it be.', 'Blocked. Even the Lady of the Wood cannot walk through a closed door.'],
@@ -2251,6 +2293,7 @@
           slow3: ['I have lived through three ages. This turn feels like a fourth.', 'Even my patience has an end. You have found it.'],
           draw: ['Drawing again. The boneyard knows you well.', 'Nothing fits. That is a lesson in itself.'],
           pass: ['A pass. Your road is open to all.', 'You leave your train undefended. Unwise.'],
+          doubleResent: ['A double, with nothing in my hand to meet it. I resent that, gently.', 'I must draw because of that double. A small injury, but I remember.'],
           ownDraw: ['Nothing fits. I have seen ages pass with less annoyance, but not many.', 'I must draw. A small thing, in the long view, and still irritating.', 'The tile I needed is absent. I will not complain. Much.'],
           ownDrawAgain: ['Wrong again. In three thousand years I have learned patience. It is thin today.', 'Another unfit tile. I begin to doubt the pile.'],
           ownBlocked: ['There is no move, and nothing left to draw. A closed door, then.', 'I must pass. Let the marker stand upon my train. It will not be forever.', 'Blocked. I confess I did not foresee it.'],
@@ -2272,6 +2315,7 @@
           slow3: ['Your dithering is almost an art form.', 'I have seen seeing stones work faster than your mind.'],
           draw: ['Groping in the boneyard again? Pathetic.', 'Nothing fits. Of course it does not.'],
           pass: ['A pass. Your train is open to me. How generous.', 'You leave your road unguarded. I shall use it.'],
+          doubleResent: ['A double?! And I must DRAW for it? Somebody will regret this.', 'That double sends me to the boneyard. Insolent. I shall remember it.'],
           ownDraw: ['Nothing fits. Outrageous. The tiles obey me no better than the Ents did.', 'I must draw? From a pile? Beneath me. Yet I will do it.', 'The wrong tile. Everything must be done by my own hand, it seems.'],
           ownDrawAgain: ['Wrong again! Someone has tampered with this pile. I shall find them.', 'Another worthless tile. I will remember this insult.'],
           ownBlocked: ['No move, no draw. A trap! And I did not make it.', 'I must pass. A marker on my train. You will pay for every inch of it.', 'Blocked! Do you know how long I planned this game?'],
@@ -2297,7 +2341,7 @@
 
   const CHAT = {
     chance: { great: 0.45, good: 0.3, poor: 0.8, awful: 1, missedOut: 1, draw: 0.2, pass: 0.35, openBest: 0.8, openShort: 1, openNone: 1,
-      ownDraw: 0.3, ownDrawAgain: 0.6, ownBlocked: 0.55, ownShort: 0.7, roundBlocked: 0.8, invalid: 0.7 },       // (the last five: the computer's own luck: it draws, it keeps drawing, it cannot move, its train is short, the round is blocked)
+      ownDraw: 0.3, ownDrawAgain: 0.6, doubleResent: 0.85, ownBlocked: 0.55, ownShort: 0.7, roundBlocked: 0.8, invalid: 0.7 },       // (the last five: the computer's own luck: it draws, it keeps drawing, it cannot move, its train is short, the round is blocked)
     cooldownMs: 7000,                                         // at least this long between ordinary comments
     bypass: { awful: true, missedOut: true, openShort: true, openNone: true, ownShort: true, roundBlocked: true },   // these always get through
     showMs: 6000,                                             // how long a speech bubble stays up
@@ -2404,6 +2448,7 @@
   }
 
   function viewBar(S) {
+    if (viewMode(S) !== 'roomy') return viewBarSmall(S);
     const g = S.game, on = S.online;
     const round = g
       ? `<div class="round"><span>Round ${S.roundIndex + 1} of ${on ? on.rounds : S.opts.rounds}</span><span>Engine double-${g.engine}</span>${on ? '<span>Online game</span>' : tableIds(S).length > 2 ? `<span>Computers: ${listOf(tableIds(S).slice(1).map(id => LEVEL_LABEL[levelFor(S, id)]))}</span>` : `<span>Computer: ${LEVEL_LABEL[S.opts.level]}</span>`}</div>`
@@ -2420,7 +2465,38 @@
         <button class="btn" data-action="toggleStyle" data-focus-id="tools-style">${S.opts.style === 'numbers' ? 'Show pips' : 'Show numbers'}</button>
         <button class="btn" data-action="openRules" data-focus-id="tools-rules">Rules</button>
         ${on ? '<button class="btn" data-action="askLeave" data-focus-id="tools-new">Leave game</button>' : '<button class="btn" data-action="newGame" data-focus-id="tools-new">New game</button>'}
+        <span class="menu-wrap"><button class="btn menu-btn" data-action="toggleMenu" aria-haspopup="menu" aria-expanded="${S.menuOpen ? 'true' : 'false'}" aria-label="Menu" data-focus-id="menu">&#8943;</button>${viewMenu(S, false)}</span>
       </nav>
+    </header>`;
+  }
+
+  /* The ⋯ menu. In the Compact and Tiny views it holds the header buttons too; in Roomy only the history and the layout. */
+  function viewMenu(S, full) {
+    if (!S.menuOpen) return '';
+    const g = S.game, on = S.online;
+    const item = (action, text) => `<button class="btn" role="menuitem" data-action="${action}">${text}</button>`;
+    return `<div class="menu" role="menu" aria-label="Menu">
+        ${full ? item('toggleSound', S.opts.sound ? 'Mute' : 'Unmute') + item('toggleStyle', S.opts.style === 'numbers' ? 'Show pips' : 'Show numbers') + item('openRules', 'Rules') : ''}
+        ${g ? item('openMoves', 'Game history') : ''}
+        ${full ? (on ? item('askLeave', 'Leave game') : item('newGame', 'New game')) : ''}
+        <div class="menu-views" role="group" aria-label="Layout"><span>Layout</span>${VIEW_IDS.map(v => `<button class="btn" role="menuitemradio" aria-checked="${S.opts.view === v ? 'true' : 'false'}" data-action="setView" data-key="${v}">${VIEW_LABEL[v]}</button>`).join('')}</div>
+      </div>`;
+  }
+
+  /* The header in the Compact and Tiny views: the title and the scores on one line, and a "..." menu for the buttons, the history and the view. */
+  function viewBarSmall(S) {
+    const g = S.game, on = S.online, mode = viewMode(S);
+    const names = tableIds(S);
+    const oppText = on ? 'online' : names.length === 2 ? 'vs 1 computer' : 'vs ' + (names.length - 1) + ' computers';
+    const round = g ? `<div class="round"><span>Round ${S.roundIndex + 1}/${on ? on.rounds : S.opts.rounds}</span><span>double-${g.engine}</span><span>${oppText}</span></div>` : '';
+    const menu = viewMenu(S, true);
+    return `<header class="bar small ${mode}">
+      <div class="brand"><h1>Mexican Train</h1></div>
+      <div class="totals" role="group" aria-label="Scores, lowest wins">
+        ${names.map(id => `<div class="tot"><b>${S.totals[id] || 0}</b><span>${nameOf(S, id)}</span></div>`).join('\n        ')}
+      </div>
+      <nav class="tools menu-wrap"><button class="btn menu-btn" data-action="toggleMenu" aria-haspopup="menu" aria-expanded="${S.menuOpen ? 'true' : 'false'}" aria-label="Menu" data-focus-id="menu">&#8943;</button>${menu}</nav>
+      ${round}
     </header>`;
   }
 
@@ -2440,25 +2516,24 @@
           ? `<span class="tag tag-${info.level}" title="${LEVEL_LABEL[info.level]} computer player">${LEVEL_LABEL[info.level]}</span>`
           : (() => { const pr = info && on.presenceBySeat && on.presenceBySeat[info.seat]; const up = pr ? pr.connected : on.oppConnected !== false; return `<span class="net-dot ${up ? 'up' : 'down'}" title="${up ? 'connected' : 'disconnected'}"></span>`; })())
         : `<span class="tag tag-${levelFor(S, id)}" title="${LEVEL_LABEL[levelFor(S, id)]} computer player">${LEVEL_LABEL[levelFor(S, id)]}</span>`;
-      const talkToggle = on && info && info.computer
-        ? `<button class="btn chat-toggle" data-action="toggleChat" aria-pressed="${S.opts.chat ? 'true' : 'false'}" data-focus-id="chat">Comments: ${S.opts.chat ? 'on' : 'off'}</button>` : '';
-      // online: "Say something" sits on the first opponent's row, and the computer player's row has its own Comments switch
-      const toggle = on
-        ? (i === 0 ? `<button class="btn chat-toggle" data-action="toggleSay" aria-expanded="${S.sayOpen ? 'true' : 'false'}" data-focus-id="say">Say something</button>` : '') + talkToggle
-        : i > 0 ? '' : `<button class="btn chat-toggle" data-action="toggleChat" aria-pressed="${S.opts.chat ? 'true' : 'false'}" data-focus-id="chat">Comments: ${S.opts.chat ? 'on' : 'off'}</button>`;
       return `<div class="cpu-hand${i > 0 ? ' second' : ''}" data-player="${id}">
         <span class="who">${nameOf(S, id)}</span>
         ${who}
         <span class="backs" aria-hidden="true">${'<i class="back"></i>'.repeat(n)}</span>
         <span class="count">${n} ${n === 1 ? 'tile' : 'tiles'}</span>
-        ${toggle}
       </div>`;
     }).join('\n      ');
+    // The two switches live in one place that never moves (above the opponents' rows), not in a row that changes with names, tags and counts:
+    // online, "Say something" (and Comments, when a computer is at the table); against the computer, Comments.
+    const anyComputer = on ? !!(S.opps && S.opps.some(o => o.computer)) : true;
+    const tools = (on ? `<button class="btn chat-toggle" data-action="toggleSay" aria-expanded="${S.sayOpen ? 'true' : 'false'}" data-focus-id="say">Say something</button>` : '')
+      + (anyComputer ? `<button class="btn chat-toggle" data-action="toggleChat" aria-pressed="${S.opts.chat ? 'true' : 'false'}" data-focus-id="chat">Comments: ${S.opts.chat ? 'on' : 'off'}</button>` : '');
     const panel = on && S.sayOpen && !S.dockMode
       ? `<div class="say-panel" role="group" aria-label="Say something"><form class="say-form" data-say-form><input id="say-text" type="text" maxlength="${CHAT_MAX}" placeholder="Type a message" aria-label="Your message" autocomplete="off"><button type="button" class="btn primary" data-action="sendText">Send</button></form>${ONLINE_PHRASES.map((ph, i) => `<button class="btn say" data-action="sendChat" data-key="${i}">${esc(ph)}</button>`).join('')}</div>` : '';
     const mine = on && S.mySay ? `<div class="you-said${S.mySay.failed ? ' not-sent' : ''}">${S.mySay.failed ? '' : 'You said: '}${esc(S.mySay.text)}</div>` : '';
     const speaker = c && c.from ? c.from : cpuName(S);
     return `<section class="opp${ids.length > 2 ? ' four' : ids.length > 1 ? ' three' : ''}" aria-label="Opponent and boneyard">
+      <div class="opp-tools">${tools}</div>
       ${rows}
       <button class="boneyard${ready ? ' ready' : ''}" data-action="draw" data-focus-id="draw"${ready ? ` style="animation-delay:-${S.flashPhase || 0}ms"` : clickable ? '' : ' disabled'}
         aria-label="${ready ? 'Draw a tile. ' : ''}${g.boneyard.length} tiles in the boneyard">
@@ -2712,7 +2787,10 @@
     S.handColsUsed = across;
     if (!S.dragKey) S.flips = faceLikeDots(slots, across, S.flips || {}, S.flipLocked || {});      // (not while a tile is being dragged about: they turn when it is let go)
     const flips = S.flips || {};
-    const tiles = slots.map(t => {
+    // (Compact and Tiny leave out the empty slots after the last tile: fewer rows. Their places are still there, and a tile can still be dropped past the end.)
+    let lastFull = slots.length - 1; while (lastFull >= 0 && !slots[lastFull]) lastFull--;
+    const shownSlots = viewMode(S) === 'roomy' ? slots : slots.slice(0, lastFull + 1);
+    const tiles = shownSlots.map(t => {
       if (!t) return '<div class="slot-empty hole" aria-hidden="true"></div>';        // a tile was played from here: the slot stays empty
       const k = key(t);
       const mode = moving ? (hints ? (playable[k] ? 'playable' : 'dim') : 'plain') : 'idle';   // with hints off nothing says which tiles can be played
@@ -2724,7 +2802,7 @@
         data-action="selectTile" data-key="${k}" data-focus-id="t${k}" aria-pressed="${sel}"
         aria-label="${label}"${mode === 'playable' || mode === 'plain' ? '' : ' aria-disabled="true"'}>${tileSVG(l, r, { orient: 'h', style })}</button>`;
     }).join('');
-    const tip = S.roundIndex === 0 && !S.handArranged ? '<span class="tip">Drag a tile onto a train to play it, or around your hand to rearrange. Double-click a tile to turn it around.</span>' : '';
+    const tip = S.roundIndex === 0 && !S.handArranged && viewMode(S) === 'roomy' ? '<span class="tip">Drag a tile onto a train to play it, or around your hand to rearrange. Double-click a tile to turn it around.</span>' : '';
     // only when hints are allowed (main screen): a switch to show or hide them during the game
     const hintBtn = allowHintsNow(S) ? `<button class="btn hints-toggle" data-action="toggleShowHints" aria-pressed="${hints ? 'true' : 'false'}" data-focus-id="hints">Show hints: ${hints ? 'on' : 'off'}</button>` : '';
     // Two or more rows: half the tiles (plus one spare spot) per row, at most 10 across. On a narrow
@@ -2795,6 +2873,9 @@
         <p class="field-note">Each computer player has its own skill, so you can mix them: an easy one and a hard one, say.</p></div>
       <div class="field" id="field-level3"${o.cpus === 3 ? '' : ' hidden'}><label for="opt-level3">Third computer's skill</label>
         <select id="opt-level3">${optionList(LEVELS, o.level3, v => LEVEL_TEXT[v])}</select></div>
+      <div class="field"><label for="opt-view">Layout</label>
+        <select id="opt-view">${optionList(VIEW_IDS, o.view || 'auto', v => VIEW_LABEL[v])}</select>
+        <p class="field-note">How much room the board takes. Auto is Compact on a phone, so the page fits without scrolling. Compact folds the buttons into a menu, the history and the instructions away. Tiny also makes the tiles smaller. Roomy is the full layout. You can change it later from the menu.</p></div>
       <div class="field"><label for="opt-theme">Theme</label>
         <select id="opt-theme">${optionList(THEME_IDS, o.theme || 'classic', v => THEME_LABEL[v])}</select>
         <p class="field-note">The Lord of the Rings: your opponents are characters from Middle-earth (Pippin and Gollum are Easy, Sam and Gimli Medium, Aragorn and Elrond Hard, Gandalf and Galadriel Expert), each talking in their own way, and an open train is marked with a golden ring instead of a toy train.</p></div>
@@ -2837,6 +2918,14 @@
     return `<div class="overlay"><div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
       <h2 id="dlg-title">Recent games</h2>${picker}${body}
       <div class="actions"><button class="btn" data-action="openHistory" data-key="refresh">Refresh</button><button class="btn primary" data-action="closeOverlay" data-primary="1">Back</button></div>
+    </div></div>`;
+  }
+
+  /* The game's history as a screen of its own (the Compact and Tiny views do not keep it under the board). */
+  function viewMoves(S) {
+    return `<div class="overlay"><div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+      <h2 id="dlg-title">Game history</h2>${viewLog(S)}
+      <div class="actions"><button class="btn primary" data-action="closeOverlay" data-primary="1">Back to the game</button></div>
     </div></div>`;
   }
 
@@ -2923,6 +3012,7 @@
   function viewOverlay(S) {
     switch (overlayId(S)) {
       case 'rules': return viewRules();
+      case 'moves': return viewMoves(S);
       case 'history': return viewHistory(S);
       case 'setup': return viewSetup(S);
       case 'online-host': return viewOnlineForm(S, true);
@@ -3056,9 +3146,9 @@
     const body = g
       ? viewOpp(S) +
         `<section class="tracks" aria-label="Trains">${tableIds(S).slice(1).map(id => viewTrack(S, id)).join('')}${viewTrack(S, 'mexican')}${viewTrack(S, 'human')}</section>` +
-        viewStatus(S) + viewTray(S) + viewLog(S)
+        viewStatus(S) + viewTray(S) + (viewMode(S) === 'roomy' ? viewLog(S) : '')
       : '<section class="empty"><p>Choose your game settings to deal the first round.</p></section>';
-    return `<div class="shell">${viewBar(S)}<main class="table${themeNow(S) === 'lotr' ? ' art-lotr' : ''}">${body}</main>${viewOverlay(S)}${S.debugNet && S.online ? viewNetDebug(S) : ''}</div>`;
+    return `<div class="shell v-${viewMode(S)}">${viewBar(S)}<main class="table${themeNow(S) === 'lotr' ? ' art-lotr' : ''}">${body}</main>${viewOverlay(S)}${S.debugNet && S.online ? viewNetDebug(S) : ''}</div>`;
   }
   /* ?debug=1: the last connection events, on the page, so a drop can be understood (and copied) without a console. */
   function viewNetDebug(S) {
@@ -3376,7 +3466,11 @@
 
   /* ================================= APP ================================== */
 
-  const DEFAULT_OPTS = { rounds: 4, hand: 15, style: 'pips', sound: true, level: 'normal', chat: true, allowHints: true, cpus: 1, level2: 'normal', level3: 'normal', theme: 'classic' };
+  /* How much room the board takes. Auto is Compact on a phone-sized screen and Roomy otherwise. */
+  const VIEW_IDS = ['auto', 'roomy', 'compact', 'tiny'];
+  const VIEW_LABEL = { auto: 'Auto', roomy: 'Roomy', compact: 'Compact', tiny: 'Tiny' };
+  const viewMode = S => (S.opts && S.opts.view === 'roomy' ? 'roomy' : S.opts && S.opts.view === 'compact' ? 'compact' : S.opts && S.opts.view === 'tiny' ? 'tiny' : (S.narrow ? 'compact' : 'roomy'));
+  const DEFAULT_OPTS = { rounds: 4, hand: 15, style: 'pips', sound: true, level: 'normal', chat: true, allowHints: true, cpus: 1, level2: 'normal', level3: 'normal', theme: 'classic', view: 'auto' };
   const FLASH_MS = 1100;   // length of the draw-button flash; must match the CSS animation
 
   // Names the computer player can pick from (none ends in "s", so "Name's train" reads well).
@@ -3449,7 +3543,8 @@
       const level3 = LEVELS.includes(o.level3) ? o.level3 : 'normal';          // the third computer's skill
       const level2 = LEVELS.includes(o.level2) ? o.level2 : 'normal';          // the second computer's skill
       const theme = THEME_IDS.includes(o.theme) ? o.theme : 'classic';             // who the computer players are
-      return { rounds, hand, style, sound: snd, level, chat, allowHints, cpus, level2, level3, theme };
+      const view = VIEW_IDS.includes(o.view) ? o.view : 'auto';                   // how much room the board takes: Auto (Compact on a phone), Roomy, Compact or Tiny
+      return { rounds, hand, style, sound: snd, level, chat, allowHints, cpus, level2, level3, theme, view };
     }
     function loadOpts() {
       try { return sanitize(Object.assign({}, DEFAULT_OPTS, JSON.parse(storage.get('mt-opts') || '{}'))); }
@@ -3468,6 +3563,8 @@
       online: null, onlineError: '', form: null, sayOpen: false, mySay: null, dockMode: !!(env && env.dock), build: String((env && env.build) || ''), copied: false, qrIndex: 0,
     };
     S.opts = loadOpts();
+    S.narrow = env && env.narrow !== undefined ? !!env.narrow : !!(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 640px)').matches);      // a phone-sized screen
+    S.menuOpen = false;
 
     /* ---------- rendering ---------- */
     // While a settings/rules dialog is open, the match keeps running behind it. Re-drawing
@@ -3541,7 +3638,14 @@
       if (el && el.classList && el.classList.add) el.classList.add('in');
     }
     function clack() { if (S.opts.sound) sound.clack(); }
-    function turnCue() { if (S.opts.sound && sound.turn) sound.turn(); }
+    /* The start of your turn: the soft low sound and, on a phone that can, a short buzz (the same Mute switch silences both; browsers that cannot vibrate, such as iPhone's, just skip it). */
+    function buzz() {
+      try {
+        const vib = env.vibrate || (global.navigator && typeof global.navigator.vibrate === 'function' ? ms => global.navigator.vibrate(ms) : null);
+        if (vib) vib(VIBRATE_MS);
+      } catch (e) { /* ignore */ }
+    }
+    function turnCue() { if (!S.opts.sound) return; if (sound.turn) sound.turn(); buzz(); }
     function countClick(progress) { if (S.opts.sound && sound.tick) sound.tick(progress); }
 
     /* ---------- the score counting up ----------
@@ -3675,6 +3779,7 @@
       if (event === 'play') { S.unlucky[id] = 0; return; }              // a tile went down: the bad run is over
       if (!S.opts.chat || !S.game) return;
       if (event === 'draw') { const n = S.unlucky[id] = (S.unlucky[id] || 0) + 1; maybeComment(n === 1 ? 'ownDraw' : 'ownDrawAgain', {}, id); }
+      else if (event === 'doubleResent') { S.unlucky[id] = (S.unlucky[id] || 0) + 1; maybeComment('doubleResent', {}, id); }      // it had to draw to cover somebody else's double
       else if (event === 'blocked') maybeComment('ownBlocked', {}, id);
       else if (event === 'short') maybeComment('ownShort', vars, id);
     }
@@ -3732,6 +3837,7 @@
     /* ---------- hooks the rules engine calls ---------- */
     const ui = {
       // --- normal turns ---
+      onTurnStart(game, player) { if (player.id === 'human') turnCue(); },     // the soft low sound when it becomes your turn (online: where the server says so)
       async onNeedDraw(game, player) {
         S.coverDraw = player.hand.length === 0;                          // (a draw to cover a last double: nothing to grumble about)
         if (player.id === 'human') await awaitUser('draw');
@@ -3746,7 +3852,7 @@
         if (player.id === 'human') { say(`You drew ${fmt(tile)}.`); S.drawnKey = key(tile); }
         else say(`${nameOf(S, player.id)} draws a tile.`);
         if (player.id === 'human') maybeComment('draw');
-        else if (!S.coverDraw) ownLuck(player.id, 'draw');
+        else if (!S.coverDraw) { if (game.openDouble && S.doubleBy && S.doubleBy !== player.id) ownLuck(player.id, 'doubleResent'); else ownLuck(player.id, 'draw'); }
         const spec = { playerId: player.id, key: key(tile) };
         const tok = fx ? fx.captureDraw(spec) : null;
         render();
@@ -3774,6 +3880,7 @@
       async onPlay(game, player, move, info) {
         const you = player.id === 'human';
         if (!you) ownLuck(player.id, 'play');
+        if (info.doubleOpened) S.doubleBy = player.id; else if (info.doubleSatisfied) S.doubleBy = null;     // who the open double is whose
         S.lastPlay = { trainId: move.trainId, index: game.trains[move.trainId].tiles.length - 1 };
         S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.hoverKey = null;
         clack();
@@ -4624,7 +4731,7 @@
     function startGame(a) {
       if (S.online) leaveOnline(true);
       abortMatch();
-      S.opts = sanitize(Object.assign({}, a, { sound: S.opts.sound, chat: S.opts.chat, allowHints: a.allowHints === undefined ? S.opts.allowHints : a.allowHints, cpus: a.cpus === undefined ? S.opts.cpus : a.cpus, level2: a.level2 === undefined ? S.opts.level2 : a.level2, level3: a.level3 === undefined ? S.opts.level3 : a.level3, theme: a.theme === undefined ? S.opts.theme : a.theme, style: a.style === undefined ? S.opts.style : a.style }));   // the setup form has no sound or tile-face field (that is the "Show numbers" button in the game): keep the current setting
+      S.opts = sanitize(Object.assign({}, a, { sound: S.opts.sound, chat: S.opts.chat, allowHints: a.allowHints === undefined ? S.opts.allowHints : a.allowHints, cpus: a.cpus === undefined ? S.opts.cpus : a.cpus, level2: a.level2 === undefined ? S.opts.level2 : a.level2, level3: a.level3 === undefined ? S.opts.level3 : a.level3, theme: a.theme === undefined ? S.opts.theme : a.theme, view: a.view === undefined ? S.opts.view : a.view, style: a.style === undefined ? S.opts.style : a.style }));   // the setup form has no sound or tile-face field (that is the "Show numbers" button in the game): keep the current setting
       S.showHints = true; S.notice = '';
       saveOpts();
       // a fresh random name for the computer: not one already at the table, and not last game's
@@ -4874,6 +4981,20 @@
       render(true);
     }
 
+    /* The menu opens to the left of its button; when the button is near the left edge (the header wrapped), slide the menu back inside the window. */
+    function keepMenuOnScreen() {
+      try {
+        const m = root.querySelector && root.querySelector('.menu');
+        if (!m || !m.getBoundingClientRect) return;
+        const vw = (global.innerWidth || (document.documentElement && document.documentElement.clientWidth)) || 0;
+        if (!vw) return;
+        m.style.transform = '';
+        const r = m.getBoundingClientRect();
+        let dx = 0;
+        if (r.left < 8) dx = 8 - r.left; else if (r.right > vw - 8) dx = vw - 8 - r.right;
+        if (dx) m.style.transform = `translateX(${Math.round(dx)}px)`;
+      } catch (e) { /* ignore */ }
+    }
     function toggleSound() {
       S.opts.sound = !S.opts.sound;
       saveOpts();
@@ -4897,9 +5018,15 @@
         case 'undoTile': return undoTile();
         case 'endBuild': return endBuild();
         case 'dialogOk': return dialogOk();
-        case 'openRules': S.overlay = 'rules'; return render(true);
-        case 'newGame': S.overlay = 'setup'; return render(true);
+        case 'openRules': S.menuOpen = false; S.overlay = 'rules'; return render(true);
+        case 'openMoves': S.menuOpen = false; S.overlay = 'moves'; return render(true);
+        case 'toggleMenu': S.menuOpen = !S.menuOpen; render(true); return keepMenuOnScreen();
+        case 'closeMenu': if (S.menuOpen) { S.menuOpen = false; render(true); } return;
+        case 'setView': { const v = VIEW_IDS.includes(a.key) ? a.key : 'auto'; S.opts.view = v; S.menuOpen = false; saveOpts(); render(true); if (S.game && measureHandColumns()) render(true); return snapTrains(); }
+        case 'viewport': { const n = !!a.narrow; if (n !== S.narrow) { const before = viewMode(S); S.narrow = n; if (viewMode(S) !== before) { render(true); if (S.game && measureHandColumns()) render(true); snapTrains(); } } return; }
+        case 'newGame': S.menuOpen = false; S.overlay = 'setup'; return render(true);
         case 'closeOverlay':
+          if (S.menuOpen) { S.menuOpen = false; render(true); return; }
           if (S.overlay === 'online-host' || S.overlay === 'online-join') { if (S.online && S.online.phase === 'connecting') leaveOnline(true); S.overlay = 'setup'; render(true); return; }
           if (S.overlay === 'online-leave') { S.overlay = null; render(true); return; }
           if (S.overlay === 'history') { S.overlay = 'setup'; render(true); return; }
@@ -4917,7 +5044,7 @@
         case 'sendChat': return sendChat(a.key);
         case 'sendText': return sendText(a.text);
         case 'toggleSay': S.sayOpen = !S.sayOpen; return render(true);
-        case 'askLeave': S.overlay = 'online-leave'; return render(true);
+        case 'askLeave': S.menuOpen = false; S.overlay = 'online-leave'; return render(true);
         case 'confirmLeave': leaveOnline(false); S.overlay = 'setup'; return render(true);
         case 'playAgainOnline': if (S.online && !S.online.againSent && S.modal && S.modal.type === 'final') { S.online.againSent = true; netSend({ t: 'rematch' }); render(true); } return;
         case 'onlineBack': leaveOnline(true, !!(S.online && S.online.ended && S.online.ended.reason === 'replaced')); S.overlay = 'setup'; return render(true);
@@ -4944,7 +5071,7 @@
         case 'setNetHintsForm': if (S.form) S.form.allowHints = !!a.value; return;                  // (the Host screen's switch: remembered, no redraw)
         case 'toggleShowHints': S.showHints = S.showHints === false; S.hoverKey = null; S.notice = ''; return render(true);
         case 'setAllowHints': S.opts.allowHints = !!a.value; saveOpts(); S.hoverKey = null; S.notice = ''; return render();
-        case 'toggleStyle': S.opts.style = S.opts.style === 'numbers' ? 'pips' : 'numbers'; saveOpts(); return render(true);
+        case 'toggleStyle': S.menuOpen = false; S.opts.style = S.opts.style === 'numbers' ? 'pips' : 'numbers'; saveOpts(); return render(true);
         case 'boot': return render(true);
         default: return undefined;
       }
@@ -5025,7 +5152,7 @@
         }
         if (d.action === 'startGame') {
           const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
-          app.dispatch({ type: 'startGame', rounds: val('#opt-rounds'), hand: val('#opt-hand'), level: val('#opt-level'), cpus: val('#opt-cpus'), level2: val('#opt-level2'), level3: val('#opt-level3'), theme: val('#opt-theme') });
+          app.dispatch({ type: 'startGame', rounds: val('#opt-rounds'), hand: val('#opt-hand'), level: val('#opt-level'), cpus: val('#opt-cpus'), level2: val('#opt-level2'), level3: val('#opt-level3'), theme: val('#opt-theme'), view: val('#opt-view') });
         } else if (d.action === 'hostGame' || d.action === 'joinGame') {
           const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
           app.dispatch({ type: d.action, server: val('#net-server'), name: val('#net-name'), code: val('#net-code'), rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer'), computer2: val('#net-computer2'), theme: val('#net-theme'), allowHints: !(app.state.form && app.state.form.allowHints === false),
@@ -5086,6 +5213,15 @@
       const b = root.querySelector('[data-primary]');
       if (b && !b.disabled && b.click) { e.preventDefault(); b.click(); }
     });
+    if (global.matchMedia) {          // a phone-sized screen (or one turned that way) switches Auto between Roomy and Compact
+      const mq = global.matchMedia('(max-width: 640px)');
+      const onChange = () => app.dispatch({ type: 'viewport', narrow: mq.matches });
+      if (mq.addEventListener) mq.addEventListener('change', onChange); else if (mq.addListener) mq.addListener(onChange);
+    }
+    document.addEventListener('pointerdown', e => {       // a tap outside the menu closes it
+      if (app.state.menuOpen && !(e.target && e.target.closest && e.target.closest('.menu-wrap'))) app.dispatch({ type: 'closeMenu' });
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && app.state.menuOpen) { e.stopPropagation(); app.dispatch({ type: 'closeMenu' }); } }, true);
     if (global.addEventListener) global.addEventListener('resize', () => { app.dispatch({ type: 'measureHand' }); app.dispatch({ type: 'snapTrains' }); });
 
     // Browsers only allow sound after a click, tap or key press: unlock it on the first one.

@@ -110,11 +110,12 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px
 /* The boneyard sits in its own cell at the top right and never moves: not when the computer's
    tiles wrap, not when a comment appears, not when it starts to flash. */
 .opp {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "cpu yard" "bubble yard";
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "tools yard" "cpu yard" "bubble yard";
   column-gap: 0.8rem; align-items: start; padding: 0.2rem 0 0.7rem;
 }
 .cpu-hand { grid-area: cpu; }
 .bubble-slot { grid-area: bubble; }
+.opp-tools { grid-area: tools; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; min-height: 1.7rem; margin-bottom: 0.35rem; }
 .boneyard { grid-area: yard; justify-self: end; align-self: start; }
 .cpu-hand { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; min-width: 0; }
 .who { font-weight: 700; }
@@ -285,8 +286,8 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .tray-head .count { margin-left: auto; }
 
 /* online play */
-.opp.three { grid-template-areas: "cpu yard" "cpu2 yard" "bubble yard"; }
-.opp.four { grid-template-areas: "cpu yard" "cpu2 yard" "cpu3 yard" "bubble yard"; }
+.opp.three { grid-template-areas: "tools yard" "cpu yard" "cpu2 yard" "bubble yard"; }
+.opp.four { grid-template-areas: "tools yard" "cpu yard" "cpu2 yard" "cpu3 yard" "bubble yard"; }
 .cpu-hand.second { grid-area: cpu2; margin-top: 0.35rem; }
 .cpu-hand.second[data-player="cpu3"] { grid-area: cpu3; }
 .net-dot { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #8a8f8c; vertical-align: middle; flex: none; }
@@ -329,7 +330,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .bubble small.trans { display: block; margin-top: 0.15rem; font-size: 0.78rem; opacity: 0.72; font-style: italic; }
 
 /* the computer's comments */
-.bubble-slot { flex: 1 1 100%; min-height: 2.9rem; display: flex; align-items: center; }
+.bubble-slot { flex: 1 1 100%; height: 2.9rem; display: flex; align-items: center; }      /* a fixed height: a comment, even a long one, never pushes the board down */
 .bubble {
   max-width: 46rem; padding: 0.45rem 0.85rem; border-radius: 15px 15px 15px 4px;
   background: var(--bone); color: #1b2523; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35); font-size: 0.95rem;
@@ -488,3 +489,61 @@ select option { color: #1b2523; background: #fff; }
 .hist-game li small { color: var(--dlg-muted); }
 .hist-game li.won .hn { font-weight: 700; }
 .hist-game .crown { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gold, #d6a644); margin-left: 4px; }
+
+
+/* ===== Layout: Compact and Tiny (Auto picks Compact on a phone) ===== */
+.menu-wrap { position: relative; }
+.menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; display: grid; gap: 4px; min-width: 11rem; max-width: calc(100vw - 16px); padding: 8px; background: var(--dlg-bg); color: var(--dlg-ink); border: 1px solid var(--dlg-line); border-radius: 10px; box-shadow: 0 6px 22px rgba(0,0,0,.35); }
+.menu .btn { text-align: left; width: 100%; color: var(--dlg-ink); border-color: var(--dlg-line); }
+.menu .btn:hover { background: rgba(128, 128, 128, .18); }
+.menu-views { color: var(--dlg-ink); }
+.menu-views { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; border-top: 1px solid var(--dlg-line); padding-top: 6px; margin-top: 2px; }
+.menu-views > span { grid-column: 1 / -1; font-size: .75rem; opacity: .75; }
+.menu-views .btn[aria-checked="true"] { outline: 2px solid currentColor; font-weight: 700; }
+.bar.small { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 12px; }
+.bar.small .brand { flex: 1 1 auto; min-width: 0; } .bar.small .brand h1 { font-size: 1.15rem; margin: 0; }
+.bar.small .totals { display: flex; gap: 10px; margin: 0; } .bar.small .totals .tot b { font-size: 1.2rem; } .bar.small .totals .tot span { font-size: .65rem; }
+.bar.small .menu-btn { padding: 2px 12px; font-size: 1.1rem; }
+.bar.small .round { display: flex; gap: 8px; order: 5; flex: 1 1 100%; font-size: .72rem; opacity: .8; }
+.bar.small.tiny .round { display: none; }
+.v-compact .sub, .v-compact .hint, .v-tiny .sub, .v-tiny .hint { display: none; }
+:is(.v-compact, .v-tiny) .opp { padding: 4px 12px; gap: 0 8px; }
+:is(.v-compact, .v-tiny) .opp-tools { margin: 0 0 2px; min-height: 0; }
+:is(.v-compact, .v-tiny) .bubble-slot { height: 0; min-height: 0; position: relative; z-index: 15; overflow: visible; }
+:is(.v-compact, .v-tiny) .bubble { position: absolute; left: 0; top: 2px; max-width: min(100%, 24rem); padding: .3rem .65rem; font-size: .82rem; }
+:is(.v-compact, .v-tiny) .bubble small.trans { font-size: .7rem; }
+:is(.v-compact, .v-tiny) .cpu-hand { gap: 6px; flex-wrap: nowrap; align-items: center; margin: 0; }
+:is(.v-compact, .v-tiny) .cpu-hand .backs { flex-wrap: nowrap; max-width: none; gap: 2px; }
+:is(.v-compact, .v-tiny) .cpu-hand .who { font-size: .85rem; }
+:is(.v-compact, .v-tiny) .cpu-hand .tag { font-size: .6rem; padding: 0 5px; }
+:is(.v-compact, .v-tiny) .cpu-hand .count { font-size: .75rem; white-space: nowrap; }
+:is(.v-compact, .v-tiny) .cpu-hand .back { width: 11px; height: 20px; }      /* (only the computer's hand: the face-down tiles on the train are full size) */
+:is(.v-compact, .v-tiny) .boneyard { width: auto; min-height: 0; padding: 3px 8px; font-size: .75rem; }
+:is(.v-compact, .v-tiny) .boneyard .stack { display: none; }
+:is(.v-compact, .v-tiny) .track { grid-template-columns: 4.6rem minmax(0, 1fr); align-items: center; }
+:is(.v-compact, .v-tiny) .track-label { grid-auto-flow: row; padding: 2px 4px; gap: 0; }
+:is(.v-compact, .v-tiny) .track-name { font-size: .82rem; }
+:is(.v-compact, .v-tiny) .track-info { display: none; }
+:is(.v-compact, .v-tiny) .track-tiles { min-height: calc(var(--s) + 14px); }
+:is(.v-compact, .v-tiny) .status { min-height: 0; padding: 4px 12px; }
+:is(.v-compact, .v-tiny) .msg { font-size: .9rem; }
+:is(.v-compact, .v-tiny) .tray-head .tip { display: none; }
+:is(.v-compact, .v-tiny) .hand { padding-top: 6px; }
+:is(.v-compact, .v-tiny) .hand-grid { gap: 8px 4px; }
+:is(.v-compact, .v-tiny) .tray { padding: 4px 8px 8px; }
+.v-tiny { --s: 21px; --hs: 28px; }
+.v-tiny .opp-tools { display: none; }
+.v-tiny .cpu-hand .tag { display: none; }
+.v-tiny .track { grid-template-columns: 3.6rem minmax(0, 1fr); }
+.v-tiny .tray-head { font-size: .8rem; padding-bottom: 0; }
+.v-tiny .cpu-hand .back { width: 8px; height: 17px; }
+.v-tiny .cpu-hand .backs { gap: 1px; }
+.v-tiny .cpu-hand .count { display: none; }
+/* the computer's tiles squeeze together rather than run under the boneyard on a narrow screen */
+:is(.v-compact, .v-tiny) .cpu-hand .backs { flex: 0 1 auto; min-width: 0; }
+:is(.v-compact, .v-tiny) .cpu-hand .back { flex: 0 1 auto; min-width: 5px; }
+@media (max-width: 400px) {          /* a narrow phone: the tiles say how many there are, and the skill tag waits for the menu-less Roomy view */
+  :is(.v-compact, .v-tiny) .cpu-hand .tag, :is(.v-compact, .v-tiny) .cpu-hand .count { display: none; }
+  :is(.v-compact, .v-tiny) .cpu-hand .backs { gap: 1px; }
+}
+:is(.v-compact, .v-tiny) .cpu-hand .who, :is(.v-compact, .v-tiny) .cpu-hand .tag, :is(.v-compact, .v-tiny) .cpu-hand .count { flex: none; }

@@ -16,7 +16,7 @@ const SCRIPT = {
   ar: /^\p{Script=Arabic}$/u,
 };
 const NAME = { ru: 'Russian', ja: 'Japanese', zh: 'Chinese', ko: 'Korean', hi: 'Hindi', ar: 'Arabic' };
-const KINDS = ['great', 'good', 'poor', 'awful', 'missedOut', 'slow', 'draw', 'pass', 'ownDraw', 'ownDrawAgain', 'ownBlocked', 'ownShort', 'roundBlocked', 'invalid'];
+const KINDS = ['great', 'good', 'poor', 'awful', 'missedOut', 'slow', 'draw', 'pass', 'ownDraw', 'ownDrawAgain', 'ownBlocked', 'ownShort', 'roundBlocked', 'invalid', 'doubleResent'];
 const blocked = /\b(fuck\w*|shit\w*|bitch\w*|cunt|nigg\w*|fag\w*|retard\w*|whore|slut|bastard|dick|cock|piss\w*|damn\w*|hell|crap|ass|asshole|kill|die|suicide|stupid|idiot|moron|ugly|fat)\b/i;
 
 (async () => {

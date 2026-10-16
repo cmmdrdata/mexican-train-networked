@@ -167,7 +167,7 @@ const R = (left, top, width, height) => ({ left, top, width, height });
   {
     // the computer's tiles
     const { root, doc } = fakeEnv();
-    const fx = G.createFx(root, doc);
+    const fx = G.createFx(root, doc, () => 0.99);
     const b1 = new FakeEl('i'); b1.rect = R(400, 70, 15, 26); const b2 = new FakeEl('i'); b2.rect = R(418, 70, 15, 26);
     root.mapAll['.cpu-hand .back'] = [b1, b2];
     const dest = new FakeEl('svg'); dest.rect = R(150, 260, 88, 44);
@@ -191,7 +191,7 @@ const R = (left, top, width, height) => ({ left, top, width, height });
   console.log('3b. drawing from the boneyard');
   {
     const { root, doc } = fakeEnv();
-    const fx = G.createFx(root, doc);
+    const fx = G.createFx(root, doc, () => 0.99);
     const stack = new FakeEl('span'); stack.rect = R(900, 60, 30, 32);
     root.map['.boneyard .stack'] = stack;
     const handDest = new FakeEl('svg'); handDest.rect = R(500, 600, 44, 86); handDest._c = new Set(['tile', 'v']);
@@ -624,10 +624,34 @@ const R = (left, top, width, height) => ({ left, top, width, height });
     ok(trainEl.scrollLeft === 1800 && trainEl.classList.contains('more-left'), 'a new tile on a train scrolls it to show that tile');
   }
 
+  console.log('3d. a computer\'s tiles come from, and go to, random places in its row');
+  {
+    const mk = r => { const { root, doc } = fakeEnv(); const fx = G.createFx(root, doc, r); const backs = [0, 1, 2, 3, 4].map(i => { const e = new FakeEl('i'); e.rect = R(400 + i * 18, 70, 15, 26); return e; });
+      root.mapAll['.cpu-hand .back'] = backs; root.map['.scroller[data-train="cpu"] .tile[data-idx="0"]'] = Object.assign(new FakeEl('svg'), { rect: R(150, 260, 88, 44) }); root.map['.boneyard .stack'] = Object.assign(new FakeEl('span'), { rect: R(900, 60, 30, 32) });
+      return { root, doc, fx, backs }; };
+    const spec = { playerId: 'cpu', trainId: 'cpu', index: 0, placed: [4, 9], hidden: true };
+    const a = mk(() => 0), b = mk(() => 0.5), c = mk(() => 0.999999), d = mk(() => 1);
+    ok(a.fx.capture(spec).from.left === 400 && b.fx.capture(spec).from.left === 436 && c.fx.capture(spec).from.left === 472 && d.fx.capture(spec).from.left === 472, 'a played tile leaves from the first, the middle or the last of five (and a random number of 1 stays inside the row)');
+    for (const t of [a, b, c]) { const tok = t.fx.captureDraw({ playerId: 'cpu' }); t.fx.landDraw(tok, { playerId: 'cpu', key: '1-1' }); }
+    ok(a.backs[0].style.visibility === 'hidden' && a.backs[4].style.visibility !== 'hidden' && b.backs[2].style.visibility === 'hidden' && c.backs[4].style.visibility === 'hidden', 'a drawn tile arrives at the first, the middle or the last place, and that tile waits hidden');
+    ok(a.doc.body.children[0].style.left === '400px' && b.doc.body.children[0].style.left === '436px', 'the flying copy lands on that very place');
+    const e = mk(() => 0.25), tokU = { from: R(150, 260, 88, 44), nums: null }; e.fx.landUndo(tokU, 'cpu');
+    ok(e.backs[1].style.visibility === 'hidden' && e.doc.body.children[0].style.left === '418px', 'a tile taken back arrives at a random place too (the second of five)');
+    // over many tries every place is used, and none outside the row
+    const seen = new Set(); const f = mk(undefined); for (let i = 0; i < 400; i++) seen.add(f.fx.capture(spec).from.left);
+    ok(seen.size === 5 && [...seen].every(x => x >= 400 && x <= 472), 'with the real random numbers all five places get used, and none outside the row (' + seen.size + ')');
+    // a place that is still there after a redraw during the flight: the same one stays hidden
+    const g = mk(() => 0.5); const tg = g.fx.captureDraw({ playerId: 'cpu' }); g.fx.landDraw(tg, { playerId: 'cpu', key: '1-1' }); g.backs.forEach(x => { x.style.visibility = ''; }); g.fx.reapply();
+    ok(g.backs[2].style.visibility === 'hidden' && g.backs.filter(x => x.style.visibility === 'hidden').length === 1, 'after a redraw in the middle of the flight, that same place is hidden again');
+    // the draw and play counts: a one-tile row and an empty one
+    const h = mk(() => 0.7); h.root.mapAll['.cpu-hand .back'] = [h.backs[0]]; ok(h.fx.capture(spec).from.left === 400, 'a row of one tile: that one');
+    h.root.mapAll['.cpu-hand .back'] = []; ok(h.fx.capture(spec) === null, 'an empty row: nothing to fly');
+  }
+
   console.log('3c. a tile taken back from a train flies back to the hand it came from');
   {
     const { root, doc } = fakeEnv();
-    const fx = G.createFx(root, doc);
+    const fx = G.createFx(root, doc, () => 0.99);
     const label = (v, idx) => { const e = new FakeEl('svg'); e.rect = R(100 + idx * 90, 200, 88, 44); e.attrs = { 'aria-label': v, 'data-idx': String(idx) }; e.getAttribute = n => e.attrs[n]; return e; };
     const t0 = label('3 and 8', 0), t1 = label('8 and 5', 1);
     root.mapAll['.scroller[data-train="human"] .tile[data-idx]'] = [t1, t0];                 // (in any order: the last by index is the one that comes off)

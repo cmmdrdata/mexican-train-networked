@@ -787,7 +787,7 @@ Usage: node server.js [options]
                    (by default it is asked, only when you open the Host screen, to offer it as a way to join)
   --games-dir DIR  where the log of every game is written (default: the games directory next to server.js; it is made if it is not there)
   --no-game-log    do not keep a log of the games (by default every game's boneyard, hands, draws and plays are written to a file, one file per game, for debugging)
-  --no-history     do not keep the list of finished games (by default each game's players, time, winner and final scores go into a SQLite file, history.db, in the games directory)
+  --no-history     do not keep the list of finished games (by default each game's players, time, winner and final scores go into a SQLite file, history.db, in the games directory; with --no-game-log it is kept only while the server runs)
   --name LABEL     a label to tell this server from other processes: it is part of the command line and of the process name
                    (in ps -ef the server shows as "mexican-train-server LABEL :PORT"; with no label, "mexican-train-server :PORT")
   -h, --help       this help
@@ -798,7 +798,7 @@ Your firewall may ask whether to allow Node.js: say yes for private networks.`);
   }
   process.title = processTitle(args.name, args.port);                    // what ps shows (updated below when the port is known)
   const server = createGameServer({
-    historyFile: args.history === false ? null : path.join(args.gamesDir ? path.resolve(args.gamesDir) : path.join(__dirname, 'games'), 'history.db'),
+    historyFile: args.history === false || !args.gameLog ? null : path.join(args.gamesDir ? path.resolve(args.gamesDir) : path.join(__dirname, 'games'), 'history.db'),
     localOnly: args.localOnly, checkBuild: true, publicIp: args.publicIp, gameLog: args.gameLog, gamesDir: args.gamesDir ? path.resolve(args.gamesDir) : path.join(__dirname, 'games'), graceMs: Math.round(args.grace * 1000),
     pagePath: args.page ? path.resolve(args.page) : path.join(__dirname, 'mexican-train.html'),
     log: args.quiet ? () => {} : msg => console.log(`[${new Date().toLocaleTimeString()}] ${msg}`),

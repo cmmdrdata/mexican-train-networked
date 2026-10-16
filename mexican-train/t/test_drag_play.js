@@ -265,7 +265,7 @@ const classOf = (h, id) => (h.match(new RegExp(`class="(track[^"]*)" data-train=
 
   console.log('4. the boneyard button stays in its corner');
   const rule = sel => { const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); return [...css.matchAll(new RegExp('(?:^|\\n)' + esc + '\\s*\\{([^}]*)\\}', 'g'))].map(m => m[1]).join(' '); };   // every rule for this selector
-  ok(/display:\s*grid/.test(rule('.opp')) && /grid-template-areas:\s*"cpu yard"\s*"bubble yard"/.test(rule('.opp')), 'the opponent row is a grid with a cell of its own for the boneyard, spanning both lines');
+  ok(/display:\s*grid/.test(rule('.opp')) && /grid-template-areas:\s*"tools yard"\s*"cpu yard"\s*"bubble yard"/.test(rule('.opp')), 'the opponent row is a grid with a cell of its own for the boneyard, spanning both lines');
   ok(/grid-area:\s*yard/.test(rule('.boneyard')) && /justify-self:\s*end/.test(rule('.boneyard')) && /align-self:\s*start/.test(rule('.boneyard')), 'the boneyard is pinned to the top right of that row');
   ok(/grid-area:\s*cpu/.test(rule('.cpu-hand')) && /grid-area:\s*bubble/.test(rule('.bubble-slot')), 'the computer\'s tiles and its comments sit in the other cells, so they cannot push it around');
   ok(/width:\s*15\.5rem/.test(rule('.boneyard')) && /min-height:/.test(rule('.boneyard')), 'it has a fixed size');

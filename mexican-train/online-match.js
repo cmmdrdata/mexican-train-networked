@@ -314,7 +314,7 @@ class OnlineMatch {
       async onDraw(game, player, tile) {
         const seat = m._seat(player);
         if (!m.computers[seat]) { m._logOne(seat, `You drew ${fmt(tile)}.`); m._maybeSay(seat, 'draw'); }
-        else if (!m.coverDraw) m._ownLuck(seat, 'draw');
+        else if (!m.coverDraw) m._ownLuck(seat, game.openDouble && m.doubleBy !== undefined && m.doubleBy !== null && m.doubleBy !== seat ? 'doubleResent' : 'draw');
         m._tell(seat, `${m.names[seat]} draws a tile.`);
         const ev = m.noEvents();
         for (const s of m.humans) ev[s].push(s === seat ? { e: 'draw', who: 'me', tile: tile.slice() } : { e: 'draw', who: m.who(s, seat) });
@@ -341,6 +341,7 @@ class OnlineMatch {
       async onPlay(game, player, move, info) {
         const seat = m._seat(player);
         m._ownLuck(seat, 'play');
+        if (info.doubleOpened) m.doubleBy = seat; else if (info.doubleSatisfied) m.doubleBy = null;
         for (const s of m.humans) {
           const mine = s === seat;
           m._logOne(s, `${mine ? 'You played' : `${m.names[seat]} played`} ${fmt(move.tile)} on ${m._trainRef(s, move.trainId, seat)}.`);
@@ -484,6 +485,7 @@ class OnlineMatch {
     if (seat !== this.talker) return;
     if (event === 'play') { this.unlucky = 0; return; }              // a tile went down: the bad run is over
     if (event === 'draw') { this.unlucky++; this._sayOwn(this.unlucky === 1 ? 'ownDraw' : 'ownDrawAgain'); }
+    else if (event === 'doubleResent') { this.unlucky++; this._sayOwn('doubleResent'); }      // it had to draw to cover somebody else's double
     else if (event === 'blocked') this._sayOwn('ownBlocked');
     else if (event === 'short') this._sayOwn('ownShort', vars);
   }

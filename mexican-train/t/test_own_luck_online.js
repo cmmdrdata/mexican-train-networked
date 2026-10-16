@@ -8,7 +8,7 @@ let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; if (process.env.VERBOSE) console.log('  ok:', m); } else { fail++; console.log('  FAIL:', m); } };
 const tick = () => new Promise(r => setImmediate(r));
 const T = G.THEMES.lotr;
-const OWN = ['ownDraw', 'ownDrawAgain', 'ownBlocked', 'ownShort', 'roundBlocked'];
+const OWN = ['ownDraw', 'ownDrawAgain', 'ownBlocked', 'ownShort', 'roundBlocked', 'doubleResent'];
 const fill = (t, vars) => G.fillLine(t, vars || {});
 const esc = n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -41,17 +41,21 @@ function policy(rnd) {
 }
 /* Play the match out. After every step, what the computer did (from the log the people see) is turned into the remarks it should have made. */
 async function playOut(h, pols, name, stepMs) {
-  const m = h.match, run = m.start(), exp = []; const streak = { n: 0 }; let seen = 0, cover = false, blocked = false, covers = 0;
+  const m = h.match, run = m.start(), exp = []; const streak = { n: 0 }; let humanDouble = null, seen = 0, cover = false, blocked = false, covers = 0;
   const reEnd = new RegExp('^' + esc(name) + ' finished a train of (\\d+) tiles?\\.');
   const scan = () => {
     const log = m.logs[0];
     if (log.length < seen) seen = 0;
     for (; seen < log.length; seen++) {
       const line = log[seen].replace(/&#39;/g, "'");
+      const dbl = line.match(/^A double: (.*) must play another tile onto it\.$/) || line.match(/^That was (.*?)(?:'s| your) last tile, but a double/);
+      if (line === 'The double is covered.') humanDouble = null;
+      else if (line.startsWith('That was your last tile, but a double')) humanDouble = 'You';
+      else if (dbl) humanDouble = dbl[1] === 'you' ? 'You' : dbl[1];       // whose double is open
       if (/^All trains are built\./.test(line)) streak.n = 0;
       else if (line.startsWith(name + ' played ')) streak.n = 0;
       else if (line.startsWith(`That was ${name}'s last tile, but a double cannot go out`)) cover = true;
-      else if (line === name + ' draws a tile.') { if (cover) { cover = false; covers++; } else { streak.n++; exp.push({ kind: streak.n === 1 ? 'ownDraw' : 'ownDrawAgain' }); } }
+      else if (line === name + ' draws a tile.') { if (cover) { cover = false; covers++; } else { streak.n++; exp.push({ kind: humanDouble && humanDouble !== name ? 'doubleResent' : streak.n === 1 ? 'ownDraw' : 'ownDrawAgain' }); } }
       else if (line.startsWith(name + ' cannot draw to cover their double and passes')) { cover = false; covers++; }
       else if (line.startsWith(name + ' cannot play and passes') || line.startsWith(name + ' cannot start a train and passes')) exp.push({ kind: 'ownBlocked' });
       else { const mm = line.match(reEnd); if (mm && +mm[1] >= 1 && +mm[1] <= G.OWN_SHORT) exp.push({ kind: 'ownShort', built: +mm[1] }); }

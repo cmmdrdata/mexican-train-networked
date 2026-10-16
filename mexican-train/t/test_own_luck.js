@@ -7,7 +7,7 @@ const { mulberry32, key } = E;
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; if (process.env.VERBOSE) console.log('  ok:', m); } else { fail++; console.log('  FAIL:', m); } };
 const tick = () => new Promise(r => setImmediate(r));
-const OWN = ['ownDraw', 'ownDrawAgain', 'ownBlocked', 'ownShort', 'roundBlocked'];
+const OWN = ['ownDraw', 'ownDrawAgain', 'ownBlocked', 'ownShort', 'roundBlocked', 'doubleResent'];
 const fill = (t, vars) => G.fillLine(t, vars || {});
 
 console.log('1. nothing says or implies that your move was your only one');
@@ -41,7 +41,7 @@ ok(G.LINES.easy.ownDraw.join() !== G.LINES.normal.ownDraw.join() && G.LINES.norm
     if (!arr || arr.length < 2 || new Set(arr.map(p => p[0])).size !== arr.length) dupes++;
     arr.forEach(([n, t]) => { if (!SCRIPT[lang].test(n) || (NOT[lang] && NOT[lang].test(n)) || /[A-Za-z]/.test(n)) wrongScript++; if (!/^[A-Za-z]/.test(t) || /[^\x20-\x7E]/.test(t)) noTrans++; });
   }
-  ok(all === 60 && wrongScript === 0 && noTrans === 0 && dupes === 0, `the six languages (Russian, Japanese, Chinese, Korean, Hindi, Arabic) have two lines each for each of the five (${all}), each in its own script with an English translation`);
+  ok(all === 72 && wrongScript === 0 && noTrans === 0 && dupes === 0, `the six languages (Russian, Japanese, Chinese, Korean, Hindi, Arabic) have two lines each for each of the six (${all}), each in its own script with an English translation`);
   const names = { Dmitri: 'ru', Keiko: 'ja', Mei: 'zh', Joon: 'ko', Ravi: 'hi', Omar: 'ar' };
   let good = 0, total = 0;
   for (const [name, lang] of Object.entries(names)) for (const k of OWN) { total++; const said = G.composeComment(k, { built: 2 }, { name, level: 'hard', theme: 'classic', rng: () => 0, nativeChance: 1, foodChance: 0, last: null }); if (said.lang === lang && SCRIPT[lang].test(said.text) && /^[A-Za-z]/.test(said.trans) && G.NATIVE_LINES[lang][k].some(p => p[0] === said.text)) good++; }
@@ -92,17 +92,21 @@ async function playGame(seed, o) {
   a.app.dispatch(Object.assign({ type: 'startGame', rounds: 1, hand: 8, style: 'pips', level: 'easy' }, o || {}));
   const names = () => [S.cpuName, S.cpu2Name].filter(Boolean);
   const exp = [], got = [], all = []; const streak = {}, coverPending = {}; const covers = { draws: 0, passes: 0 };
-  let lastId = 0, logSeen = 0, blockedRound = false, ended = false;
+  let humanDouble = null, lastId = 0, logSeen = 0, blockedRound = false, ended = false;
   const poll = () => {
     for (; lastId < bubbles.length; lastId++) { const c = bubbles[lastId]; const who = c.from || S.cpuName; all.push({ kind: c.kind, text: c.text, who }); if (OWN.includes(c.kind)) got.push({ kind: c.kind, who, text: c.text.replace(/&#39;/g, "'") }); }
     if (S.log.length < logSeen) logSeen = 0;
     for (; logSeen < S.log.length; logSeen++) {
       const line = S.log[logSeen].replace(/&#39;/g, "'");
       if (/^All trains are built\./.test(line)) for (const n of names()) streak[n] = 0;
+      { const dbl = line.match(/^A double: (.*) must play another tile onto it\.$/) || line.match(/^That was (.*?)(?:'s| your) last tile, but a double/);
+        if (line === 'The double is covered.') humanDouble = null;
+        else if (line.startsWith('That was your last tile, but a double')) humanDouble = 'You';
+        else if (dbl) humanDouble = dbl[1] === 'you' ? 'You' : dbl[1]; }       // whose double is open
       for (const n of names()) {
         if (line.startsWith(n + ' played ')) streak[n] = 0;
         else if (line.startsWith(`That was ${n}'s last tile, but a double cannot go out`)) coverPending[n] = true;
-        else if (line === n + ' draws a tile.') { if (coverPending[n]) { coverPending[n] = false; covers.draws++; } else { streak[n] = (streak[n] || 0) + 1; exp.push({ kind: streak[n] === 1 ? 'ownDraw' : 'ownDrawAgain', who: n }); } }
+        else if (line === n + ' draws a tile.') { if (coverPending[n]) { coverPending[n] = false; covers.draws++; } else { streak[n] = (streak[n] || 0) + 1; exp.push({ kind: humanDouble && humanDouble !== n ? 'doubleResent' : streak[n] === 1 ? 'ownDraw' : 'ownDrawAgain', who: n }); } }
         else if (line.startsWith(n + ' cannot draw to cover their double and passes')) { coverPending[n] = false; covers.passes++; }
         else if (line.startsWith(n + ' cannot play and passes') || line.startsWith(n + ' cannot start a train and passes')) exp.push({ kind: 'ownBlocked', who: n });
         else { const m = line.match(new RegExp('^' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' finished a train of (\\d+) tiles?\\.')); if (m && +m[1] >= 1 && +m[1] <= 2) exp.push({ kind: 'ownShort', who: n, built: +m[1] }); }
@@ -118,7 +122,7 @@ async function playGame(seed, o) {
   return { exp, got, all, covers, blockedRound, names: names(), levels: [S.cpuName && G.levelOfName(S.cpuName), S.cpu2Name && G.levelOfName(S.cpu2Name)], S, ended };
 }
 const COOL = G.CHAT.cooldownMs; G.CHAT.cooldownMs = 0;      // (so each event is judged by itself: the cooldown has its own check below)
-const tally = { ownDraw: 0, ownDrawAgain: 0, ownBlocked: 0, ownShort: 0, roundBlocked: 0 }; let games = 0, mismatched = 0, wrongSpeaker = 0, wrongLine = 0, unfinished = 0, coverDraws = 0, coverPasses = 0, firstMismatch = null;
+const tally = { doubleResent: 0, ownDraw: 0, ownDrawAgain: 0, ownBlocked: 0, ownShort: 0, roundBlocked: 0 }; let games = 0, mismatched = 0, wrongSpeaker = 0, wrongLine = 0, unfinished = 0, coverDraws = 0, coverPasses = 0, firstMismatch = null;
 (async () => {
   for (const [level, hand] of [['easy', 8], ['easy', 12], ['normal', 8], ['hard', 12], ['easy', 15]]) {
     for (let seed = 1; seed <= 24; seed++) {

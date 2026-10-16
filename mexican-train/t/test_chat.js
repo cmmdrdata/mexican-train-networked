@@ -113,7 +113,7 @@ const silent = { onNeedDraw() {}, onDraw() {}, onPass() {}, onPlay() {} };
   ok(K(R(5, { best: 1020, value: 1015 })) === 'good', 'going out anyway is not "missed"');
 
   console.log('4. the lines themselves, for every level');
-  const KINDS = ['great', 'good', 'poor', 'awful', 'missedOut', 'slow1', 'slow2', 'slow3', 'draw', 'pass', 'openBest', 'openShort', 'openNone', 'ownDraw', 'ownDrawAgain', 'ownBlocked', 'ownShort', 'roundBlocked', 'invalid'];
+  const KINDS = ['great', 'good', 'poor', 'awful', 'missedOut', 'slow1', 'slow2', 'slow3', 'draw', 'pass', 'openBest', 'openShort', 'openNone', 'ownDraw', 'ownDrawAgain', 'ownBlocked', 'ownShort', 'roundBlocked', 'invalid', 'doubleResent'];
   const blocked = /\b(fuck\w*|shit\w*|bitch\w*|cunt|nigg\w*|fag\w*|retard\w*|whore|slut|bastard|dick|cock|piss\w*|damn\w*|hell|crap|ass|asshole|kill|die|suicide|stupid|idiot|moron|ugly|fat)\b/i;
   ok(Object.keys(G.LINES).join() === 'easy,normal,hard,expert' && G.LINES.expert === G.LINES.hard, 'a complete set of comments for every level: Easy, Medium, Hard, and Expert (who talks like Hard)');
   const everyLine = [];
