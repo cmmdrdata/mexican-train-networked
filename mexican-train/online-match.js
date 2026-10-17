@@ -22,7 +22,7 @@ require('./game.js');
 const G = globalThis.MexicanTrainGame;
 const E = G.Engine;
 const LOG_SENT = 120;                 // how many of the latest lines of the game's history every update carries (with where in the whole history they begin: the page keeps what it has been sent)
-const { newRound, playRound, longestFullChain, buildSteps, handPips, key, legalMoves, cpuChoose, cpuChooseAsync, cpuBuildAction, rateMove, drawAnyway } = E;
+const { newRound, playRound, longestFullChain, buildSteps, handPips, key, legalMoves, cpuChoose, cpuChooseAsync, cpuBuildAction, invalidAttempt, rateMove, drawAnyway } = E;
 const CHAT = G.CHAT;
 
 const MAX_PIP = 12;
@@ -86,7 +86,7 @@ class OnlineMatch {
     this.banners = blank(() => '');
     this.modal = null;
     this.modalOk = blank(() => false);
-    this.unlucky = 0; this.coverDraw = false;     // how many turns in a row the computer has drawn without playing; and whether this draw is only to cover a last double
+    this.unlucky = {}; this.coverDraw = false;     // how many turns in a row each computer has drawn without playing; and whether this draw is only to cover a last double
     this.paused = false;
     this.over = null;                       // null while running; 'finished', 'aborted' or 'error'
     this.error = null;
@@ -96,7 +96,8 @@ class OnlineMatch {
     this.hooks = this._makeHooks();
     // --- the computer player's comments ---
     this.theme = G.THEME_IDS.includes(opts.theme) ? opts.theme : 'classic';
-    this.talker = Object.keys(this.computers).map(Number)[0];             // the computer's seat (undefined: nobody to talk)
+    this.talkers = Object.keys(this.computers).map(Number);                // every computer takes part in the talk
+    this.talker = this.talkers[0];                                          // (undefined: nobody to talk)
     this.chatRng = opts.chatRng || Math.random;                             // never the game's random numbers: comments change nothing in play
     this.now = opts.now || (() => Date.now());
     this.timer = opts.timer || { set(fn, ms) { const t = setTimeout(fn, ms); if (t && t.unref) t.unref(); return t; }, clear(t) { clearTimeout(t); } };
@@ -158,14 +159,14 @@ class OnlineMatch {
       this.game = newRound({ engine, handSize: this.hand, rng: this.rng, simultaneousOpening: true, players: this.n });
       this.game.players.forEach((p, i) => { p.name = this.names[i]; });
       if (this.rec) this.rec.round(this.game, r, startIndex);                  // (the boneyard and every hand, as dealt)
-      this.plans = this.plans.map(() => null); this.modal = null; this.unlucky = 0;       // (the history is kept from round to round: each round's first line says where it begins)
+      this.plans = this.plans.map(() => null); this.modal = null; this.unlucky = {};       // (the history is kept from round to round: each round's first line says where it begins)
       this._say(() => `Round ${r + 1}: the engine is double-${engine}. Everyone builds their train at the same time.`);
       this._log(seat => `${startIndex === seat ? 'You play' : `${this.names[startIndex]} plays`} first once the trains are built.`);
       this._broadcast(this.noEvents());
 
       const result = await playRound(this.game, startIndex, this.controllers, this.rec ? G.recordingUi(this.hooks, this.rec) : this.hooks);
       const winnerSeat = result.winner ? SEATS.indexOf(result.winner.id) : -1;
-      if (result.blocked) this._sayOwn('roundBlocked');
+      if (result.blocked) this._sayOwn('roundBlocked', undefined, this._speaker());
       this._say(seat => result.blocked ? 'The round is blocked.'
         : result.tie ? (this.n === 2 ? 'You both played every tile.' : 'More than one of you played every tile.')
         : `${winnerSeat === seat ? 'You' : this.names[winnerSeat]} played the last tile.`);
@@ -226,6 +227,15 @@ class OnlineMatch {
         act: async (game, player, info) => {
           const action = cpuBuildAction(game, player, info, cpu.level);
           const second = game.opening && game.opening[player.id] && game.opening[player.id].lastWobble;       // (it has just taken a tile back because it changed its mind)
+          if (action.type === 'play') {                         // sometimes it tries the wrong train first: everybody sees the tile go there and come back
+            const t = invalidAttempt(game, player, info, cpu.level);
+            if (t) {
+              const ev = this.noEvents();
+              for (const s of this.humans) ev[s].push({ e: 'try', who: this.who(s, seat), train: this.cid(s, t.trainId) });
+              this._broadcast(ev);
+              await this._pauseFor(1000);
+            }
+          }
           await this._think(action.type === 'done' ? 'finish' : action.type === 'draw' ? 'draw' : action.type === 'undo' ? 'undo' : second ? 'replace' : 'place');
           return action;
         },
@@ -410,7 +420,7 @@ class OnlineMatch {
         m._broadcast(ev);
       },
       async onOpeningDone(game) {
-        m.unlucky = 0;                                              // the normal turns start with a clean slate
+        m.unlucky = {};                                             // the normal turns start with a clean slate
         m._say(seat => `All trains are built. ${m.startIndex === seat ? 'You play' : `${m.names[m.startIndex]} plays`} first.`);
         m._broadcast(m.noEvents());
       },
@@ -442,10 +452,13 @@ class OnlineMatch {
     this.chatTimers.add(id);
     return id;
   }
-  _say1(seat, kind, vars, delay) {
+  /* Which computer speaks when something is said about a person's move: any of them, by chance (with one computer, that one). */
+  _speaker() { return this.talkers.length > 1 ? this.talkers[Math.min(this.talkers.length - 1, Math.floor(this.chatRng() * this.talkers.length))] : this.talker; }
+  _say1(seat, kind, vars, delay, speaker) {
     if (this.talker === undefined || this.over || !this.humans.includes(seat)) return;
-    const st = this.talk[seat], name = this.names[this.talker];
-    const said = G.composeComment(kind, vars, { name, level: this.computers[this.talker].level, theme: this.theme, rng: this.chatRng,
+    const who = speaker !== undefined ? speaker : this._speaker();
+    const st = this.talk[seat], name = this.names[who];
+    const said = G.composeComment(kind, vars, { name, level: this.computers[who].level, theme: this.theme, rng: this.chatRng,
       nativeChance: this.nativeChance, foodChance: this.foodChance, last: st.last, dish: st.dish });
     if (said.dish !== undefined) st.dish = said.dish;
     st.last = said.text;
@@ -459,20 +472,21 @@ class OnlineMatch {
     if (p === undefined || this.chatRng() >= p) return false;
     if (!CHAT.bypass[kind] && this.now() - st.at < CHAT.cooldownMs) return false;
     st.at = this.now();
-    this._say1(seat, kind, vars, CHAT.reactDelayMs[0] + this.chatRng() * (CHAT.reactDelayMs[1] - CHAT.reactDelayMs[0]));
+    this._say1(seat, kind, vars, CHAT.reactDelayMs[0] + this.chatRng() * (CHAT.reactDelayMs[1] - CHAT.reactDelayMs[0]), undefined);
     return true;
   }
   /* The computer grumbling about ITS OWN luck (a tile that does not fit, a run of bad draws, no move at all, a very short opening train, a blocked round): it knows its own
    * hand and the table, never yours. Everybody at the table sees the same remark, so it is decided once (by chance and the cooldown, which is shared by all of them). */
-  _sayOwn(kind, vars) {
+  _sayOwn(kind, vars, speaker) {
     if (this.talker === undefined || this.over || !this.humans.length) return false;
+    const who = speaker !== undefined ? speaker : this.talker;
     const p = CHAT.chance[kind];
     if (p === undefined || this.chatRng() >= p) return false;
     const now = this.now();
     if (!CHAT.bypass[kind] && this.humans.some(h => now - this.talk[h].at < CHAT.cooldownMs)) return false;
     this.humans.forEach(h => { this.talk[h].at = now; });
-    const name = this.names[this.talker], lead = this.talk[this.humans[0]];
-    const said = G.composeComment(kind, vars, { name, level: this.computers[this.talker].level, theme: this.theme, rng: this.chatRng,
+    const name = this.names[who], lead = this.talk[this.humans[0]];
+    const said = G.composeComment(kind, vars, { name, level: this.computers[who].level, theme: this.theme, rng: this.chatRng,
       nativeChance: this.nativeChance, foodChance: 0, last: lead.last, dish: null });
     this.humans.forEach(h => { this.talk[h].last = said.text; });
     const msg = Object.assign({ t: 'say', from: name, kind, text: said.text }, said.lang ? { lang: said.lang, trans: said.trans } : {});
@@ -481,24 +495,24 @@ class OnlineMatch {
     if (delay > 0) this._later(send, delay); else send();
     return true;
   }
-  _ownLuck(seat, event, vars) {
-    if (seat !== this.talker) return;
-    if (event === 'play') { this.unlucky = 0; return; }              // a tile went down: the bad run is over
-    if (event === 'draw') { this.unlucky++; this._sayOwn(this.unlucky === 1 ? 'ownDraw' : 'ownDrawAgain'); }
-    else if (event === 'doubleResent') { this.unlucky++; this._sayOwn('doubleResent'); }      // it had to draw to cover somebody else's double
-    else if (event === 'blocked') this._sayOwn('ownBlocked');
-    else if (event === 'short') this._sayOwn('ownShort', vars);
+  _ownLuck(seat, event, vars) {                                       // (each computer grumbles about its own luck)
+    if (!this.computers[seat]) return;
+    if (event === 'play') { this.unlucky[seat] = 0; return; }        // a tile went down: the bad run is over
+    if (event === 'draw') { const n = this.unlucky[seat] = (this.unlucky[seat] || 0) + 1; this._sayOwn(n === 1 ? 'ownDraw' : 'ownDrawAgain', undefined, seat); }
+    else if (event === 'doubleResent') { this.unlucky[seat] = (this.unlucky[seat] || 0) + 1; this._sayOwn('doubleResent', undefined, seat); }      // it had to draw to cover somebody else's double
+    else if (event === 'blocked') this._sayOwn('ownBlocked', undefined, seat);
+    else if (event === 'short') this._sayOwn('ownShort', vars, seat);
   }
   /* Taking too long: a jab after 25 seconds, then another every 20 to 26 seconds, each one ruder. Not while paused. */
   _armSlow(seat) {
     if (this.talker === undefined || !this.humans.includes(seat)) return;
     this._cancelSlow(seat);
     const st = this.talk[seat];
-    st.slowCount = 0; st.dish = null;                         // a new wait: a new dish, if it gets hungry
+    st.slowCount = 0; st.dish = null; st.speaker = this._speaker();      // a new wait: a new dish, if it gets hungry (and one computer does the talking)
     const fire = () => {
       st.slow = null;
       if (this.over || !this.awaiting[seat]) return;
-      if (!this.paused && !this.modal) { st.slowCount++; st.at = this.now(); this._say1(seat, 'slow' + Math.min(3, st.slowCount), {}, 0); }
+      if (!this.paused && !this.modal) { st.slowCount++; st.at = this.now(); this._say1(seat, 'slow' + Math.min(3, st.slowCount), {}, 0, st.speaker); }
       st.slow = this.timer.set(fire, CHAT.slowEveryMs[0] + this.chatRng() * (CHAT.slowEveryMs[1] - CHAT.slowEveryMs[0]));
     };
     st.slow = this.timer.set(fire, CHAT.slowAfterMs);
@@ -578,8 +592,15 @@ class OnlineMatch {
 
   /* ------------------------------ intents ------------------------------ */
   /* A person tried to put a tile where it does not go (their page noticed): the computer may remark on it. Only on their turn, and only if there is a computer. */
-  tried(seat) {
+  tried(seat, train) {
     if (this.over || this.paused || !this.humans.includes(seat) || !this.awaiting[seat]) return;
+    // the tile they tried goes to that train and comes back on everybody else's screen too (`train` is the id on THEIR screen)
+    const engineId = train === 'mexican' ? 'mexican' : ['human', 'cpu', 'cpu2', 'cpu3'].includes(train) ? SEATS[train === 'human' ? seat : this.others(seat)[['cpu', 'cpu2', 'cpu3'].indexOf(train)]] : undefined;
+    if (engineId && this.game && this.game.trains[engineId]) {
+      const ev = this.noEvents();
+      for (const s of this.humans) if (s !== seat) ev[s].push({ e: 'try', who: this.who(s, seat), train: this.cid(s, engineId) });
+      if (this.humans.some(s => s !== seat)) this._broadcast(ev);
+    }
     this._maybeSay(seat, 'invalid');
   }
   intent(seat, msg) {

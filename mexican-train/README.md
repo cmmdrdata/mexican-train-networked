@@ -329,6 +329,14 @@ A computer player in an online game talks just as it does in a game against the 
 
 When somebody plays a double (you, or another computer) and a computer has nothing to cover it with, so it has to draw, it says it resents that double (in every voice: each level, the six languages and the Lord of the Rings characters). It never says it about its own double. It comes by chance (85%) after the usual cooldown, and works online too, for a double played by anyone else at the table. The lines do not point at "you", since the double may be a computer's. Test: `test_double_resent`.
 
+### A try on the wrong train
+
+When a tile is tried on a train it does not go on, a face-down tile flies from the hand to that train (to the empty place after its last tile), shakes, and flies back; nothing in the game changes. It shows for **a person's invalid try** (dropping a tile on a train it cannot go on, or, with hints off, choosing a wrong train), on their own screen and, online, on the other person's screen too, and for **the computers in their opening**: each level does it half as often as it takes a tile back (Easy about 0.3 per tile laid, Medium 0.11, Hard 0.055, Expert 0.025), at most half as many times in an opening as the take-backs' limit (3, 2, 1, 1). The computer's try is decided from the position, like the take-backs, so it never disturbs the deals. Reduced motion switches the animation off. Tests: `test_try_wrong_train`, `test_browser_try`.
+
+### Every computer talks online
+
+With two computers at an online table, both of them talk (before, only the first did). Each grumbles about its own luck in its own voice and level (its own run of bad draws, its own blocked turn, a short opening train), and the remarks about a person's move, the slow-player jabs and the blocked-round remark are shared out among them by chance. Test: `test_online_talk_all`.
+
 ### The "your turn" sound
 
 A soft low tone plays when it becomes your turn, in a game against the computer as well as online (once per turn: not for the opening, and not again when you cover a double or play a tile you just drew). On a phone that can vibrate, a short buzz (70 ms) goes with it (iPhone's browser cannot vibrate, so it only gets the sound; Android browsers need you to have tapped the page once). Mute silences both. Test: `test_turn_sound_local` (against the computer), `test_turn_sound` (online).
@@ -564,6 +572,9 @@ for f in test_*.js; do node "$f" || echo "FAILED: $f"; done    # each suite exit
 | `test_browser_view` | The Layout setting in a real browser at 390×780: Auto is Compact on a phone, the ⋯ menu, Escape, Tiny/Roomy, saved choice, fits without scrolling, Auto follows resizing, the history screen, readable menu text, the menu in Roomy, comments not moving the board | 39 |
 | `test_double_resent` | A computer resenting a double that makes it draw (yours or another computer's, not its own): lines for every level, language and character, and on the page | 18 |
 | `test_turn_sound_local` | The "your turn" sound in a game against the computer: once per turn of yours (not for the opening, not again for a double's cover or after a draw), and silent when muted; the short buzz that goes with it | 28 |
+| `test_online_talk_all` | Online with two computers: each grumbles about its own luck in its own voice, each keeps its own run of bad draws, and the other talk is shared out | 8 |
+| `test_try_wrong_train` | The wrong-train try: each level does it about half as often as it takes tiles back (thousands of openings), never more than its limit, the animation on a fake page, a person's invalid try on the page, and online (shown to the other person) | 30 |
+| `test_browser_try` | The wrong-train try in a real browser at 390 and 1100 px: a computer's during its opening, a person's invalid try, and gone again afterwards | 8 |
 | `test_history_page` | The Recent games screen: the button, the cards (winner, scores, computers, times, stopped games, ties), choosing how many, Refresh, Back, an empty list, no server, rubbish from a server, names cleaned | 18 |
 | `test_browser_history` | Real Chromium: the Recent games button, the cards, choosing 100, Back, and a phone-sized screen (the server's answer is supplied by the test) | 8 |
 | `test_browser_tools` | Real Chromium: the Comments and Say something buttons are in exactly the same place through whole games with one, two and three computers (desktop and phone) and in a hosted game, always above the computers' rows; opening the Say something panel does not move them | 25 |

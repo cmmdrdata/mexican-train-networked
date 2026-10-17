@@ -614,6 +614,22 @@
     return roll < w.p ? { type: 'undo', wobble: true } : null;
   }
 
+  /* A computer in the opening sometimes TRIES a tile on the wrong train first (the face-down tile goes to another train and comes back; nothing in the game changes): half as
+   * often as it takes a tile back for second thoughts (WOBBLE), and at most half as many times in an opening. Decided from the position, like the take-backs. Returns { trainId }
+   * (the train it tried) or null. Called once for each tile it is about to lay. */
+  const TRY_SHARE = 0.5;
+  function invalidAttempt(game, player, info, level) {
+    const w = WOBBLE[level], st = game.opening && game.opening[player.id];
+    if (!w || !st || !info || !info.moves || !info.moves.length || (st.tried || 0) >= Math.ceil(w.max * TRY_SHARE)) return null;
+    const train = game.trains[player.id];
+    const h = strHash('try|' + player.hand.map(key).join(',') + '|' + train.tiles.map(key).join(',') + '|' + (st.undos || 0) + '|' + game.boneyard.length + '|' + (st.tried || 0));
+    if (mulberry32(h)() >= w.p * TRY_SHARE) return null;
+    const others = Object.keys(game.trains).filter(id => id !== player.id);
+    if (!others.length) return null;
+    st.tried = (st.tried || 0) + 1;
+    return { trainId: others[Math.min(others.length - 1, Math.floor(mulberry32(h ^ 0x9e3779b9)() * others.length))] };
+  }
+
   /* What the computer does in the opening: lay down its longest chain one tile at a time (with some second thoughts on the way: see WOBBLE),
    * then say it is done. (It never ends on an uncovered double, so Done is always allowed.) */
   function cpuBuildAction(game, player, info, level) {
@@ -1161,6 +1177,50 @@
       }
     }
 
+    /* ---- a try that cannot work: a face-down tile goes to a train it does not fit, shakes, and comes back (the real tile never leaves its place) ---- */
+    // spec: { playerId, trainId, key } (key: which tile of your hand, when it is yours)
+    function bounce(spec) {
+      if (!ok || !spec || !spec.trainId) return;
+      let src = null;
+      if (spec.playerId === 'human') src = (spec.key && root.querySelector('.hand .tile-btn[data-key="' + spec.key + '"] .tile')) || root.querySelector('.hand .tile-btn .tile');
+      else { const b = backsOf(spec.playerId); src = b.length ? b[pickSlot(b.length)] : null; }
+      const sc = root.querySelector('.scroller[data-train="' + spec.trainId + '"]');
+      if (!src || !sc) return;
+      const from = rectOf(src), area = rectOf(sc);
+      const tiles = sc.querySelectorAll ? Array.from(sc.querySelectorAll('.tile')) : [];
+      const last = tiles[tiles.length - 1];
+      const lr = last ? rectOf(last) : null;
+      const s = lr ? Math.min(lr.width, lr.height) : Math.min(area.height, 40);       // a tile on the board is s by 1.9615 s
+      if (!(s > 0 && from.width > 0 && area.width > 0)) return;
+      const w = s * 1.9615;
+      const left = Math.max(area.left, Math.min(lr ? lr.left + lr.width + 4 : area.left + 10, area.left + area.width - w - 4));      // the empty place after the last tile (kept in view)
+      const to = { left, top: area.top + (area.height - s) / 2, width: w, height: s };
+      const g = flightGeometry(from, to, from.width > from.height ? 0 : 90);
+      const wrap = doc.createElement('div');
+      wrap.className = 'flying';
+      wrap.style.left = to.left + 'px'; wrap.style.top = to.top + 'px'; wrap.style.width = to.width + 'px'; wrap.style.height = to.height + 'px';
+      const back = backLayer('h');
+      if (back) wrap.appendChild(back);
+      doc.body.appendChild(wrap);
+      const flight = { find: () => null, wrap };
+      flights.push(flight);
+      const done = () => { const i = flights.indexOf(flight); if (i < 0) return; flights.splice(i, 1); if (wrap.remove) wrap.remove(); };
+      const start = flightStart(g);
+      const red = 'drop-shadow(0 0 7px rgba(236,74,58,0.9))', plain = 'drop-shadow(0 4px 4px rgba(0,0,0,0.4))';
+      const anim = wrap.animate ? wrap.animate([
+        { transform: start, filter: plain },
+        { offset: 0.36, transform: 'translate(0px, 0px) rotate(0deg) scale(1)', filter: plain },
+        { offset: 0.46, transform: 'translate(6px, 0px)', filter: red },
+        { offset: 0.56, transform: 'translate(-6px, 0px)', filter: red },
+        { offset: 0.66, transform: 'translate(4px, 0px)', filter: red },
+        { offset: 0.74, transform: 'translate(0px, 0px)', filter: red },
+        { transform: start, filter: plain },
+      ], { duration: 950, easing: 'ease-in-out', fill: 'forwards' }) : null;
+      if (anim && anim.finished && anim.finished.then) anim.finished.then(done, done);
+      else if (anim) anim.onfinish = done;
+      else done();
+    }
+
     // after any redraw: tiles still in flight must stay hidden where they will land
     function reapply() {
       flights.forEach(f => { const d = f.find(); if (d) d.style.visibility = 'hidden'; });
@@ -1172,7 +1232,7 @@
         if (d) d.style.visibility = '';
       });
     }
-    return { capture, shownOf, land, captureDraw, landDraw, captureUndo, landUndo, reapply, cancelAll, get active() { return flights.length; } };
+    return { capture, shownOf, land, captureDraw, landDraw, captureUndo, landUndo, bounce, reapply, cancelAll, get active() { return flights.length; } };
   }
 
   /* Dragging tiles around in your hand with a mouse, finger or pen. Pointer events cover all three.
@@ -1239,7 +1299,7 @@
       if (over) app.dispatch({ type: 'dropOnTrain', key: k, train: over, from });     // let go over a train: play it there
       else {
         app.dispatch({ type: 'dragEnd' });
-        if (!cancelled && hitTrain) app.dispatch({ type: 'invalidTry' });      // let go over a train it cannot go on
+        if (!cancelled && hitTrain) app.dispatch({ type: 'invalidTry', train: hitTrain, key: k });      // let go over a train it cannot go on
       }
       setTimeout(() => { suppress = false; }, 0);    // swallow the click that follows a drag
     }
@@ -4004,6 +4064,10 @@
       const action = cpuBuildAction(game, player, info, levelFor(S, player.id));
       const second = game.opening && game.opening[player.id] && game.opening[player.id].lastWobble;       // (it has just taken a tile back because it changed its mind)
       const kind = action.type === 'done' ? 'finish' : action.type === 'draw' ? 'draw' : action.type === 'undo' ? 'undo' : second ? 'replace' : 'place';
+      if (action.type === 'play') {                            // sometimes it tries the wrong train first (a face-down tile goes there and comes back)
+        const t = invalidAttempt(game, player, info, levelFor(S, player.id));
+        if (t) { if (fx && fx.bounce) fx.bounce({ playerId: player.id, trainId: t.trainId }); await pause(1000); }
+      }
       await pause(humanPace(kind));
       return action;
     }
@@ -4343,6 +4407,8 @@
           clack();
           if (ev.who === 'me') { S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.hoverKey = null; }
           S.lastPlay = { trainId: ev.train, index: ev.index };
+        } else if (ev.e === 'try') {          // somebody (a computer, or the other person) tried a tile on a train it does not go on: it goes there and comes back
+          if (fx && fx.bounce && typeof ev.train === 'string' && ev.who !== 'me') fx.bounce({ playerId: ev.who === 'opp3' ? 'cpu3' : ev.who === 'opp2' ? 'cpu2' : 'cpu', trainId: ev.train });
         } else if (ev.e === 'undo' && ev.who !== 'me') clack();
         else if (ev.e === 'draw' && ev.who === 'me' && ev.tile) { S.drawnKey = key(ev.tile); S.freshKey = key(ev.tile); }
         else if (ev.e === 'pass' && ev.who === 'me') { S.drawnKey = null; S.freshKey = null; }
@@ -4818,10 +4884,11 @@
     }
 
     // You tried to put a tile where it does not go: the computer notices (a computer that is at the table, by chance and the usual cooldown). Online, the server's computer says it.
-    function triedInvalid() {
+    function triedInvalid(trainId, tileKey) {
       const a = S.awaiting;
       if (!a || (a.kind !== 'move' && a.kind !== 'build' && a.kind !== 'draw')) return;
-      if (S.online) { if (S.online.conn === 'open') netSend({ t: 'tried' }); return; }
+      if (trainId && fx && fx.bounce) fx.bounce({ playerId: 'human', trainId, key: tileKey });      // the tile goes to that train and comes back
+      if (S.online) { if (S.online.conn === 'open') netSend(trainId ? { t: 'tried', train: trainId } : { t: 'tried' }); return; }
       maybeComment('invalid');
     }
     function playOn(trainId) {
@@ -4829,14 +4896,14 @@
       if (!hintsOn(S)) {                       // no hints: the player chose the tile and now the train; a wrong guess is just told so
         if (!a || !S.selectedKey || (a.kind !== 'move' && a.kind !== 'build' && a.kind !== 'draw')) return;
         const mv = (a.moves || []).find(x => key(x.tile) === S.selectedKey && x.trainId === trainId);
-        if (!mv) { S.notice = 'That tile cannot be played on that train.'; render(); triedInvalid(); return; }
+        if (!mv) { S.notice = 'That tile cannot be played on that train.'; render(); triedInvalid(trainId, S.selectedKey); return; }
         S.selectedKey = null; S.notice = '';
         a.resolve(a.kind === 'build' ? { type: 'play', move: mv } : mv);
         return;
       }
       if (!a || a.kind !== 'move' || !S.selectedKey) return;
       const m = a.moves.find(x => key(x.tile) === S.selectedKey && x.trainId === trainId);
-      if (!m) { triedInvalid(); return; }
+      if (!m) { triedInvalid(trainId, S.selectedKey); return; }
       S.selectedKey = null;
       a.resolve(m);
     }
@@ -4948,7 +5015,7 @@
       const mv = a && (a.kind === 'move' || a.kind === 'build') && a.moves ? a.moves.find(m => key(m.tile) === k && m.trainId === trainId) : null;
       if (!mv) {                                      // not a legal place for it: it simply goes back to the hand
         if (!hintsOn(S) && a && (a.kind === 'move' || a.kind === 'build' || a.kind === 'draw')) S.notice = 'That tile cannot be played on that train.';
-        render(); triedInvalid(); return;
+        render(); triedInvalid(trainId, k); return;
       }
       S.notice = '';
       S.dropFrom = from ? { key: k, rect: from, shown: fx && fx.shownOf ? fx.shownOf(k) : null } : null;   // the tile flies from where it was let go
@@ -5055,7 +5122,7 @@
         case 'dragStart': return dragStart(a.key);
         case 'dragMove': return dragMove(a.index);
         case 'dragEnd': return dragEnd();
-        case 'invalidTry': return triedInvalid();
+        case 'invalidTry': return triedInvalid(a.train, a.key);
         case 'dragOver': return dragOver(a.train);
         case 'dropOnTrain': return dropOnTrain(a.key, a.train, a.from);
         case 'moveTile': return moveTile(a.key, a.delta);
@@ -5267,7 +5334,7 @@
   global.MexicanTrainGame = {
     Engine: {
       newRound, legalMoves, applyMove, undoLast, playTurn, drawAnyway, buildPhase, playRound, isBlocked, cpuChoose,
-      cpuBuildAction, cpuChooseAsync, tilesNotSeen, chanceHolds, guessHiddenTiles, longestChain, longestFullChain, buildSteps, handPips, tilePips, mulberry32, shuffle, key, LEVELS, LEVEL_LABEL,
+      cpuBuildAction, invalidAttempt, TRY_SHARE, cpuChooseAsync, tilesNotSeen, chanceHolds, guessHiddenTiles, longestChain, longestFullChain, buildSteps, handPips, tilePips, mulberry32, shuffle, key, LEVELS, LEVEL_LABEL,
       moveValue, rateMove,
     },
     tileSVG, tileBackSVG, pipPoints, viewApp, createApp, pickCpuName, PIP_COLORS, PACE, CPU_NAMES, renderClack, clackGapMs, renderTurn, renderTick, COUNT_UP, createSound,

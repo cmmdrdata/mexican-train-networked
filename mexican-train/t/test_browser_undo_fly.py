@@ -33,7 +33,11 @@ with sync_playwright() as pw:
     ok(flying is not None, 'right after Take back, a tile is flying')
     if flying: pg.screenshot(path=f'{SHOTS}/undo_fly.png')
     time.sleep(0.7)
-    ok(pg.evaluate("() => !document.querySelector('body > .flying')"), 'the flying tile is gone once it has landed')
+    gone = False
+    for _ in range(30):          # (a computer's try on a wrong train, now and then, is a flight too: wait for those to end as well)
+        if pg.evaluate("() => !document.querySelector('body > .flying')"): gone = True; break
+        time.sleep(0.1)
+    ok(gone, 'the flying tile is gone once it has landed')
     ok(pg.evaluate("() => document.querySelectorAll('.hand .tile-btn').length") == n_hand + 1 and pg.evaluate("() => Array.from(document.querySelectorAll('.hand .tile .tile, .hand .tile-btn .tile')).every(e => e.style.visibility !== 'hidden')"), 'the tile is back in the hand, visible')
     ok(not errs, f'no page errors {errs}')
     browser.close()

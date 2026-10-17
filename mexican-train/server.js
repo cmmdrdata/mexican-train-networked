@@ -310,7 +310,7 @@ function createGameServer(options) {
       case 'start': return onStart(c);
       case 'i': return onIntent(c, msg);
       case 'chat': return onChat(c, msg);
-      case 'tried': return onTried(c);
+      case 'tried': return onTried(c, msg);
       case 'leave': return onLeave(c);
       case 'rematch': return onRematch(c);
       default: return strike(c, 'unknown_type', 'Unknown message type.');
@@ -612,9 +612,9 @@ function createGameServer(options) {
     if (typeof msg.id === 'number') send(c, { t: 'ack', id: msg.id, ok: r.ok, seq: seqBefore });
   }
   /* A person tried to put a tile where it does not go: the computer at the table may remark on it (no reply: it is only a remark). */
-  function onTried(c) {
+  function onTried(c, msg) {
     const room = c.session && c.session.room;
-    if (room && room.match && room.state === 'playing') room.match.tried(c.session.seat);
+    if (room && room.match && room.state === 'playing') room.match.tried(c.session.seat, msg && typeof msg.train === 'string' ? msg.train : undefined);
   }
   function onChat(c, msg) {
     const room = c.session && c.session.room;
