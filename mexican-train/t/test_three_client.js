@@ -293,7 +293,7 @@ async function lobby(port, settings, level) {
         trains: { human: train('human'), cpu: train('cpu'), cpu2: train('cpu2'), mexican: train('mexican') }, openDouble: null, opening: null } }, o);
     f.say({ t: 'state', seq: 3, view: view(), events: [] });
     let h = c.html();
-    ok(inGame(c) && c.S.game.players.length === 3 && /data-player="cpu2"/.test(h) && !/<img src=x|<script>/.test(h) && (h.match(/<span class="who">img srcx onerroraler<\/span>/g) || []).length === 2, 'a three-player state with markup in both opponents\' names: the names are cleaned to plain text (and cut to 20 characters), and both rows are drawn');
+    ok(inGame(c) && c.S.game.players.length === 3 && /data-player="cpu2"/.test(h) && !/<img src=x|<script>/.test(h) && (h.match(/<span class="who">img srcx o<\/span>/g) || []).length === 2, 'a three-player state with markup in both opponents\' names: the names are cleaned to plain text (and cut to 10 characters), and both rows are drawn');
     ok(/tag tag-normal/.test(h) && !/tag-<script>/.test(h), 'a computer level that does not exist is shown as Medium, never as markup');
     f.say({ t: 'state', seq: 4, view: view({ game: Object.assign(view().game, { trains: { human: train('human'), cpu: train('cpu'), mexican: train('mexican') } }) }), events: [] });
     ok(c.S.game.trains.cpu2 !== undefined, 'a three-player state with the third train missing is refused (the screen keeps the last good one)');

@@ -44,8 +44,13 @@ try:
         check('auto is roomy on a wide screen', 'v-roomy' in metrics(pg)['shell'])
         pg.set_viewport_size({'width': 390, 'height': 780}); time.sleep(0.4)
         check('auto turns compact when narrowed', 'v-compact' in metrics(pg)['shell'])
-        pg.click('.menu-btn'); pg.click('.menu [data-action="openMoves"]')
-        check('history screen opens', pg.locator('#dlg-title').inner_text() == 'Game history')
+        check('compact: the history is at the bottom', pg.locator('.log').count() == 1)
+        pg.click('.menu-btn'); pg.click('.menu [data-action="toggleLog"]')
+        check('compact: the menu hides the history', pg.locator('.log').count() == 0)
+        pg.click('.menu-btn')
+        check('compact: the menu now offers to show it', 'Show game history' in pg.locator('.menu [data-action="toggleLog"]').inner_text())
+        pg.click('.menu [data-action="toggleLog"]')
+        check('compact: and shows it again', pg.locator('.log').count() == 1)
         # menu text is readable (dark on light or light on dark, never light on light)
         def lum(c):
             import re
@@ -58,7 +63,7 @@ try:
             fg, bg = pg2.evaluate("() => { const e = document.querySelector('.menu .btn'); return [getComputedStyle(e).color, getComputedStyle(document.querySelector('.menu')).backgroundColor]; }")
             l1, l2 = sorted([lum(fg), lum(bg)], reverse=True)
             check(f'{view}: menu text readable (contrast {(l1+.05)/(l2+.05):.1f})', (l1+.05)/(l2+.05) >= 4.5)
-            check(f'{view}: menu offers layout and history', pg2.locator('.menu [data-action="setView"]').count() == 4 and pg2.locator('.menu [data-action="openMoves"]').count() == 1)
+            check(f'{view}: menu offers layout and history', pg2.locator('.menu [data-action="setView"]').count() == 4 and pg2.locator('.menu [data-action="openMoves"], .menu [data-action="toggleLog"]').count() == 1)
             # a computer's comment does not move the board
             pg2.keyboard.press('Escape')
             top = lambda: pg2.evaluate("() => document.querySelector('.tracks').getBoundingClientRect().top")

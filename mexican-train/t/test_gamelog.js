@@ -209,7 +209,7 @@ async function recordRound(players, seed, level, hand) {
     await server.close();
     const off = createGameServer({ localOnly: true, publicIp: false });
     const offPort = await off.listen(0);
-    ok((await post(offPort, { id: 'gameid1234', events: batch1 })).status === 404 && off.gameLogDir === null, 'a server not asked to keep a log answers 404 and keeps none (this is how every test server is made: nothing in the tests writes to games/)');
+    ok((await post(offPort, { id: 'gameid1234', events: batch1 })).status === 204 && off.gameLogDir === null, 'a server not asked to keep a log takes the events (for the list of past games) and writes none (this is how every test server is made: nothing in the tests writes to games/)');
     if (off.http.closeAllConnections) off.http.closeAllConnections();
     await off.close();
     ok(/gameLog: gamelogs \? gamelogs\.forHosted\(/.test(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8')), 'a game between people gets its log from the server (the match is given one when it is made)');

@@ -153,6 +153,7 @@ const click = (attrs, trackTrain) => ({
   console.log(`   ${((Date.now() - t0) / 1000).toFixed(1)}s | opening: Build=${used.auto} TakeBack=${used.undo} Done=${used.done} drawInOpening=${used.drawBuild} | normal: one-click=${used.single} ghost=${used.ghost} trackRow=${used.track} draws=${used.normalDraw} | round-end dialogs=${used.modal}`);
   ok(app.state.modal && app.state.modal.type === 'final', 'match reached the final screen driven only by page click events');
   ok(rootEl.innerHTML.includes('Play again') && rootEl.innerHTML.includes(name1) && !/CPU/.test(rootEl.innerHTML), 'final screen uses the computer\'s name');
+  ok(/data-action="newGame">Quit</.test(rootEl.innerHTML) && /data-action="playAgain" data-primary="1">Play again</.test(rootEl.innerHTML), 'the final screen has two buttons: Quit and Play again');
   ok(used.auto > 0 && used.undo > 0 && used.done > 0, 'Build, Take back and Done were pressed through the page handler');
   ok(used.single > 0 && used.ghost > 0 && used.track > 0, 'one-click, ghost button and track-row plays were all exercised');
   ok(sawHidden, 'the computer\'s tiles were seen face down while it was still building (real human-paced timers)');
@@ -189,6 +190,10 @@ const click = (attrs, trackTrain) => ({
   while (Date.now() - te < 8000 && !(app.state.game && app.state.game.opening.cpu.finished)) await sleep(10);
   ok(app.state.game.opening.cpu.finished && app.state.game.trains.cpu.tiles.length <= 6, 'Easy finishes its (short) opening');
 
+  // the end of the game: Quit goes to the menu, Play again starts the same game again
+  { const optsBefore = JSON.stringify(app.state.opts);
+    handlers.click(click({ action: 'playAgain' }));
+    ok(!rootEl.innerHTML.includes('Start game') && !(app.state.modal && app.state.modal.type === 'final') && JSON.stringify(app.state.opts) === optsBefore && app.state.cpuName !== name1, `Play again starts the same game at once, with the same settings and a new opponent (${name1} -> ${app.state.cpuName})`); }
   // Play again: a different name, Escape and other buttons
   handlers.click(click({ action: 'newGame' }));
   ok(rootEl.innerHTML.includes('Start game'), 'Play again / New game opens the setup');

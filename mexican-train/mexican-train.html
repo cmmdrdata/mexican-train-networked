@@ -175,7 +175,6 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px
 .toy-train.c1 { --tc: #2e72d9; --tc-hi: #98c0ff; --tc-lo: #153d84; --tc-dk: #0a2557; }
 .toy-train.c2 { --tc: #f2b01a; --tc-hi: #ffe495; --tc-lo: #a56f00; --tc-dk: #6a4600; }
 .toy-train.c3 { --tc: #2fa84f; --tc-hi: #9be3ae; --tc-lo: #17692d; --tc-dk: #0b3d19; }          /* a fourth seat */
-.track.has-toy .track-tiles { padding-left: calc(var(--s) * 1.3 + 22px); }
 .tracks { border-top: 1px solid var(--line); }
 .track {
   display: grid; grid-template-columns: 10.5rem minmax(0, 1fr); align-items: stretch;
@@ -234,7 +233,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px
 
 .tray {
   --s: var(--hs);
-  background: linear-gradient(var(--wood), var(--wood-deep));
+  background: linear-gradient(color-mix(in srgb, var(--wood) var(--tray-a, 50%), transparent), color-mix(in srgb, var(--wood-deep) var(--tray-a, 50%), transparent));   /* how solid it is is set from the menu (--tray-a); the tiles on it are always solid */
   border-radius: 14px; padding: 0.5rem 0.7rem 0.8rem;
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.12), 0 6px 14px rgba(0, 0, 0, 0.35);
 }
@@ -543,6 +542,8 @@ select option { color: #1b2523; background: #fff; }
 :is(.v-compact, .v-tiny) .hand { padding-top: 6px; }
 :is(.v-compact, .v-tiny) .hand-grid { gap: 8px 4px; }
 :is(.v-compact, .v-tiny) .tray { padding: 4px 8px 8px; }
+:is(.v-compact, .v-tiny) .log { height: 4.2rem; padding-top: 0.3rem; }
+.v-tiny .log { height: 3.4rem; }
 .v-tiny { --s: 21px; --hs: 28px; }
 .v-tiny .opp-tools { display: none; }
 .v-tiny .cpu-hand .tag { display: none; }
@@ -560,13 +561,60 @@ select option { color: #1b2523; background: #fff; }
 }
 :is(.v-compact, .v-tiny) .cpu-hand .who, :is(.v-compact, .v-tiny) .cpu-hand .tag, :is(.v-compact, .v-tiny) .cpu-hand .count { flex: none; }
 
+/* The marker going on a train and coming off (the classes are put on by the page for one redraw: see animateMarkers) */
+@keyframes toyDrop { 0% { transform: translateY(calc(-50% - 30px)) scale(1.3); opacity: 0; } 55% { transform: translateY(calc(-50% + 3px)) scale(.96, 1.05); opacity: 1; } 75% { transform: translateY(calc(-50% - 4px)) scale(1.02); } 100% { transform: translateY(-50%) scale(1); opacity: 1; } }
+.toy-train.toy-in { animation: toyDrop .6s cubic-bezier(.3,.7,.4,1) both; }
+.marker-fly { z-index: 60; }
+.marker-fly .toy-train { position: static; transform: none; display: block; width: 100%; height: 100%; }
+@media (prefers-reduced-motion: reduce) { .toy-train.toy-in { animation: none; } }
+
+/* In Compact and Tiny the history stays at the bottom of the screen (the page scrolls behind it) */
+:is(.v-compact, .v-tiny) .log { position: sticky; bottom: 0; z-index: 12; background: transparent; margin: 0 -4px; padding-left: 8px; padding-right: 8px; }
+
+/* Whose turn it is ("tunnel vision"): their row is lit from the left, the board darkens at its edges, and the other rows dim and soften. The light is .spot, which slides from row to row
+ * (see moveSpot). Rows you can play on (a target, a double to cover, a tile being dragged over) are never dimmed. */
+.track { position: relative; }
+.track > .track-label, .track > .rail { position: relative; z-index: 1; }
+.tracks.has-turn { box-shadow: inset 0 0 40px 10px rgba(0, 0, 0, 0.35); }
+.tracks.has-turn .track:not(.turn):not(.target):not(.must):not(.drop):not(.preview) { background: rgba(0, 0, 0, 0.28); }
+.tracks.has-turn .track:not(.turn):not(.target):not(.must):not(.drop):not(.preview) > .track-label { opacity: 0.5; filter: saturate(0.5); }   /* only the row and its label dim: dominos are never dimmed or blurred */
+.tracks.shift .track:not(.turn):not(.target):not(.must):not(.drop):not(.preview) { animation: dimIn .5s ease-out; }
+@keyframes dimIn { from { background: transparent; } }
+.track.turn { z-index: 3; }
+.spot { position: absolute; inset: 0; z-index: 0; pointer-events: none; transform-origin: 0 0;
+  background: radial-gradient(ellipse 80% 140% at 0% 50%, rgba(255, 236, 160, 0.55), rgba(255, 236, 160, 0.16) 55%, rgba(255, 236, 160, 0) 100%);
+  box-shadow: 0 0 28px 4px rgba(255, 214, 110, 0.3); }
+@media (prefers-reduced-motion: reduce) { .tracks.shift .track { animation: none !important; } }
+.track-name { justify-self: center; width: fit-content; max-width: 100%; text-align: center; }
+.track-label > .track-info, .track-label > .cover { text-align: center; }
+
+/* The history has no background of its own (the table shows through); a soft dark edge keeps the words readable over whatever is under them. */
+.log { background: transparent; }
+.log ol { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 8px rgba(0, 0, 0, 0.6); }
+/* A long name never runs into the first domino of its train: it breaks inside the word if it has to, and shrinks / is cut after three lines on the small layouts. */
+.track-label { min-width: 0; overflow: hidden; }
+.track-name { min-width: 0; overflow-wrap: anywhere; hyphens: auto; }
+.track-name.long { font-size: 0.92rem; }
+:is(.v-compact, .v-tiny) .track-name.long { font-size: .68rem; line-height: 1.15; }
+:is(.v-compact, .v-tiny) .track-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+
+/* In Compact and Tiny the history floats over the page at the bottom of the screen with no background at all (the soft dark edge on its words keeps them readable). */
+:is(.v-compact, .v-tiny) .log { }
+/* a long name in the scores at the top is cut with an ellipsis instead of pushing the menu button onto a second line */
+.bar.small .totals .tot { min-width: 0; max-width: 5.2em; }
+.bar.small .totals .tot span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.menu-range { display: grid; gap: 2px; padding: 4px 4px 2px; font-size: .75rem; }
+.menu-range span { opacity: .75; }
+.menu-range input[type="range"] { width: 100%; margin: 0; accent-color: var(--brass); }
+
 </style>
 </head>
 <body>
 <div id="app"></div>
 <noscript>Mexican Train needs JavaScript turned on to run.</noscript>
 <script>
-window.MT_BUILD = "3870dfc588";
+window.MT_BUILD = "ae98804187";
 (function (global) {
   'use strict';
 
@@ -711,10 +759,22 @@ window.MT_BUILD = "3870dfc588";
 
   /* One normal turn: a tile (plus the forced follow-up after a double). */
   async function playTurn(game, player, controller, ui) {
+    game.turn = player.id;                                             // whose turn it is: the page lights up their name
     if (ui.onTurnStart) ui.onTurnStart(game, player);                  // (once per turn, not again for the cover of a double or a draw: the page plays its "your turn" sound here)
+    let firstGo = true;
     for (;;) {
       let moves = legalMoves(game, player);
       let drew = null;
+
+      if (firstGo && moves.length > 0 && !game.openDouble && game.boneyard.length > 0 && controller.wantsDraw && controller.wantsDraw(game, player, moves)) {     // a draw it did not have to make (Easy): then any play that fits
+        await ui.onNeedDraw(game, player, { optional: true });
+        drew = game.boneyard.pop();
+        player.hand.push(drew);
+        noteDraw(game, player);
+        await ui.onDraw(game, player, drew);
+        moves = legalMoves(game, player);
+      }
+      firstGo = false;
 
       if (moves.length === 0) {
         if (game.boneyard.length > 0) {
@@ -845,7 +905,11 @@ window.MT_BUILD = "3870dfc588";
     return { winner: lowest.length === 1 ? lowest[0] : null, blocked: true };
   }
 
-  async function playRound(game, startIndex, controllers, ui, hooks) {
+  async function playRound(game, ...args) {
+    try { return await playRoundInner(game, ...args); }
+    finally { if (game) game.turn = null; }
+  }
+  async function playRoundInner(game, startIndex, controllers, ui, hooks) {
     if (game.opening) {
       // everybody builds at once; the phase ends when the last player is done
       await Promise.all(game.players.map(p => buildPhase(game, p, controllers[p.id], ui)));
@@ -1183,20 +1247,32 @@ window.MT_BUILD = "3870dfc588";
     return roll < w.p ? { type: 'undo', wobble: true } : null;
   }
 
-  /* A computer in the opening sometimes TRIES a tile on the wrong train first (the face-down tile goes to another train and comes back; nothing in the game changes): half as
-   * often as it takes a tile back for second thoughts (WOBBLE), and at most half as many times in an opening. Decided from the position, like the take-backs. Returns { trainId }
-   * (the train it tried) or null. Called once for each tile it is about to lay. */
-  const TRY_SHARE = 0.5;
-  function invalidAttempt(game, player, info, level) {
-    const w = WOBBLE[level], st = game.opening && game.opening[player.id];
-    if (!w || !st || !info || !info.moves || !info.moves.length || (st.tried || 0) >= Math.ceil(w.max * TRY_SHARE)) return null;
-    const train = game.trains[player.id];
-    const h = strHash('try|' + player.hand.map(key).join(',') + '|' + train.tiles.map(key).join(',') + '|' + (st.undos || 0) + '|' + game.boneyard.length + '|' + (st.tried || 0));
-    if (mulberry32(h)() >= w.p * TRY_SHARE) return null;
-    const others = Object.keys(game.trains).filter(id => id !== player.id);
-    if (!others.length) return null;
-    st.tried = (st.tried || 0) + 1;
-    return { trainId: others[Math.min(others.length - 1, Math.floor(mulberry32(h ^ 0x9e3779b9)() * others.length))] };
+  /* Easy sometimes draws a tile although it has a play (about one turn in five): the game lets it, and after the draw it plays any tile that fits, the new one or one it
+   * already held. It is a slip of the careless level only. Decided from the position (not the game's random numbers), so it never disturbs the deals. */
+  const EASY_DRAW = 0.2;
+  function easyDrawsAnyway(game, player, moves, level) {
+    if (level !== 'easy' || game.openDouble || !game.boneyard.length || !moves || !moves.length) return false;
+    const h = strHash('draw|' + player.hand.map(key).join(',') + '|' + Object.keys(game.trains).map(id => id + ':' + game.trains[id].tiles.length).join(',') + '|' + game.boneyard.length);
+    return mulberry32(h)() < EASY_DRAW;
+  }
+
+  /* A computer, once the turns have started (never while it builds its first train), sometimes TRIES a tile on a train it does not fit: a face-down tile goes to that train
+   * and comes back, and nothing in the game changes. It is a chance on each of its turns, so the slips are scattered at random through the round, a few for a careless
+   * level and hardly any for Expert, and never more than `max` in a round. Decided from the position (its hand, the trains, the boneyard, and how many it has made), not
+   * from the game's random numbers, so it never disturbs the deals and the same position gives the same answer. Returns { trainId } (the train it tried) or null. */
+  const TURN_TRY = { easy: { p: 0.12, max: 5 }, normal: { p: 0.05, max: 3 }, hard: { p: 0.025, max: 2 }, expert: { p: 0.012, max: 1 } };
+  function turnTry(game, player, moves, level) {
+    const w = TURN_TRY[level];
+    const made = (game.tries && game.tries[player.id]) || 0;
+    if (!w || made >= w.max || game.openDouble || !moves || !moves.length) return null;
+    const legal = new Set(moves.map(m => m.trainId));
+    const wrong = Object.keys(game.trains).filter(id => !legal.has(id));              // a train none of its tiles can go on
+    if (!wrong.length) return null;
+    const h = strHash('try|' + player.hand.map(key).join(',') + '|' + Object.keys(game.trains).map(id => id + ':' + game.trains[id].tiles.length).join(',') + '|' + game.boneyard.length + '|' + made);
+    if (mulberry32(h)() >= w.p) return null;
+    if (!game.tries) game.tries = {};
+    game.tries[player.id] = made + 1;
+    return { trainId: wrong[Math.min(wrong.length - 1, Math.floor(mulberry32(h ^ 0x9e3779b9)() * wrong.length))] };
   }
 
   /* What the computer does in the opening: lay down its longest chain one tile at a time (with some second thoughts on the way: see WOBBLE),
@@ -3025,11 +3101,11 @@ window.MT_BUILD = "3870dfc588";
   const trainColor = (S, id) => { const n = S.seats && S.seats[id]; return Number.isInteger(n) && n >= 0 && n <= 3 ? n : Math.max(0, PLAYER_IDS.indexOf(id)); };
   /* The skill of each computer player: the first uses the "Computer skill" setting, the second (if there is one) its own. */
   const levelFor = (S, id) => (id === 'cpu3' ? S.opts.level3 : id === 'cpu2' ? S.opts.level2 : S.opts.level);
-  const nameOf = (S, id) => (id === 'human' ? 'You' : id === 'cpu3' ? (S.cpu3Name || 'Computer') : id === 'cpu2' ? (S.cpu2Name || 'Computer') : cpuName(S));
+  const nameOf = (S, id) => (id === 'human' ? (S.myName && !S.online ? S.myName : 'You') : id === 'cpu3' ? (S.cpu3Name || 'Computer') : id === 'cpu2' ? (S.cpu2Name || 'Computer') : cpuName(S));
   const listOf = a => (a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
 
   function trainName(S, id) {
-    return id === 'human' ? 'Your train' : id === 'cpu' ? `${cpuName(S)}'s train` : id === 'cpu2' || id === 'cpu3' ? `${nameOf(S, id)}'s train` : 'Mexican train';
+    return id === 'human' ? (S.myName && !S.online ? `${S.myName}'s train` : 'Your train') : id === 'cpu' ? `${cpuName(S)}'s train` : id === 'cpu2' || id === 'cpu3' ? `${nameOf(S, id)}'s train` : 'Mexican train';
   }
 
   function trainRef(S, id, actor) {
@@ -3106,8 +3182,9 @@ window.MT_BUILD = "3870dfc588";
     const item = (action, text) => `<button class="btn" role="menuitem" data-action="${action}">${text}</button>`;
     return `<div class="menu" role="menu" aria-label="Menu">
         ${full ? item('toggleSound', S.opts.sound ? 'Mute' : 'Unmute') + item('toggleStyle', S.opts.style === 'numbers' ? 'Show pips' : 'Show numbers') + item('openRules', 'Rules') : ''}
-        ${g ? item('openMoves', 'Game history') : ''}
+        ${g ? item('toggleLog', S.opts.log === false ? 'Show game history' : 'Hide game history') : ''}
         ${full ? (on ? item('askLeave', 'Leave game') : item('newGame', 'New game')) : ''}
+        <label class="menu-range"><span>Hand background</span><input type="range" min="0" max="100" step="5" value="${S.opts.tray === undefined ? 50 : S.opts.tray}" data-range="tray" aria-label="Hand background, from see-through to solid"></label>
         <div class="menu-views" role="group" aria-label="Layout"><span>Layout</span>${VIEW_IDS.map(v => `<button class="btn" role="menuitemradio" aria-checked="${S.opts.view === v ? 'true' : 'false'}" data-action="setView" data-key="${v}">${VIEW_LABEL[v]}</button>`).join('')}</div>
       </div>`;
   }
@@ -3276,8 +3353,9 @@ window.MT_BUILD = "3870dfc588";
     else if (tr.marker) {
       note = `<span class="lamp"><span>${id === 'human' ? `Open: ${tableIds(S).slice(1).map(x => nameOf(S, x)).join(' and ')} can play here` : 'Open: you can play here'}</span></span>`;
     }
+    const turn = g.turn === id && id !== 'mexican';                    // whose turn it is: their row is lit, and the others are dimmed ("tunnel vision")
     const label = `<div class="track-label">
-        <div class="track-name">${trainName(S, id)}</div>
+        <div class="track-name${trainName(S, id).length > 13 ? ' long' : ''}">${trainName(S, id)}</div>
         <div class="track-info">${note}</div>
         ${must ? '<div class="cover">Cover the double here</div>' : ''}
       </div>`;
@@ -3298,8 +3376,8 @@ window.MT_BUILD = "3870dfc588";
     const preview = !target && !!previewOf(S)[id];
     const drop = S.dropTrain === id;
     const toy = id !== 'mexican' && !hidden && !!tr.marker;           // an open train wears its player's toy train
-    return `<div class="track${target ? ' target' : ''}${must ? ' must' : ''}${preview ? ' preview' : ''}${drop ? ' drop' : ''}${toy ? ' has-toy' : ''}" data-train="${id}">
-      ${label}
+    return `<div class="track${target ? ' target' : ''}${must ? ' must' : ''}${preview ? ' preview' : ''}${drop ? ' drop' : ''}${toy ? ' has-toy' : ''}${turn ? ' turn' : ''}" data-train="${id}">
+      ${turn ? '<span class="spot" aria-hidden="true"></span>' : ''}${label}
       <div class="rail">${toy ? (themeNow(S) === 'lotr' ? ringSVG(trainColor(S, id)) : toyTrainSVG(trainColor(S, id))) : ''}<div class="scroller" data-train="${id}"><div class="track-tiles">${engineTile}${tiles}${ghost}</div></div></div>
     </div>`;
   }
@@ -3488,6 +3566,9 @@ window.MT_BUILD = "3870dfc588";
     return `<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
       <h2 id="dlg-title">Mexican Train</h2>
       <p>Empty your hand before your opponent empties theirs. Play on your train, the shared Mexican train, or any train with a marker on it.</p>
+      <div class="field"><label for="opt-name">Your name</label>
+        <input id="opt-name" type="text" maxlength="10" autocomplete="nickname" placeholder="You" value="${String(S.myName || '').replace(/"/g, '&quot;')}" />
+        <p class="field-note">Up to 10 letters. It is shown on the scoreboard and kept in the game statistics. Leave it empty to be "You".</p></div>
       <div class="field"><label for="opt-rounds">Game length</label>
         <select id="opt-rounds">${optionList([1, 4, 13], o.rounds, v => v === 1 ? 'One round' : v === 4 ? 'Short game, 4 rounds' : 'Full game, 13 rounds')}</select></div>
       <div class="field"><label for="opt-hand">Tiles dealt to each player</label>
@@ -3608,7 +3689,7 @@ window.MT_BUILD = "3870dfc588";
       <h2 id="dlg-title">${title}</h2>
       <div class="final">${ids.map((id, i) => `<div class="tot"><b data-count="${i}" aria-hidden="true">${countShown(S, i, score(id))}</b><span class="sr-only">${score(id)} points,</span><span>${nameOf(S, id)}</span></div>`).join('')}</div>
       <p>Lowest score wins. ${S.online ? `You played ${rivals} online.` : tableIds(S).length > 2 ? `You played ${listOf(ids.slice(1).map(id => `${nameOf(S, id)} (${LEVEL_LABEL[levelFor(S, id)]})`))}.` : `You played ${cpuName(S)} on ${LEVEL_LABEL[S.opts.level]}.`}</p>
-      ${S.online ? onlineAgainHTML(S) : '<div class="actions"><button class="btn primary" data-action="newGame" data-primary="1">Play again</button></div>'}
+      ${S.online ? onlineAgainHTML(S) : '<div class="actions"><button class="btn" data-action="newGame">Quit</button><button class="btn primary" data-action="playAgain" data-primary="1">Play again</button></div>'}
     </div></div>`;
   }
   /* Playing again, in a hosted game: anyone may ask once they have seen the final score, and the game starts when everyone has. The server says
@@ -3671,7 +3752,7 @@ window.MT_BUILD = "3870dfc588";
       ${host ? '' : `<div class="field"><label for="net-code">Join code</label>
         <input id="net-code" type="text" value="${esc(f.code || '')}" placeholder="ABC-DEF" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12"></div>`}
       <div class="field"><label for="net-name">Your name</label>
-        <input id="net-name" type="text" value="${esc(f.name || '')}" placeholder="${host ? 'Host' : 'Guest'}" autocomplete="nickname" maxlength="20"></div>
+        <input id="net-name" type="text" value="${esc(f.name || '')}" placeholder="${host ? 'Host' : 'Guest'}" autocomplete="nickname" maxlength="10"></div>
       ${host ? `<div class="field"><label for="net-rounds">Game length</label>
         <select id="net-rounds">${optionList([1, 4, 13], Number(f.rounds) || 4, v => v === 1 ? 'One round' : v === 4 ? 'Short game, 4 rounds' : 'Full game, 13 rounds')}</select></div>
       <div class="field"><label for="net-hand">Tiles dealt to each player</label>
@@ -3774,10 +3855,10 @@ window.MT_BUILD = "3870dfc588";
     const g = S.game;
     const body = g
       ? viewOpp(S) +
-        `<section class="tracks" aria-label="Trains">${tableIds(S).slice(1).map(id => viewTrack(S, id)).join('')}${viewTrack(S, 'mexican')}${viewTrack(S, 'human')}</section>` +
-        viewStatus(S) + viewTray(S) + (viewMode(S) === 'roomy' ? viewLog(S) : '')
+        `<section class="tracks${g.turn && g.turn !== 'mexican' && g.trains[g.turn] ? ' has-turn' : ''}" aria-label="Trains">${tableIds(S).slice(1).map(id => viewTrack(S, id)).join('')}${viewTrack(S, 'mexican')}${viewTrack(S, 'human')}</section>` +
+        viewStatus(S) + viewTray(S) + (S.opts.log !== false ? viewLog(S) : '')
       : '<section class="empty"><p>Choose your game settings to deal the first round.</p></section>';
-    return `<div class="shell v-${viewMode(S)}">${viewBar(S)}<main class="table${themeNow(S) === 'lotr' ? ' art-lotr' : ''}">${body}</main>${viewOverlay(S)}${S.debugNet && S.online ? viewNetDebug(S) : ''}</div>`;
+    return `<div class="shell v-${viewMode(S)}" style="--tray-a:${S.opts.tray === undefined ? 50 : S.opts.tray}%">${viewBar(S)}<main class="table${themeNow(S) === 'lotr' ? ' art-lotr' : ''}">${body}</main>${viewOverlay(S)}${S.debugNet && S.online ? viewNetDebug(S) : ''}</div>`;
   }
   /* ?debug=1: the last connection events, on the page, so a drop can be understood (and copied) without a console. */
   function viewNetDebug(S) {
@@ -3994,10 +4075,10 @@ window.MT_BUILD = "3870dfc588";
 
   /* Names end up in text on the other player's screen, so they are cleaned both where they are
    * made (the server) and where they arrive (the page): letters, digits, spaces and . _ - ' only,
-   * at most 20 characters. */
+   * at most 10 characters (the board has room for no more). */
   function cleanPlayerName(raw, fallback) {
-    const s = String(raw === undefined || raw === null ? '' : raw).replace(/[^\p{L}\p{N} ._'-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 20);
-    return s || fallback || 'Player';
+    const s = String(raw === undefined || raw === null ? '' : raw).replace(/[^\p{L}\p{N} ._'-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 10);
+    return s || (fallback === '' ? '' : fallback || 'Player');
   }
 
   /* "192.168.1.23:8080", "http://myhost:3000/", "ws://10.0.0.5" -> "192.168.1.23:8080" ... or null.
@@ -4099,7 +4180,7 @@ window.MT_BUILD = "3870dfc588";
   const VIEW_IDS = ['auto', 'roomy', 'compact', 'tiny'];
   const VIEW_LABEL = { auto: 'Auto', roomy: 'Roomy', compact: 'Compact', tiny: 'Tiny' };
   const viewMode = S => (S.opts && S.opts.view === 'roomy' ? 'roomy' : S.opts && S.opts.view === 'compact' ? 'compact' : S.opts && S.opts.view === 'tiny' ? 'tiny' : (S.narrow ? 'compact' : 'roomy'));
-  const DEFAULT_OPTS = { rounds: 4, hand: 15, style: 'pips', sound: true, level: 'normal', chat: true, allowHints: true, cpus: 1, level2: 'normal', level3: 'normal', theme: 'classic', view: 'auto' };
+  const DEFAULT_OPTS = { tray: 50, rounds: 4, hand: 15, style: 'pips', sound: true, level: 'normal', chat: true, allowHints: true, cpus: 1, level2: 'normal', level3: 'normal', theme: 'classic', view: 'auto', log: true };
   const FLASH_MS = 1100;   // length of the draw-button flash; must match the CSS animation
 
   // Names the computer player can pick from (none ends in "s", so "Name's train" reads well).
@@ -4173,7 +4254,9 @@ window.MT_BUILD = "3870dfc588";
       const level2 = LEVELS.includes(o.level2) ? o.level2 : 'normal';          // the second computer's skill
       const theme = THEME_IDS.includes(o.theme) ? o.theme : 'classic';             // who the computer players are
       const view = VIEW_IDS.includes(o.view) ? o.view : 'auto';                   // how much room the board takes: Auto (Compact on a phone), Roomy, Compact or Tiny
-      return { rounds, hand, style, sound: snd, level, chat, allowHints, cpus, level2, level3, theme, view };
+      const log = o.log !== false;                                                    // the game history at the bottom of the board, in every layout (hidden or shown from the menu)
+      const tray = Number.isFinite(Number(o.tray)) ? Math.max(0, Math.min(100, Math.round(Number(o.tray)))) : 50;      // how solid the brown hand tray is: 0 (see-through) to 100 (solid); the tiles on it are always solid
+      return { rounds, hand, style, sound: snd, level, chat, allowHints, cpus, level2, level3, theme, view, log, tray };
     }
     function loadOpts() {
       try { return sanitize(Object.assign({}, DEFAULT_OPTS, JSON.parse(storage.get('mt-opts') || '{}'))); }
@@ -4183,7 +4266,7 @@ window.MT_BUILD = "3870dfc588";
 
     const S = {
       opts: null, overlay: 'setup', modal: null, matchActive: false,
-      game: null, roundIndex: 0, startIndex: 0, totals: { human: 0, cpu: 0 }, cpuName: null,
+      game: null, roundIndex: 0, startIndex: 0, totals: { human: 0, cpu: 0 }, cpuName: null, myName: (() => { try { return cleanPlayerName(storage.get('mt-myname'), ''); } catch (e) { return ''; } })(),
       awaiting: null, selectedKey: null, drawnKey: null, freshKey: null, lastPlay: null, revealed: null, plan: null,
       hoverKey: null, flashPhase: 0, handOrder: null, handArranged: false, slotMemory: {}, flips: {}, flipLocked: {}, handCols: 0, handColsUsed: 0, unlucky: {}, coverDraw: false, dragKey: null,
       dropTrain: null, dropFrom: null, comment: null, pendingRating: null, lastCommentAt: -Infinity, lastLine: null,
@@ -4209,6 +4292,89 @@ window.MT_BUILD = "3870dfc588";
       S.handCols = n;
       return n !== S.handColsUsed;
     }
+    /* The marker on a train (the toy train, or the ring) is put on with a little drop and taken off with a lift. A redraw makes every element new, so the page
+     * notes which trains wore a marker (and a copy of it) before the redraw and compares afterwards: a marker that is new drops in (onto the leftmost domino: the tiles never move over for it),
+     * one that has gone is lifted away by a copy that flies on <body>. Nothing happens at the start of a round or when a game is dealt (the key below changes),
+     * or with reduced motion. */
+    function markerSnapshot() {
+      const snap = { key: S.game ? S.roundIndex + '|' + S.game.engine + '|' + (S.game.players ? S.game.players.length : 0) : null, trains: {} };
+      try {
+        if (!root.querySelectorAll || !S.game || S.markerKey !== snap.key) return snap;
+        root.querySelectorAll('.track[data-train]').forEach(tr => {
+          const t = tr.querySelector('.toy-train');
+          snap.trains[tr.dataset.train] = t ? { rect: t.getBoundingClientRect(), node: t.cloneNode(true) } : null;
+        });
+        snap.valid = true;
+      } catch (e) { snap.valid = false; }
+      return snap;
+    }
+    function animateMarkers(before) {
+      S.markerKey = before.key;
+      if (reduced || !before.valid || !root.querySelectorAll) return;
+      const doc = root.ownerDocument;
+      root.querySelectorAll('.track[data-train]').forEach(tr => {
+        const id = tr.dataset.train, was = before.trains[id], now = tr.querySelector('.toy-train');
+        if (now && was === null) {                                         // put on
+          now.classList.add('toy-in');
+        } else if (!now && was) {                                          // taken off
+          if (!doc || !doc.body || !was.rect || !(was.rect.width > 0)) return;
+          const wrap = doc.createElement('div');
+          wrap.className = 'flying marker-fly';
+          wrap.style.left = was.rect.left + 'px'; wrap.style.top = was.rect.top + 'px'; wrap.style.width = was.rect.width + 'px'; wrap.style.height = was.rect.height + 'px';
+          was.node.style.width = '100%'; was.node.style.height = '100%';
+          const svg = was.node.querySelector && was.node.querySelector('svg');
+          if (svg) { svg.style.width = '100%'; svg.style.height = '100%'; }
+          wrap.appendChild(was.node);
+          doc.body.appendChild(wrap);
+          const done = () => { if (wrap.remove) wrap.remove(); };
+          if (wrap.animate) {
+            const an = wrap.animate([
+              { transform: 'translateY(0) scale(1)', opacity: 1 },
+              { offset: 0.35, transform: 'translateY(-4px) scale(1.12)', opacity: 1 },
+              { transform: 'translateY(-34px) scale(1.25) rotate(-6deg)', opacity: 0 },
+            ], { duration: 520, easing: 'ease-in', fill: 'forwards' });
+            if (an.finished && an.finished.then) an.finished.then(done, done); else an.onfinish = done;
+          } else done();
+          setTimeout(done, 1200);
+        }
+      });
+    }
+    /* The light on the row of the player whose turn it is slides from the row it was on to the next one (it is a new element after every redraw, so the page notes where the old
+     * one was, and plays the move from there: the same trick as the flying tiles); the rows that are not lit dim in again as it goes. Nothing is animated with reduced motion. */
+    // The light is rebuilt with every redraw, and a turn causes several, so a slide is always carried on from where the light is right now (its box, with the slide
+    // in progress included) rather than started over or cut short; and between turns, while no light is shown, its last place is remembered.
+    const SPOT_MS = 650;
+    let lastSpot = null;                               // { id, rect, until }: the light's last row, where it looked to be, and when its slide ends
+    function spotSnapshot() {
+      try {
+        const el = root.querySelector && root.querySelector('.spot');
+        if (el) {
+          const tr = el.closest ? el.closest('.track') : null;
+          return { id: tr ? tr.dataset.train : null, rect: el.getBoundingClientRect() };
+        }
+        if (!lastSpot) return null;
+        const row = root.querySelector(`.track[data-train="${lastSpot.id}"]`);
+        if (!row) return null;
+        return { id: lastSpot.id, rect: now() < lastSpot.until ? lastSpot.rect : row.getBoundingClientRect() };
+      } catch (e) { return null; }
+    }
+    function moveSpot(before) {
+      try {
+        const el = root.querySelector && root.querySelector('.spot');
+        if (!el) return;
+        const tr = el.closest ? el.closest('.track') : null, id = tr ? tr.dataset.train : null;
+        const nowRect = el.getBoundingClientRect();
+        lastSpot = { id, rect: nowRect, until: 0 };
+        if (reduced || !el.animate || !(nowRect.width > 0)) return;
+        const tracks = root.querySelector('.tracks');
+        if (!before) { el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 350, easing: 'ease-out' }); if (tracks && tracks.classList) tracks.classList.add('shift'); return; }
+        const dx = before.rect.left - nowRect.left, dy = before.rect.top - nowRect.top, sx = before.rect.width / nowRect.width, sy = before.rect.height / nowRect.height;
+        if (before.id === id && Math.abs(dx) < 2 && Math.abs(dy) < 2 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) return;   // already in place
+        if (tracks && tracks.classList) tracks.classList.add('shift');
+        el.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` }, { transform: 'none' }], { duration: SPOT_MS, easing: 'cubic-bezier(.45, 0, .2, 1)' });
+        lastSpot = { id, rect: before.rect, until: now() + SPOT_MS };
+      } catch (e) { /* the light just jumps */ }
+    }
     function render(force) {                           // returns whether the page was redrawn
       if (!force && S.overlay && S.lastDialog === S.overlay) { if (dock) dock.sync(false); return false; }
       S.flashPhase = Math.floor(now() % FLASH_MS);   // re-drawing restarts CSS animations; this keeps the flash in step
@@ -4222,8 +4388,12 @@ window.MT_BUILD = "3870dfc588";
       const logBefore = root.querySelector ? root.querySelector('.log') : null;
       const logSaved = logBefore && typeof logBefore.scrollTop === 'number' ? { top: logBefore.scrollTop, height: logBefore.scrollHeight } : null;
 
+      const toysBefore = markerSnapshot();
+      const spotBefore = spotSnapshot();
       syncCount();
       root.innerHTML = viewApp(S);
+      animateMarkers(toysBefore);
+      moveSpot(spotBefore);
       if (logSaved && logSaved.top > 0) {                                  // (at the top, the newest, it stays at the top: nothing to keep)
         const logNow = root.querySelector('.log');
         if (logNow && typeof logNow.scrollTop === 'number') logNow.scrollTop = logSaved.top + Math.max(0, logNow.scrollHeight - logSaved.height);
@@ -4466,20 +4636,22 @@ window.MT_BUILD = "3870dfc588";
     /* ---------- hooks the rules engine calls ---------- */
     const ui = {
       // --- normal turns ---
-      onTurnStart(game, player) { if (player.id === 'human') turnCue(); },     // the soft low sound when it becomes your turn (online: where the server says so)
-      async onNeedDraw(game, player) {
-        S.coverDraw = player.hand.length === 0;                          // (a draw to cover a last double: nothing to grumble about)
+      onTurnStart(game, player) { if (player.id === 'human') turnCue(); else render(); },     // the soft low sound when it becomes your turn (online: where the server says so)
+      async onNeedDraw(game, player, opt) {
+        const optional = !!(opt && opt.optional);                        // (a draw it chose to make, with a play in its hand)
+        S.coverDraw = player.hand.length === 0 || optional;              // (a draw to cover a last double, or one it chose: nothing to grumble about)
+        S.voluntaryDraw = optional;
         if (player.id === 'human') await awaitUser('draw');
         else {
           setBanner(player.hand.length === 0
             ? `${nameOf(S, player.id)} played a double as their last tile. It cannot go out, so they draw to cover it.`
-            : `${nameOf(S, player.id)} has nothing to play and draws.`);
+            : optional ? `${nameOf(S, player.id)} decides to draw a tile.` : `${nameOf(S, player.id)} has nothing to play and draws.`);
           render(); await pause(humanPace('draw'));
         }
       },
       async onDraw(game, player, tile) {
         if (player.id === 'human') { say(`You drew ${fmt(tile)}.`); S.drawnKey = key(tile); }
-        else say(`${nameOf(S, player.id)} draws a tile.`);
+        else say(S.voluntaryDraw ? `${nameOf(S, player.id)} draws a tile it did not have to.` : `${nameOf(S, player.id)} draws a tile.`);
         if (player.id === 'human') maybeComment('draw');
         else if (!S.coverDraw) { if (game.openDouble && S.doubleBy && S.doubleBy !== player.id) ownLuck(player.id, 'doubleResent'); else ownLuck(player.id, 'draw'); }
         const spec = { playerId: player.id, key: key(tile) };
@@ -4633,10 +4805,6 @@ window.MT_BUILD = "3870dfc588";
       const action = cpuBuildAction(game, player, info, levelFor(S, player.id));
       const second = game.opening && game.opening[player.id] && game.opening[player.id].lastWobble;       // (it has just taken a tile back because it changed its mind)
       const kind = action.type === 'done' ? 'finish' : action.type === 'draw' ? 'draw' : action.type === 'undo' ? 'undo' : second ? 'replace' : 'place';
-      if (action.type === 'play') {                            // sometimes it tries the wrong train first (a face-down tile goes there and comes back)
-        const t = invalidAttempt(game, player, info, levelFor(S, player.id));
-        if (t) { if (fx && fx.bounce) fx.bounce({ playerId: player.id, trainId: t.trainId }); await pause(1000); }
-      }
       await pause(humanPace(kind));
       return action;
     }
@@ -5231,7 +5399,7 @@ window.MT_BUILD = "3870dfc588";
       if (which === 'online-host') loadHostInfo();
       if (!S.form) {                                  // the address of the server this page came from, else the one used last time
         let sv = '', nm = '';
-        try { sv = String(storage.get('mt-server') || ''); nm = String(storage.get('mt-name') || ''); } catch (e) { /* ignore */ }
+        try { sv = String(storage.get('mt-server') || ''); nm = String(storage.get('mt-name') || storage.get('mt-myname') || ''); } catch (e) { /* ignore */ }
         S.form = { server: defaultServer || sv, name: nm, code: '', rounds: S.opts.rounds, hand: S.opts.hand, computer: 'none', computer2: 'none', theme: S.opts.theme, allowHints: S.opts.allowHints };      // (the host's own setting on the main screen is the starting point)
       }
       if (code) {                                     // from a scanned link: the code is filled in, nothing else to type
@@ -5244,12 +5412,15 @@ window.MT_BUILD = "3870dfc588";
     // a computer player: it plays at its own skill; a cover for an open double is played at once, with no thinking time
     const cpuController = id => ({
       act: cpuAct,
+      wantsDraw: (game, player, moves) => easyDrawsAnyway(game, player, moves, levelFor(S, id)),
       async choose(game, player, moves) {
         const level = levelFor(S, id);
         if (game.openDouble) return cpuChooseAsync(game, player, moves, level);
         setBanner(`${nameOf(S, id)} is thinking...`);
         render();
         await pause(humanPace('place'));
+        const t = turnTry(game, player, moves, level);        // now and then it tries a train the tile does not go on first (a face-down tile goes there and comes back)
+        if (t) { if (fx && fx.bounce) fx.bounce({ playerId: id, trainId: t.trainId }); await pause(1000); }
         return cpuChooseAsync(game, player, moves, level);
       },
     });
@@ -5311,7 +5482,7 @@ window.MT_BUILD = "3870dfc588";
       const held = createRoundBuffer(events => logSender.send(gameLogId, events));          // (what is held here is let go when the round ends, and not before)
       gameRec = createRecorder(ev => held.push(ev), now);
       gameRec.game({ mode: 'local', build: env.build || '', startedAt: new Date(now()).toISOString(), rounds: S.opts.rounds, hand: S.opts.hand, theme: S.opts.theme, allowHints: S.opts.allowHints !== false,
-        players: [{ id: 'human', name: 'You', kind: 'human' }, { id: 'cpu', name: S.cpuName, kind: 'computer', level: S.opts.level }]
+        players: [{ id: 'human', name: S.myName || 'You', kind: 'human' }, { id: 'cpu', name: S.cpuName, kind: 'computer', level: S.opts.level }]
           .concat(S.opts.cpus >= 2 ? [{ id: 'cpu2', name: S.cpu2Name, kind: 'computer', level: S.opts.level2 }] : [])
           .concat(S.opts.cpus === 3 ? [{ id: 'cpu3', name: S.cpu3Name, kind: 'computer', level: S.opts.level3 }] : []) });
       return gameRec;
@@ -5366,17 +5537,18 @@ window.MT_BUILD = "3870dfc588";
     function startGame(a) {
       if (S.online) leaveOnline(true);
       abortMatch();
-      S.opts = sanitize(Object.assign({}, a, { sound: S.opts.sound, chat: S.opts.chat, allowHints: a.allowHints === undefined ? S.opts.allowHints : a.allowHints, cpus: a.cpus === undefined ? S.opts.cpus : a.cpus, level2: a.level2 === undefined ? S.opts.level2 : a.level2, level3: a.level3 === undefined ? S.opts.level3 : a.level3, theme: a.theme === undefined ? S.opts.theme : a.theme, view: a.view === undefined ? S.opts.view : a.view, style: a.style === undefined ? S.opts.style : a.style }));   // the setup form has no sound or tile-face field (that is the "Show numbers" button in the game): keep the current setting
+      S.opts = sanitize(Object.assign({}, a, { sound: S.opts.sound, chat: S.opts.chat, allowHints: a.allowHints === undefined ? S.opts.allowHints : a.allowHints, cpus: a.cpus === undefined ? S.opts.cpus : a.cpus, level2: a.level2 === undefined ? S.opts.level2 : a.level2, level3: a.level3 === undefined ? S.opts.level3 : a.level3, theme: a.theme === undefined ? S.opts.theme : a.theme, view: a.view === undefined ? S.opts.view : a.view, log: S.opts.log, tray: S.opts.tray, style: a.style === undefined ? S.opts.style : a.style }));   // the setup form has no sound or tile-face field (that is the "Show numbers" button in the game): keep the current setting
       S.showHints = true; S.notice = '';
+      if (a.name !== undefined) { S.myName = cleanPlayerName(a.name, ''); try { storage.set('mt-myname', S.myName); } catch (e) { /* ignore */ } }
       saveOpts();
       // a fresh random name for the computer: not one already at the table, and not last game's
       let previous = '';
       try { previous = String(storage.get('mt-last-cpu') || ''); } catch (e) { /* ignore */ }
-      S.cpuName = pickCpuName(S.opts.level, rng, new Set(['you', previous.toLowerCase()]), S.opts.theme);
+      S.cpuName = pickCpuName(S.opts.level, rng, new Set(['you', (S.myName || '').toLowerCase(), previous.toLowerCase()]), S.opts.theme);
       try { storage.set('mt-last-cpu', S.cpuName); } catch (e) { /* ignore */ }
       // a second computer, if asked for: a name of its own skill, different from the first (no random numbers are used for it otherwise)
-      S.cpu2Name = S.opts.cpus >= 2 ? pickCpuName(S.opts.level2, rng, new Set(['you', previous.toLowerCase(), S.cpuName.toLowerCase()]), S.opts.theme) : null;
-      S.cpu3Name = S.opts.cpus === 3 ? pickCpuName(S.opts.level3, rng, new Set(['you', previous.toLowerCase(), S.cpuName.toLowerCase(), S.cpu2Name.toLowerCase()]), S.opts.theme) : null;
+      S.cpu2Name = S.opts.cpus >= 2 ? pickCpuName(S.opts.level2, rng, new Set(['you', (S.myName || '').toLowerCase(), previous.toLowerCase(), S.cpuName.toLowerCase()]), S.opts.theme) : null;
+      S.cpu3Name = S.opts.cpus === 3 ? pickCpuName(S.opts.level3, rng, new Set(['you', (S.myName || '').toLowerCase(), previous.toLowerCase(), S.cpuName.toLowerCase(), S.cpu2Name.toLowerCase()]), S.opts.theme) : null;
       S.overlay = null; S.modal = null; S.game = null;
       S.totals = S.opts.cpus === 3 ? { human: 0, cpu: 0, cpu2: 0, cpu3: 0 } : S.opts.cpus === 2 ? { human: 0, cpu: 0, cpu2: 0 } : { human: 0, cpu: 0 }; S.roundIndex = 0; S.log = []; S.banner = '';
       runMatch().catch(err => {
@@ -5646,6 +5818,7 @@ window.MT_BUILD = "3870dfc588";
     function dispatch(a) {
       switch (a.type) {
         case 'startGame': return startGame(a);
+        case 'playAgain': { const o = S.opts; return startGame({ rounds: o.rounds, hand: o.hand, level: o.level, cpus: o.cpus, level2: o.level2, level3: o.level3, theme: o.theme, view: o.view, allowHints: o.allowHints, name: S.myName }); }      // the same game again: the same settings (the computers get new names)
         case 'selectTile': return selectTile(a.key, a.viaMouse);
         case 'rotateTile': return rotateTile(a.key);
         case 'playOn': return playOn(a.train);
@@ -5655,6 +5828,7 @@ window.MT_BUILD = "3870dfc588";
         case 'endBuild': return endBuild();
         case 'dialogOk': return dialogOk();
         case 'openRules': S.menuOpen = false; S.overlay = 'rules'; return render(true);
+        case 'toggleLog': S.menuOpen = false; S.opts.log = S.opts.log === false; saveOpts(); render(true); if (S.game && measureHandColumns()) render(true); return snapTrains();
         case 'openMoves': S.menuOpen = false; S.overlay = 'moves'; return render(true);
         case 'toggleMenu': S.menuOpen = !S.menuOpen; render(true); return keepMenuOnScreen();
         case 'closeMenu': if (S.menuOpen) { S.menuOpen = false; render(true); } return;
@@ -5697,6 +5871,7 @@ window.MT_BUILD = "3870dfc588";
         case 'moveTile': return moveTile(a.key, a.delta);
         case 'snapTrains': return snapTrains();
         case 'measureHand': if (S.game && measureHandColumns()) render(true); return;
+        case 'setTray': { const v = Math.max(0, Math.min(100, Math.round(Number(a.value)))); if (!Number.isFinite(v)) return; S.opts.tray = v; saveOpts(); const sh = root.querySelector && root.querySelector('.shell'); if (sh && sh.style && sh.style.setProperty) sh.style.setProperty('--tray-a', v + '%'); return; }
         case 'toggleSound': return toggleSound();
         case 'toggleChat': return toggleChat();
         case 'netWake': return netWake(a);
@@ -5788,7 +5963,7 @@ window.MT_BUILD = "3870dfc588";
         }
         if (d.action === 'startGame') {
           const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
-          app.dispatch({ type: 'startGame', rounds: val('#opt-rounds'), hand: val('#opt-hand'), level: val('#opt-level'), cpus: val('#opt-cpus'), level2: val('#opt-level2'), level3: val('#opt-level3'), theme: val('#opt-theme'), view: val('#opt-view') });
+          app.dispatch({ type: 'startGame', rounds: val('#opt-rounds'), hand: val('#opt-hand'), level: val('#opt-level'), cpus: val('#opt-cpus'), level2: val('#opt-level2'), level3: val('#opt-level3'), theme: val('#opt-theme'), view: val('#opt-view'), name: val('#opt-name') });
         } else if (d.action === 'hostGame' || d.action === 'joinGame') {
           const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
           app.dispatch({ type: d.action, server: val('#net-server'), name: val('#net-name'), code: val('#net-code'), rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer'), computer2: val('#net-computer2'), theme: val('#net-theme'), allowHints: !(app.state.form && app.state.form.allowHints === false),
@@ -5822,6 +5997,9 @@ window.MT_BUILD = "3870dfc588";
       window.addEventListener('offline', () => app.dispatch({ type: 'netNote', what: 'the browser says it is offline' }));
       window.addEventListener('pageshow', e => { if (e && e.persisted) app.dispatch({ type: 'netWake', why: 'the page was restored from the back/forward cache' }); });
     }
+    root.addEventListener('input', e => {                       // the hand background slider in the menu: no redraw (the menu stays open while it is dragged)
+      if (e.target && e.target.dataset && e.target.dataset.range === 'tray') app.dispatch({ type: 'setTray', value: e.target.value });
+    });
     root.addEventListener('change', e => {
       if (e.target && e.target.name === 'net-via') {                 // how the other player will join (Host screen)
         app.dispatch({ type: 'setJoinVia', value: e.target.value });
@@ -5903,7 +6081,7 @@ window.MT_BUILD = "3870dfc588";
   global.MexicanTrainGame = {
     Engine: {
       newRound, legalMoves, applyMove, undoLast, playTurn, drawAnyway, buildPhase, playRound, isBlocked, cpuChoose,
-      cpuBuildAction, invalidAttempt, TRY_SHARE, cpuChooseAsync, tilesNotSeen, chanceHolds, guessHiddenTiles, longestChain, longestFullChain, buildSteps, handPips, tilePips, mulberry32, shuffle, key, LEVELS, LEVEL_LABEL,
+      cpuBuildAction, turnTry, TURN_TRY, easyDrawsAnyway, EASY_DRAW, cpuChooseAsync, tilesNotSeen, chanceHolds, guessHiddenTiles, longestChain, longestFullChain, buildSteps, handPips, tilePips, mulberry32, shuffle, key, LEVELS, LEVEL_LABEL,
       moveValue, rateMove,
     },
     tileSVG, tileBackSVG, pipPoints, viewApp, createApp, pickCpuName, PIP_COLORS, PACE, CPU_NAMES, renderClack, clackGapMs, renderTurn, renderTick, COUNT_UP, createSound,

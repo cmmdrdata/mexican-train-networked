@@ -220,7 +220,7 @@ const resume = async (port, code, token) => { const c = await connect(port); c.s
     const g2 = await three(T.port, {}, ['ann', 'Ann']);
     ok(g2.a.last('lobby').players.map(p => p.name).join() === 'Ann,ann 2,Ann 3', 'a guest with the host\'s name is "ann 2", and the next one "Ann 3": ' + g2.a.last('lobby').players.map(p => p.name).join());
     const g3 = await three(T.port, {}, ['A'.repeat(20), 'A'.repeat(20)]);
-    ok(g3.a.last('lobby').players.every(p => p.name.length <= 20) && new Set(g3.a.last('lobby').players.map(p => p.name.toLowerCase())).size === 3, 'long names stay within 20 characters and different');
+    ok(g3.a.last('lobby').players.every(p => p.name.length <= 10) && new Set(g3.a.last('lobby').players.map(p => p.name.toLowerCase())).size === 3, 'long names stay within 10 characters and different');
     [g, g2, g3].forEach(x => { x.a.close(); x.b.close(); x.c.close(); });
     await T.srv.close();
   }

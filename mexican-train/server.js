@@ -28,7 +28,7 @@ const https = require('https');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { GameLogs, isThisComputer } = require('./gamelog.js');
+const { GameLogs, LocalTally, isThisComputer } = require('./gamelog.js');
 const { GameHistory } = require('./history.js');
 const crypto = require('crypto');
 let monitorEventLoopDelay = null; try { monitorEventLoopDelay = require('perf_hooks').monitorEventLoopDelay; } catch (e) { /* older Node: no loop-lag figures */ }
@@ -211,6 +211,7 @@ function createGameServer(options) {
   }
   const history = new GameHistory({ file: opt.historyFile, max: opt.historyMax, onError: e => opt.log(`the list of past games could not be saved: ${e && e.message}`) });
   const keepHistory = match => { if (match && !match.recorded && match.roundsPlayed > 0) { match.recorded = true; try { history.add(match.summary()); } catch (e) { /* never a reason to disturb a game */ } } };
+  const localGames = new LocalTally();
   const gamelogs = opt.gameLog ? new GameLogs({ dir: opt.gamesDir, onError: e => opt.log(`the game log has been switched off: ${e && e.message}`) }) : null;
   const http_ = http.createServer((req, res) => {
     const url = String(req.url || '/').split('?')[0];
@@ -218,7 +219,6 @@ function createGameServer(options) {
     if (url === '/gamelog') {                                 // events of a game a page is playing against the computer: kept in this server's games directory
       const reply = (code, text) => { res.writeHead(code, Object.assign({ 'Content-Type': 'text/plain; charset=utf-8' }, headers)); res.end(text || ''); };
       if (req.method !== 'POST') { res.writeHead(405, Object.assign({ Allow: 'POST' }, headers)); return res.end(); }
-      if (!gamelogs) return reply(404, 'This server is not keeping a game log.');
       if (!isThisComputer(req.socket && req.socket.remoteAddress)) return reply(403, 'Only this computer may add to the game log.');
       let size = 0, tooBig = false; const chunks = [];
       req.on('data', c => { size += c.length; if (size > opt.maxLogPost) { tooBig = true; return; } chunks.push(c); });
@@ -226,7 +226,10 @@ function createGameServer(options) {
         if (tooBig) return reply(413, 'Too much at once.');
         let body = null; try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { /* not JSON */ }
         if (!body || typeof body !== 'object') return reply(400, 'Not understood.');
-        return gamelogs.acceptLocal(body.id, body.events) ? reply(204) : reply(400, 'Nothing was kept.');
+        const valid = typeof body.id === 'string' && /^[A-Za-z0-9_-]{6,48}$/.test(body.id) && Array.isArray(body.events) && body.events.length <= 2000;
+        if (!(gamelogs ? gamelogs.acceptLocal(body.id, body.events) : valid)) return reply(400, 'Nothing was kept.');      // (with no game log kept, the events are still counted for the list of past games)
+        try { const sum = localGames.observe(body.id, body.events); if (sum) history.add(sum); } catch (e) { /* never a reason to disturb a game */ }      // the finished game goes into the list of past games, too
+        return reply(204);
       });
       req.on('error', () => reply(400, 'Not understood.'));
       return;
@@ -472,7 +475,7 @@ function createGameServer(options) {
     if (room.computerName) taken.add(room.computerName.toLowerCase());
     if (room.computer2Name) taken.add(room.computer2Name.toLowerCase());
     let name = wanted;
-    for (let n = 2; taken.has(name.toLowerCase()); n++) name = cleanName(wanted.slice(0, 20 - (' ' + n).length) + ' ' + n);      // (kept within 20 characters)
+    for (let n = 2; taken.has(name.toLowerCase()); n++) name = cleanName(wanted.slice(0, 10 - (' ' + n).length) + ' ' + n);      // (kept within 10 characters)
     return name;
   }
   function onJoin(c, msg) {

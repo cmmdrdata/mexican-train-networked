@@ -1,0 +1,95 @@
+<!doctype html><meta charset=utf-8><style>
+*{box-sizing:border-box;margin:0}
+body{background:#111;font-family:Georgia,serif;color:#f5ecd0;padding:18px;display:grid;grid-template-columns:repeat(2,390px);gap:18px}
+.card{width:390px;height:700px;position:relative;overflow:hidden;border-radius:14px}
+svg.scene{position:absolute;inset:0;width:100%;height:100%}
+.cap{position:absolute;left:0;right:0;top:0;z-index:20;padding:8px 12px;font:700 15px system-ui;background:rgba(0,0,0,.65);color:#fff}
+.bar{position:absolute;top:36px;left:0;right:0;height:50px;display:flex;justify-content:space-between;align-items:center;padding:0 14px;z-index:5;font-weight:700;font-size:20px;background:rgba(0,0,0,.35)}
+.rows{position:absolute;top:96px;left:0;right:0;z-index:5}
+.row{height:104px;display:grid;grid-template-columns:110px 1fr;align-items:center;border-bottom:1px solid rgba(255,255,255,.14)}
+.row b{text-align:center;font-size:17px;padding:0 6px;text-shadow:0 1px 3px #000}
+.tiles{display:flex;gap:6px}
+.t{width:70px;height:36px;border-radius:6px;background:linear-gradient(#fbf5df,#e9dcb4);border:1px solid #8a7a50;display:grid;grid-template-columns:1fr 1fr;box-shadow:0 2px 3px rgba(0,0,0,.5);position:relative}
+.t::after{content:"";position:absolute;left:50%;top:4px;bottom:4px;width:1px;background:#8a7a50}
+.t i{background:radial-gradient(circle,#222 0 3px,transparent 3.5px) 30% 30%/50% 50%,radial-gradient(circle,#222 0 3px,transparent 3.5px) 70% 70%/50% 50%}
+.tray{position:absolute;left:10px;right:10px;bottom:12px;height:150px;border-radius:12px;background:rgba(60,34,18,.5);z-index:5;padding:10px;font-weight:700}
+.tray .tiles{margin-top:10px;flex-wrap:wrap}
+</style>
+<svg width=0 height=0 style="position:absolute"><defs>
+<symbol id="loco" viewBox="0 0 300 110">
+ <g fill="currentColor">
+  <rect x="70" y="42" width="140" height="34" rx="6"/>            <!-- boiler -->
+  <rect x="205" y="22" width="48" height="56"/>                     <!-- cab -->
+  <rect x="199" y="16" width="60" height="9"/>                      <!-- cab roof -->
+  <rect x="88" y="22" width="14" height="24"/><path d="M82 22h26l-5 -12h-16z"/>  <!-- stack -->
+  <rect x="140" y="30" width="16" height="14" rx="7"/>              <!-- dome -->
+  <path d="M70 60 L30 92 H70z"/>                                    <!-- cowcatcher -->
+  <rect x="66" y="74" width="190" height="8"/>                      <!-- frame -->
+  <circle cx="90" cy="88" r="14"/><circle cx="128" cy="88" r="14"/><circle cx="166" cy="88" r="14"/><circle cx="232" cy="88" r="18"/>
+  <rect x="86" y="84" width="100" height="5"/>
+  <path d="M256 60h30v26h-30z"/><rect x="258" y="50" width="26" height="12"/><!-- tender start -->
+ </g>
+</symbol>
+<symbol id="car" viewBox="0 0 120 60"><g fill="currentColor"><rect x="0" y="10" width="120" height="34" rx="3"/><circle cx="22" cy="50" r="8"/><circle cx="98" cy="50" r="8"/><rect x="0" y="44" width="120" height="4"/></g></symbol>
+<symbol id="saguaro" viewBox="0 0 40 100"><g fill="currentColor"><rect x="15" y="6" width="10" height="94" rx="5"/><path d="M15 60h-6a5 5 0 0 1-5-5V34a5 5 0 0 1 10 0v16h1z"/><path d="M25 48h6a5 5 0 0 0 5-5V24a5 5 0 0 0-10 0v14h-1z"/></g></symbol>
+<symbol id="mesa" viewBox="0 0 300 100"><path fill="currentColor" d="M0 100V70l16-4 10-26 30-4 8-10 60 0 10 10 26 2 8 28 26 4 12 30z"/></symbol>
+<symbol id="pole" viewBox="0 0 20 120"><g fill="currentColor"><rect x="9" y="0" width="3" height="120"/><rect x="0" y="12" width="20" height="3"/><rect x="3" y="24" width="14" height="2"/></g></symbol>
+</defs></svg>
+
+<!-- A: sunset, train crossing a trestle -->
+<div class="card"><svg class=scene viewBox="0 0 390 700" preserveAspectRatio="none">
+ <defs><linearGradient id="gA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a2a5e"/><stop offset="0.410" stop-color="#5a2a5e"/><stop offset="0.557" stop-color="#d2543a"/><stop offset="0.675" stop-color="#f6a950"/><stop offset="0.776" stop-color="#7a3326"/><stop offset="1.000" stop-color="#2a1612"/></linearGradient></defs>
+ <rect width=390 height=700 fill="url(#gA)"/><g transform="translate(0,285)">
+ <circle cx="300" cy="215" r="42" fill="#ffe7a1" opacity=".95"/><circle cx="300" cy="215" r="80" fill="#ffd27a" opacity=".25"/>
+ <use href="#mesa" x="-40" y="150" width="330" height="110" color="#4a1d22"/><use href="#mesa" x="150" y="165" width="300" height="95" color="#3a1519" />
+ <rect x="0" y="258" width="390" height="442" fill="#2a1612" opacity=".0"/>
+ <g color="#1b0d0d"><use href="#loco" x="20" y="150" width="190" height="70"/><use href="#car" x="205" y="170" width="70" height="35"/><use href="#car" x="272" y="170" width="70" height="35"/>
+  <path d="M0 232h390v6H0z"/><path d="M0 238h6l8 24 8-24h8l8 24 8-24h8l8 24 8-24h8l8 24 8-24h8l8 24 8-24h8l8 24 8-24h8l8 24 8-24h8l8 24 8-24h8l8 24 8-24h8l8 24 8-24h8l8 24 8-24h8l8 24 8-24H390v-2z" opacity=".9"/>
+  <use href="#saguaro" x="-6" y="262" width="30" height="75"/><use href="#saguaro" x="350" y="268" width="26" height="62"/></g>
+ <path d="M30 150c-6-18 10-30 6-48s20-22 40-26" stroke="#3a2a2a" stroke-width="14" fill="none" opacity=".35" stroke-linecap="round"/>
+</g></svg><div class=cap>A · Sunset, train on a trestle</div></div>
+
+<!-- B: night, moon -->
+<div class="card"><svg class=scene viewBox="0 0 390 700" preserveAspectRatio="none">
+ <defs><linearGradient id="gB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#070d24"/><stop offset="0.410" stop-color="#070d24"/><stop offset="0.646" stop-color="#1c2a5a"/><stop offset="0.764" stop-color="#2d3b6d"/><stop offset="1.000" stop-color="#0c1022"/></linearGradient></defs>
+ <rect width=390 height=700 fill="url(#gB)"/><g transform="translate(0,285)">
+ <g fill="#fff" opacity=".8"><circle cx="40" cy="60" r="1.5"/><circle cx="120" cy="90" r="1"/><circle cx="200" cy="50" r="1.5"/><circle cx="260" cy="110" r="1"/><circle cx="340" cy="70" r="1.5"/><circle cx="80" cy="150" r="1"/><circle cx="160" cy="130" r="1"/><circle cx="360" cy="150" r="1"/></g>
+ <circle cx="70" cy="170" r="30" fill="#fff6d0"/><circle cx="80" cy="165" r="28" fill="#1c2a5a" opacity=".0"/>
+ <use href="#mesa" x="-20" y="170" width="260" height="90" color="#0d1330"/><use href="#mesa" x="170" y="185" width="260" height="75" color="#0a0f26"/>
+ <g color="#050816"><rect x="0" y="262" width="390" height="440"/>
+  <use href="#loco" x="110" y="196" width="190" height="70"/><use href="#car" x="296" y="214" width="70" height="42"/><use href="#car" x="0" y="214" width="70" height="42"/><use href="#car" x="62" y="214" width="56" height="42"/>
+  <use href="#saguaro" x="320" y="190" width="40" height="95"/><use href="#saguaro" x="14" y="210" width="26" height="62"/></g>
+ <path d="M120 196c-8-18 12-30 6-48s24-26 46-28" stroke="#cfd7ff" stroke-width="12" fill="none" opacity=".16" stroke-linecap="round"/>
+ <circle cx="130" cy="236" r="3" fill="#ffd27a"/>
+</g></svg><div class=cap>B · Moonlit night run</div></div>
+
+<!-- C: golden hour, telegraph poles, long train low -->
+<div class="card"><svg class=scene viewBox="0 0 390 700" preserveAspectRatio="none">
+ <defs><linearGradient id="gC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7c873"/><stop offset="0.410" stop-color="#f7c873"/><stop offset="0.587" stop-color="#f9e2a8"/><stop offset="0.622" stop-color="#d49a5a"/><stop offset="1.000" stop-color="#6b3c20"/></linearGradient></defs>
+ <rect width=390 height=700 fill="url(#gC)"/><g transform="translate(0,285)">
+ <circle cx="200" cy="140" r="50" fill="#fff6d6"/><circle cx="200" cy="140" r="95" fill="#fff0b8" opacity=".35"/>
+ <use href="#mesa" x="-70" y="180" width="300" height="95" color="#b2613a"/><use href="#mesa" x="180" y="190" width="300" height="85" color="#9a4e2e"/>
+ <g color="#3a1f12"><use href="#pole" x="30" y="190" width="22" height="95"/><use href="#pole" x="190" y="196" width="22" height="90"/><use href="#pole" x="345" y="190" width="22" height="95"/>
+  <path d="M41 205Q115 220 200 207T356 205" stroke="#3a1f12" fill="none" stroke-width="1.5"/>
+  <use href="#loco" x="0" y="212" width="170" height="62"/><use href="#car" x="164" y="228" width="64" height="38"/><use href="#car" x="224" y="228" width="64" height="38"/><use href="#car" x="284" y="228" width="64" height="38"/><use href="#car" x="344" y="228" width="64" height="38"/>
+  <rect x="0" y="268" width="390" height="5"/></g>
+ <path d="M18 212c-6-16 10-26 6-40s18-20 36-22" stroke="#6b4a3a" stroke-width="12" fill="none" opacity=".3" stroke-linecap="round"/>
+</g></svg><div class=cap>C · Golden hour, long freight and telegraph poles</div></div>
+
+<!-- D: vintage sepia poster -->
+<div class="card"><svg class=scene viewBox="0 0 390 700" preserveAspectRatio="none">
+ <defs><linearGradient id="gD" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e8c58a"/><stop offset="0.410" stop-color="#e8c58a"/><stop offset="0.634" stop-color="#f3dcae"/><stop offset="0.640" stop-color="#7a4a2a"/><stop offset="1.000" stop-color="#3b2314"/></linearGradient></defs>
+ <rect width=390 height=700 fill="url(#gD)"/><g transform="translate(0,285)">
+ <g stroke="#d9a25a" stroke-width="3" opacity=".6"><path d="M195 100L0 -40M195 100L90 -40M195 100L195 -40M195 100L300 -40M195 100L390 -40"/></g>
+ <circle cx="195" cy="150" r="56" fill="#c9602e"/>
+ <use href="#mesa" x="-60" y="196" width="300" height="75" color="#7a4a2a"/><use href="#mesa" x="170" y="204" width="300" height="68" color="#6a3e22"/>
+ <g color="#2a170c"><use href="#loco" x="70" y="214" width="190" height="66"/><use href="#car" x="254" y="232" width="62" height="38"/><use href="#saguaro" x="12" y="200" width="36" height="86"/><use href="#saguaro" x="340" y="212" width="28" height="68"/></g>
+ <rect x="8" y="8" width="374" height="684" fill="none" stroke="#2a170c" stroke-width="3" opacity=".8"/>
+</g></svg><div class=cap>D · Vintage sepia poster</div></div>
+<script>
+document.querySelectorAll('.card').forEach(c=>{
+ const tile='<div class=t><i></i><i></i></div>';
+ const n=[['Your train',5],["Jonah's train",4],['Mexican train',3]];
+ c.insertAdjacentHTML('beforeend',`<div class=bar><span>Mexican Train</span><span>0 You &nbsp; 0 Jonah</span></div><div class=rows>${n.map(r=>`<div class=row><b>${r[0]}</b><div class=tiles>${tile.repeat(r[1])}</div></div>`).join('')}</div><div class=tray>Your hand<div class=tiles>${tile.repeat(8)}</div></div>`);
+});
+</script>

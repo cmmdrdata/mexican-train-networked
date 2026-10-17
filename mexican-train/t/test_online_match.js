@@ -119,11 +119,11 @@ const EVENS = [[0, 2], [0, 4], [0, 6], [0, 8], [0, 10], [2, 4], [2, 6], [2, 8], 
 (async () => {
   console.log('1. names and phrases');
   ok(cleanName('Ann') === 'Ann' && cleanName('  Mary   Jane ') === 'Mary Jane', 'ordinary names are kept, spaces tidied');
-  ok(cleanName('<script>alert(1)</script>') === 'scriptalert1script', 'angle brackets, parentheses and slashes are stripped');
+  ok(cleanName('<script>alert(1)</script>') === 'scriptaler', 'angle brackets, parentheses and slashes are stripped');
   ok(cleanName('a"b&c<d>e`f') === 'abcdef' && !/[<>&"`]/.test(cleanName('x<y>"&z`')), 'quotes, ampersands, backticks and brackets are stripped');
-  ok(cleanName("O'Brien-Smith_Jr.") === "O'Brien-Smith_Jr.", "apostrophe, hyphen, underscore and dot are allowed");
+  ok(cleanName("O'Br-ow_J.") === "O'Br-ow_J." && cleanName("O'Brien-Smith_Jr.") === "O'Brien-Sm", "apostrophe, hyphen, underscore and dot are allowed");
   ok(cleanName('Дмитрий') === 'Дмитрий' && cleanName('山田 太郎') === '山田 太郎' && cleanName('José') === 'José', 'letters from any alphabet are allowed');
-  ok(cleanName('x'.repeat(100)).length === 20, 'at most 20 characters');
+  ok(cleanName('x'.repeat(100)).length === 10, 'at most 10 characters');
   ok(cleanName('') === 'Player' && cleanName(null, 'Fallback') === 'Fallback' && cleanName('<>', 'Guest') === 'Guest' && cleanName(undefined) === 'Player', 'an empty or all-stripped name falls back');
   ok(cleanName('\u0000\u202e evil \u200b') === 'evil', 'control and direction-override characters are removed');
   ok(cleanName({ toString() { return 'obj'; } }) === 'obj' && cleanName(12345) === '12345', 'non-strings are converted safely');

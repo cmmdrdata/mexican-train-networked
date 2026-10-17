@@ -125,7 +125,7 @@ const hostile = /<(script|img|svg|iframe|b|i)\b[^>]*>/i;
   ok(P('http://myhost:3000/') === 'myhost:3000' && P('ws://10.0.0.5/ws?x=1') === '10.0.0.5:8080' && P('HTTP://Host.Example.com:81/path') === 'Host.Example.com:81', 'pasted URLs are reduced to host:port');
   ok(P('  localhost:8080  ') === 'localhost:8080' && P('[::1]:9000') === '[::1]:9000', 'spaces and IPv6 in brackets');
   ok([P(''), P('   '), P(null), P(undefined), P('a b'), P('host:0'), P('host:70000'), P('host:abc'), P('999.1.1.1'), P('<script>'), P('host:8080:9'), P('-bad.com'), P('x'.repeat(300)), P('http://'), P(':8080'), P('host name:80')].every(x => x === null), 'nonsense gives null: empty, spaces, bad port, bad IP, markup, double ports');
-  ok(G.cleanPlayerName('<b>Ann</b>') === 'bAnnb' && G.cleanPlayerName('') === 'Player' && G.cleanPlayerName('x'.repeat(50)).length === 20 && G.cleanPlayerName(null, 'Z') === 'Z', 'names are cleaned the same way on the page as on the server');
+  ok(G.cleanPlayerName('<b>Ann</b>') === 'bAnnb' && G.cleanPlayerName('') === 'Player' && G.cleanPlayerName('x'.repeat(50)).length === 10 && G.cleanPlayerName(null, 'Z') === 'Z', 'names are cleaned the same way on the page as on the server');
   ok(G.ONLINE_PHRASES.length >= 8 && JSON.stringify(G.ONLINE_PHRASES) === JSON.stringify(require('../online-match.js').CHAT_PHRASES), 'the quick phrases are defined once and shared with the server');
 
   /* ================================================================== */

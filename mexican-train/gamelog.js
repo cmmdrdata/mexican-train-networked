@@ -94,4 +94,38 @@ class GameLogs {
   }
 }
 
-module.exports = { GameLogs, stamp, safe, isThisComputer, MAX_FILE_BYTES, MAX_EVENT_CHARS, MAX_EVENTS_PER_POST, MAX_LOCAL_FILES };
+/* A single-player game, as the server sees it: the events a page posts (see acceptLocal) are tallied here as they arrive, and when the game's "gameEnd" comes the finished
+ * summary is handed back (once), in the form GameHistory.add takes, so a game against the computer is in the list of past games like a hosted one. A game whose
+ * "game" event was never seen, or in which no round was finished, gives nothing. */
+class LocalTally {
+  constructor(max) { this.games = new Map(); this.max = max || 200; }
+  observe(id, events) {
+    if (typeof id !== 'string' || !Array.isArray(events)) return null;
+    let st = this.games.get(id);
+    let out = null;
+    for (const ev of events) {
+      if (!ev || typeof ev !== 'object') continue;
+      if (ev.e === 'game' && !st) {
+        if (this.games.size >= this.max) this.games.delete(this.games.keys().next().value);
+        const list = Array.isArray(ev.players) ? ev.players.slice(0, 4) : [];
+        st = { done: false, startedAt: Date.parse(ev.startedAt) || Date.now(), rounds: Number(ev.rounds) || 0, hand: Number(ev.hand) || 0, theme: ev.theme, roundsPlayed: 0,
+          players: list.map(p => ({ id: String(p && p.id || ''), name: String(p && p.name || ''), computer: !!(p && p.kind === 'computer'), level: p && p.kind === 'computer' ? p.level : undefined, roundsWon: 0, score: 0 })) };
+        this.games.set(id, st);
+      } else if (st && !st.done && ev.e === 'roundEnd') {
+        st.roundsPlayed++;
+        const w = st.players.find(p => p.id === ev.winner); if (w) w.roundsWon++;
+      } else if (st && !st.done && ev.e === 'gameEnd') {
+        st.done = true;
+        const totals = ev.totals && typeof ev.totals === 'object' ? ev.totals : {};
+        st.players.forEach(p => { p.score = Number(totals[p.id]) || 0; });
+        if (st.roundsPlayed > 0 && st.players.length) {
+          out = { startedAt: st.startedAt, endedAt: Date.now(), result: ev.how === 'finished' ? 'finished' : 'stopped', rounds: st.rounds, roundsPlayed: st.roundsPlayed, hand: st.hand, theme: st.theme,
+            players: st.players.map(p => ({ name: p.name, computer: p.computer, level: p.level, score: p.score, roundsWon: p.roundsWon })) };
+        }
+      }
+    }
+    return out;
+  }
+}
+
+module.exports = { LocalTally, GameLogs, stamp, safe, isThisComputer, MAX_FILE_BYTES, MAX_EVENT_CHARS, MAX_EVENTS_PER_POST, MAX_LOCAL_FILES };

@@ -86,6 +86,11 @@ try:
         pg.screenshot(path=os.path.join(TMP, 'roundend.png'))
         print('4. a game that is left, or whose page is closed, half way')
         pg.click('[data-action="dialogOk"]'); time.sleep(0.5)
+        hist = []; th = time.time()
+        while time.time() - th < 10 and not hist:
+            hist = json.loads(urllib.request.urlopen(f'http://127.0.0.1:{PORT}/history', timeout=3).read()).get('games', []); time.sleep(0.2)
+        ok(len(hist) == 1 and hist[0]['result'] == 'finished' and hist[0]['roundsPlayed'] == 1 and len(hist[0]['players']) == 2, f'the finished one-player game is in the list of past games: {hist}')
+        ok(hist and sum(1 for p in hist[0]['players'] if p['computer']) == 1 and any(not p['computer'] for p in hist[0]['players']), 'with the person and the computer')
         before = logs()
         start_game(pg, '4')
         t4 = time.time()

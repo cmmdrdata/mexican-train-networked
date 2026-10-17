@@ -246,7 +246,7 @@ const structuralLeaks = c => {                                // no real tile of
     const lobN = await h2.c.next(m => m.t === 'lobby' && m.players[1]);
     ok(lobN.players.every(p => !/[<>"&=]/.test(p.name)) && lobN.players[0].name !== lobN.players[1].name, 'hostile names are cleaned, and two players cannot share a name: ' + lobN.players.map(p => p.name).join(' / '));
     const h3 = await host(L.port, 'x'.repeat(200), {}); await h3.c.next(m => m.t === 'lobby');
-    ok(h3.c.last('lobby').players[0].name.length === 20, 'a long name is cut to 20 characters');
+    ok(h3.c.last('lobby').players[0].name.length === 10, 'a long name is cut to 10 characters');
     const h4 = await host(L.port, undefined, { rounds: 'many', hand: -3 }); const l4 = await h4.c.next(m => m.t === 'lobby');
     ok(l4.players[0].name === 'Host' && l4.settings.rounds === 4 && l4.settings.hand === 15, 'a missing name and nonsense settings get defaults');
     [h2.c, g2.c, h3.c, h4.c, third.c].forEach(x => x.close());

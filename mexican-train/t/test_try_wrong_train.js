@@ -1,51 +1,60 @@
 'use strict';
-// A tile tried on a train it does not fit: a face-down tile goes there and comes back. Computers do it at half the rate they take tiles back (per level), and a person's invalid try shows it too, to themselves and (online) to the others.
+// A tile tried on a train it does not fit: a face-down tile goes there and comes back. Computers do it now and then during the turns, never in the opening, and a person's invalid try shows it too, to themselves and (online) to the others.
 require('./game.js');
 const { OnlineMatch } = require('../online-match.js');
 const G = globalThis.MexicanTrainGame, E = G.Engine;
-const { mulberry32, key, newRound, buildPhase, cpuBuildAction, invalidAttempt } = E;
+const { mulberry32, key, newRound, cpuBuildAction } = E;
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL:', m); } };
 const LEVELS = ['easy', 'normal', 'hard', 'expert'];
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const tick = () => new Promise(r => setImmediate(r));
 
-async function opening(level, seed, hand) {
+async function round(level, seed, hand) {
   const g = newRound({ engine: 12, handSize: hand, rng: mulberry32(seed * 7919), simultaneousOpening: true });
-  const p = g.players[1]; let tries = 0, others = new Set();
-  const agent = { act: async (gm, pl, info) => { const a = cpuBuildAction(gm, pl, info, level); if (a.type === 'play') { const t = invalidAttempt(gm, pl, info, level); if (t) { tries++; others.add(t.trainId); } } return a; } };
-  const ui = { onBuildPlay() {}, onBuildUndo() {}, onBuildDraw() {}, onBuildDone() {}, onBuildPass() {} };
-  await buildPhase(g, p, agent, ui);
-  return { tries, takebacks: g.opening[p.id].wobbled || 0, others, st: g.opening[p.id], g };
+  let started = false, turn = 0; const tries = [], turns = { human: 0, cpu: 0 }, bad = [];
+  const ctl = id => ({
+    act: async (gm, pl, info) => cpuBuildAction(gm, pl, info, level),
+    choose: async (gm, pl, moves) => {
+      turn++; turns[id]++;
+      const t = E.turnTry(gm, pl, moves, level);
+      if (t) { tries.push({ turn, who: id, train: t.trainId }); if (!started || moves.some(m => m.trainId === t.trainId) || t.trainId === undefined) bad.push(t); }
+      return E.cpuChooseAsync(gm, pl, moves, level);
+    },
+  });
+  await E.playRound(g, 0, { human: ctl('human'), cpu: ctl('cpu') }, { onNeedDraw() {}, onDraw() {}, onPass() {}, onPlay() {}, onOpeningDone() { started = true; } });
+  return { tries, turn, turns, bad, g };
 }
 
 (async () => {
-console.log('1. how often each level tries a wrong train (thousands of real openings)');
+console.log('1. how often each level tries a wrong train (thousands of real rounds): during the turns, scattered, never in the opening');
+const rate = {};
 for (const level of LEVELS) {
-  let tries = 0, back = 0, maxTries = 0, bad = 0;
-  for (let seed = 1; seed <= 1500; seed++) {
-    const r = await opening(level, seed, 15);
-    tries += r.tries; back += r.takebacks; maxTries = Math.max(maxTries, r.tries);
-    for (const t of r.others) if (t === 'human' ? false : t === 'cpu' ? false : false) bad++;
-    if ([...r.others].some(t => t === 'cpu')) bad++;          // (it is the second player, "cpu": never its own train)
+  let n = 0, rounds = 0, maxRound = 0, bad = 0, withTries = 0, gaps = 0, adjacent = 0, byThird = [0, 0, 0], turns = 0;
+  for (let seed = 1; seed <= 600; seed++) {
+    const r = await round(level, seed, 15);
+    rounds++; turns += r.turn; n += r.tries.length; bad += r.bad.length; maxRound = Math.max(maxRound, ...['human', 'cpu'].map(id => r.tries.filter(t => t.who === id).length));
+    if (r.tries.length) withTries++;
+    r.tries.forEach(t => { byThird[Math.min(2, Math.floor(3 * t.turn / (r.turn + 1)))]++; });
+    for (let i = 1; i < r.tries.length; i++) { gaps++; if (r.tries[i].turn - r.tries[i - 1].turn <= 1) adjacent++; }
   }
-  const ratio = tries / back;
-  ok(back > 0 && tries > 0 && ratio > 0.35 && ratio < 0.65, `${level}: tries ${tries} against ${back} take-backs: ${ratio.toFixed(2)} of them (about half)`);
-  ok(maxTries <= Math.ceil(G.WOBBLE[level].max * G.TRY_SHARE !== undefined ? G.WOBBLE[level].max * 0.5 : 1), `${level}: never more than ${Math.ceil(G.WOBBLE[level].max * 0.5)} in an opening (${maxTries})`);
-  ok(bad === 0, `${level}: always a train that is not its own`);
+  rate[level] = n / turns;
+  ok(n > 0 || level === 'expert', `${level}: it does try (${n} tries in ${rounds} rounds)`);
+  ok(maxRound <= E.TURN_TRY[level].max, `${level}: never more than ${E.TURN_TRY[level].max} a round for one player (${maxRound})`);
+  ok(bad === 0, `${level}: only after the opening, and only on a train none of its tiles go on`);
+  if (n > 40) ok(byThird.every(c => c > 0.15 * n), `${level}: scattered through the whole round, early, middle and late (${byThird.join('/')})`);
+  if (gaps > 20) ok(adjacent / gaps < 0.35, `${level}: not all at once (${(100 * adjacent / gaps).toFixed(0)}% of tries follow straight after another)`);
 }
+ok(rate.easy > rate.normal && rate.normal > rate.hard && rate.hard >= rate.expert, `the careless levels slip more: ${LEVELS.map(l => (100 * rate[l]).toFixed(1) + '%').join(' > ')} of turns`);
 {
-  const t = LEVELS.map(l => 0);
-  ok(E.TRY_SHARE === 0.5, 'the share is one half');
-}
-{
-  // the same position always gives the same answer, and it never disturbs the game's random numbers
-  const a = await opening('easy', 5, 15), b = await opening('easy', 5, 15);
-  ok(a.tries === b.tries && a.takebacks === b.takebacks, 'the same opening gives the same tries');
+  const a = await round('easy', 5, 15), b = await round('easy', 5, 15);
+  ok(JSON.stringify(a.tries) === JSON.stringify(b.tries), 'the same round gives the same tries');
   const g = newRound({ engine: 12, handSize: 15, rng: mulberry32(3), simultaneousOpening: true }); const before = g.rng();
   const g2 = newRound({ engine: 12, handSize: 15, rng: mulberry32(3), simultaneousOpening: true });
-  invalidAttempt(g2, g2.players[1], { moves: [{}] }, 'easy');
+  for (let i = 0; i < 50; i++) E.turnTry(g2, g2.players[1], [{ trainId: 'cpu' }], 'easy');
   ok(g2.rng() === before, 'deciding it uses none of the game\'s random numbers');
+  ok(E.turnTry(g2, g2.players[1], [], 'easy') === null, 'no move, no try');
+  g2.openDouble = { trainId: 'human', value: 1 }; ok(E.turnTry(g2, g2.players[1], [{ trainId: 'human' }], 'easy') === null, 'a cover for an open double is never a try');
 }
 
 console.log('2. the animation itself (fake page)');

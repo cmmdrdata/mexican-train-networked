@@ -163,7 +163,6 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px
 .toy-train.c1 { --tc: #2e72d9; --tc-hi: #98c0ff; --tc-lo: #153d84; --tc-dk: #0a2557; }
 .toy-train.c2 { --tc: #f2b01a; --tc-hi: #ffe495; --tc-lo: #a56f00; --tc-dk: #6a4600; }
 .toy-train.c3 { --tc: #2fa84f; --tc-hi: #9be3ae; --tc-lo: #17692d; --tc-dk: #0b3d19; }          /* a fourth seat */
-.track.has-toy .track-tiles { padding-left: calc(var(--s) * 1.3 + 22px); }
 .tracks { border-top: 1px solid var(--line); }
 .track {
   display: grid; grid-template-columns: 10.5rem minmax(0, 1fr); align-items: stretch;
@@ -222,7 +221,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px
 
 .tray {
   --s: var(--hs);
-  background: linear-gradient(var(--wood), var(--wood-deep));
+  background: linear-gradient(color-mix(in srgb, var(--wood) var(--tray-a, 50%), transparent), color-mix(in srgb, var(--wood-deep) var(--tray-a, 50%), transparent));   /* how solid it is is set from the menu (--tray-a); the tiles on it are always solid */
   border-radius: 14px; padding: 0.5rem 0.7rem 0.8rem;
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.12), 0 6px 14px rgba(0, 0, 0, 0.35);
 }
@@ -531,6 +530,8 @@ select option { color: #1b2523; background: #fff; }
 :is(.v-compact, .v-tiny) .hand { padding-top: 6px; }
 :is(.v-compact, .v-tiny) .hand-grid { gap: 8px 4px; }
 :is(.v-compact, .v-tiny) .tray { padding: 4px 8px 8px; }
+:is(.v-compact, .v-tiny) .log { height: 4.2rem; padding-top: 0.3rem; }
+.v-tiny .log { height: 3.4rem; }
 .v-tiny { --s: 21px; --hs: 28px; }
 .v-tiny .opp-tools { display: none; }
 .v-tiny .cpu-hand .tag { display: none; }
@@ -547,3 +548,50 @@ select option { color: #1b2523; background: #fff; }
   :is(.v-compact, .v-tiny) .cpu-hand .backs { gap: 1px; }
 }
 :is(.v-compact, .v-tiny) .cpu-hand .who, :is(.v-compact, .v-tiny) .cpu-hand .tag, :is(.v-compact, .v-tiny) .cpu-hand .count { flex: none; }
+
+/* The marker going on a train and coming off (the classes are put on by the page for one redraw: see animateMarkers) */
+@keyframes toyDrop { 0% { transform: translateY(calc(-50% - 30px)) scale(1.3); opacity: 0; } 55% { transform: translateY(calc(-50% + 3px)) scale(.96, 1.05); opacity: 1; } 75% { transform: translateY(calc(-50% - 4px)) scale(1.02); } 100% { transform: translateY(-50%) scale(1); opacity: 1; } }
+.toy-train.toy-in { animation: toyDrop .6s cubic-bezier(.3,.7,.4,1) both; }
+.marker-fly { z-index: 60; }
+.marker-fly .toy-train { position: static; transform: none; display: block; width: 100%; height: 100%; }
+@media (prefers-reduced-motion: reduce) { .toy-train.toy-in { animation: none; } }
+
+/* In Compact and Tiny the history stays at the bottom of the screen (the page scrolls behind it) */
+:is(.v-compact, .v-tiny) .log { position: sticky; bottom: 0; z-index: 12; background: transparent; margin: 0 -4px; padding-left: 8px; padding-right: 8px; }
+
+/* Whose turn it is ("tunnel vision"): their row is lit from the left, the board darkens at its edges, and the other rows dim and soften. The light is .spot, which slides from row to row
+ * (see moveSpot). Rows you can play on (a target, a double to cover, a tile being dragged over) are never dimmed. */
+.track { position: relative; }
+.track > .track-label, .track > .rail { position: relative; z-index: 1; }
+.tracks.has-turn { box-shadow: inset 0 0 40px 10px rgba(0, 0, 0, 0.35); }
+.tracks.has-turn .track:not(.turn):not(.target):not(.must):not(.drop):not(.preview) { background: rgba(0, 0, 0, 0.28); }
+.tracks.has-turn .track:not(.turn):not(.target):not(.must):not(.drop):not(.preview) > .track-label { opacity: 0.5; filter: saturate(0.5); }   /* only the row and its label dim: dominos are never dimmed or blurred */
+.tracks.shift .track:not(.turn):not(.target):not(.must):not(.drop):not(.preview) { animation: dimIn .5s ease-out; }
+@keyframes dimIn { from { background: transparent; } }
+.track.turn { z-index: 3; }
+.spot { position: absolute; inset: 0; z-index: 0; pointer-events: none; transform-origin: 0 0;
+  background: radial-gradient(ellipse 80% 140% at 0% 50%, rgba(255, 236, 160, 0.55), rgba(255, 236, 160, 0.16) 55%, rgba(255, 236, 160, 0) 100%);
+  box-shadow: 0 0 28px 4px rgba(255, 214, 110, 0.3); }
+@media (prefers-reduced-motion: reduce) { .tracks.shift .track { animation: none !important; } }
+.track-name { justify-self: center; width: fit-content; max-width: 100%; text-align: center; }
+.track-label > .track-info, .track-label > .cover { text-align: center; }
+
+/* The history has no background of its own (the table shows through); a soft dark edge keeps the words readable over whatever is under them. */
+.log { background: transparent; }
+.log ol { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 8px rgba(0, 0, 0, 0.6); }
+/* A long name never runs into the first domino of its train: it breaks inside the word if it has to, and shrinks / is cut after three lines on the small layouts. */
+.track-label { min-width: 0; overflow: hidden; }
+.track-name { min-width: 0; overflow-wrap: anywhere; hyphens: auto; }
+.track-name.long { font-size: 0.92rem; }
+:is(.v-compact, .v-tiny) .track-name.long { font-size: .68rem; line-height: 1.15; }
+:is(.v-compact, .v-tiny) .track-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+
+/* In Compact and Tiny the history floats over the page at the bottom of the screen with no background at all (the soft dark edge on its words keeps them readable). */
+:is(.v-compact, .v-tiny) .log { }
+/* a long name in the scores at the top is cut with an ellipsis instead of pushing the menu button onto a second line */
+.bar.small .totals .tot { min-width: 0; max-width: 5.2em; }
+.bar.small .totals .tot span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.menu-range { display: grid; gap: 2px; padding: 4px 4px 2px; font-size: .75rem; }
+.menu-range span { opacity: .75; }
+.menu-range input[type="range"] { width: 100%; margin: 0; accent-color: var(--brass); }

@@ -22,7 +22,7 @@ require('./game.js');
 const G = globalThis.MexicanTrainGame;
 const E = G.Engine;
 const LOG_SENT = 120;                 // how many of the latest lines of the game's history every update carries (with where in the whole history they begin: the page keeps what it has been sent)
-const { newRound, playRound, longestFullChain, buildSteps, handPips, key, legalMoves, cpuChoose, cpuChooseAsync, cpuBuildAction, invalidAttempt, rateMove, drawAnyway } = E;
+const { newRound, playRound, longestFullChain, buildSteps, handPips, key, legalMoves, cpuChoose, cpuChooseAsync, cpuBuildAction, turnTry, easyDrawsAnyway, rateMove, drawAnyway } = E;
 const CHAT = G.CHAT;
 
 const MAX_PIP = 12;
@@ -227,23 +227,22 @@ class OnlineMatch {
         act: async (game, player, info) => {
           const action = cpuBuildAction(game, player, info, cpu.level);
           const second = game.opening && game.opening[player.id] && game.opening[player.id].lastWobble;       // (it has just taken a tile back because it changed its mind)
-          if (action.type === 'play') {                         // sometimes it tries the wrong train first: everybody sees the tile go there and come back
-            const t = invalidAttempt(game, player, info, cpu.level);
-            if (t) {
-              const ev = this.noEvents();
-              for (const s of this.humans) ev[s].push({ e: 'try', who: this.who(s, seat), train: this.cid(s, t.trainId) });
-              this._broadcast(ev);
-              await this._pauseFor(1000);
-            }
-          }
           await this._think(action.type === 'done' ? 'finish' : action.type === 'draw' ? 'draw' : action.type === 'undo' ? 'undo' : second ? 'replace' : 'place');
           return action;
         },
+        wantsDraw: (game, player, moves) => easyDrawsAnyway(game, player, moves, cpu.level),
         choose: async (game, player, moves) => {
           if (game.openDouble) return cpuChooseAsync(game, player, moves, cpu.level);     // a cover is played at once, with no thinking time
           this.humans.forEach(s => { this.banners[s] = `${this.names[seat]} is thinking...`; });
           this._broadcast(this.noEvents());
           await this._think('place');
+          const t = turnTry(game, player, moves, cpu.level);     // now and then it tries a train the tile does not go on first; everybody sees the tile go there and come back
+          if (t) {
+            const ev = this.noEvents();
+            for (const s of this.humans) ev[s].push({ e: 'try', who: this.who(s, seat), train: this.cid(s, t.trainId) });
+            this._broadcast(ev);
+            await this._pauseFor(1000);
+          }
           return cpuChooseAsync(game, player, moves, cpu.level);
         },
       };
@@ -308,15 +307,17 @@ class OnlineMatch {
     const cpuPause = async (seat, kind) => { if (m.computers[seat]) await m._think(kind); };
     return {
       // --- normal turns ---
-      async onNeedDraw(game, player) {
+      async onNeedDraw(game, player, opt) {
         const seat = m._seat(player);
-        m.coverDraw = player.hand.length === 0;                        // (a draw to cover a last double: nothing to grumble about)
+        const optional = !!(opt && opt.optional);                      // (a draw it chose to make, with a play in its hand)
+        m.voluntaryDraw = optional;
+        m.coverDraw = player.hand.length === 0 || optional;                        // (a draw to cover a last double: nothing to grumble about)
         // A person who has nothing to play is not announced to the others (it would tell them what is in that hand before the
         // person has even drawn): they see the same line as for any other turn. The draw itself, once it happens, is public.
         // (A double played as the last tile is different: everybody can see the hand is empty. And the computer is just told.)
         const text = player.hand.length === 0
           ? `${m.names[seat]} played a double as their last tile. It cannot go out, so they draw to cover it.`
-          : m.computers[seat] ? `${m.names[seat]} has nothing to play and draws.` : `${m.names[seat]} is choosing a tile.`;
+          : m.computers[seat] ? (optional ? `${m.names[seat]} decides to draw a tile.` : `${m.names[seat]} has nothing to play and draws.`) : `${m.names[seat]} is choosing a tile.`;
         for (const s of m.humans) if (s !== seat) m.banners[s] = text;
         if (m.computers[seat]) { m._broadcast(m.noEvents()); await m._think('draw'); }
         else await m._wait(seat, 'draw');
@@ -325,7 +326,7 @@ class OnlineMatch {
         const seat = m._seat(player);
         if (!m.computers[seat]) { m._logOne(seat, `You drew ${fmt(tile)}.`); m._maybeSay(seat, 'draw'); }
         else if (!m.coverDraw) m._ownLuck(seat, game.openDouble && m.doubleBy !== undefined && m.doubleBy !== null && m.doubleBy !== seat ? 'doubleResent' : 'draw');
-        m._tell(seat, `${m.names[seat]} draws a tile.`);
+        m._tell(seat, m.voluntaryDraw ? `${m.names[seat]} draws a tile it did not have to.` : `${m.names[seat]} draws a tile.`);
         const ev = m.noEvents();
         for (const s of m.humans) ev[s].push(s === seat ? { e: 'draw', who: 'me', tile: tile.slice() } : { e: 'draw', who: m.who(s, seat) });
         m._broadcast(ev);
@@ -585,6 +586,7 @@ class OnlineMatch {
       boneyard: g.boneyard.map(() => HIDDEN_DOUBLE.slice()),
       trains,
       openDouble: g.openDouble ? { trainId: cid(g.openDouble.trainId), value: g.openDouble.value } : null,
+      turn: g.turn ? cid(g.turn) : null,
       opening,
     };
     return view;

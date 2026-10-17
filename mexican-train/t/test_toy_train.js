@@ -57,7 +57,7 @@ console.log('2. the colours and the size');
   const h = sz && +sz[1], w = sz && +sz[2], OLD_H = 1.25, OLD_W = 2.58;
   ok(sz && Math.abs(h / OLD_H - 0.67) < 0.02 && Math.abs(w / OLD_W - 0.5) < 0.02, `the size is unchanged: ${h} x the tile size high and ${w} wide (a third smaller and half as long as the first design)`);
   ok(sz && Math.abs(w / h - 62 / 40) < 0.02, 'in the drawing\'s own proportions (62 x 40), so nothing is squashed');
-  ok(new RegExp('\\.track\\.has-toy \\.track-tiles\\s*\\{\\s*padding-left:\\s*calc\\(var\\(--s\\) \\* ' + w + ' \\+ 22px\\)').test(css), 'and the row leaves exactly the room it takes, so it never covers the first domino');
+  ok(!/\.track\.has-toy \.track-tiles\s*\{[^}]*padding-left/.test(css), 'the row leaves no room for it: the marker lands on top of the leftmost domino and no tile moves over for it');
 }
 
 (async () => {
