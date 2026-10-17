@@ -229,7 +229,7 @@ with sync_playwright() as pw:
       return { left: t.left - r.left, right: t.right, top: t.top, bottom: t.bottom, rowTop: r.top, rowBottom: r.bottom, engineLeft: e.left, labelRight: l.right, scrollLeft: sc.scrollLeft, scrollerLeft: sr.left }; }"""
     page.evaluate("() => document.querySelectorAll('.scroller').forEach(e => { e.scrollLeft = 0; })"); time.sleep(0.2)
     page.evaluate(FORCE); g0 = page.evaluate(GEO, 'human')
-    ok(g0['left'] >= 0 and g0['left'] <= 12 and g0['right'] <= g0['engineLeft'] - 4, f'at the start of the row it is at the far left and clear of the engine domino (train ends {g0["right"]:.0f}px, domino starts {g0["engineLeft"]:.0f}px)')
+    ok(g0['left'] >= 0 and g0['left'] <= 12 and g0['right'] > g0['engineLeft'] + 4, f'at the start of the row it is at the far left, sitting on top of the leftmost (engine) domino, which it does not push aside (train ends {g0["right"]:.0f}px, domino starts {g0["engineLeft"]:.0f}px)')
     ok(g0['top'] >= g0['rowTop'] - 1 and g0['bottom'] <= g0['rowBottom'] + 1 and g0['left'] + g0['labelRight'] > 0 and g0['right'] > g0['labelRight'], 'it sits inside its own row, to the right of the name and note')
     page.evaluate("() => document.querySelectorAll('.scroller').forEach(e => { e.scrollLeft = e.scrollWidth; })"); time.sleep(0.3)
     page.evaluate(FORCE); page.evaluate("() => document.querySelectorAll('.scroller').forEach(e => { e.scrollLeft = e.scrollWidth; })"); time.sleep(0.2)
@@ -420,7 +420,7 @@ with sync_playwright() as pw:
         # the colour of each player's toy train, on each real page: stage every train open in one go (and read it back in the same
         # instant, so nothing can change in between) and compare the two screens
         STAGE = """() => { const S = window.MexicanTrainApp.state; Object.keys(S.game.trains).forEach(id => { if (id !== 'mexican') S.game.trains[id].marker = true; if (S.game.opening && S.game.opening[id]) S.game.opening[id].finished = true; });
-          window.MexicanTrainApp.render(true); const out = {}; document.querySelectorAll('.track').forEach(t => { const toy = t.querySelector('.toy-train'); if (toy) out[t.querySelector('.track-name').textContent] = toy.className.replace('toy-train ', ''); }); return out; }"""
+          window.MexicanTrainApp.render(true); const out = {}; document.querySelectorAll('.track').forEach(t => { const toy = t.querySelector('.toy-train'); if (toy) out[t.querySelector('.track-name').textContent] = toy.className.replace('toy-train ', '').replace(' toy-in', ''); }); return out; }"""
         ma = a.evaluate(STAGE); mb = b.evaluate(STAGE)
         comp_name = a.evaluate("() => window.MexicanTrainApp.state.cpu2Name") if computer else None
         def by_owner(m, me): return {(me if k == 'Your train' else k.replace("'s train", '')): v for k, v in m.items()}

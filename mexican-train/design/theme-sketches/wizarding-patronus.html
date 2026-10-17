@@ -1,0 +1,25 @@
+<!doctype html><meta charset=utf-8><style>
+*{box-sizing:border-box;margin:0}
+body{background:#05070f;font-family:system-ui;color:#dfeaff;padding:18px;width:1060px}
+h1{font-size:19px;margin-bottom:12px}
+.g{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.m{border:1px solid #223055;border-radius:12px;padding:6px;text-align:center;background:radial-gradient(circle at 50% 45%,#13204a,#05070f 70%)}
+.m svg{width:100%;height:190px}
+.m b{display:block;font-size:14px}.m small{color:#9fb4e0}
+</style><h1>Patronus animals — glowing silvery-blue silhouettes (shown when a character says something great, or as the winner's flourish)</h1><div class="g" id="g"></div>
+<script>
+const A={
+'Stag':`<path d="M70 140 L66 188 h6 L78 150 L96 150 L100 188 h6 L106 140 Q150 146 168 134 L176 188 h6 L186 130 L186 190 h6 L196 120 Q206 96 212 78 L226 66 L244 72 L246 80 L232 84 L222 100 L214 120 L206 128 L196 122 Q170 110 150 112 Q110 104 88 112 Q64 120 70 140Z"/><path d="M226 66 L216 34 M226 66 L240 30 M221 50 L204 40 M221 50 L212 22 M232 48 L252 38 M236 40 L250 18 M222 70 L206 64" stroke-width="4" fill="none"/><path d="M246 80 q14 0 20 8 l-14 4z"/>`,
+'Doe':`<path d="M70 140 L66 188 h6 L78 150 L96 150 L100 188 h6 L106 140 Q150 146 168 134 L176 188 h6 L186 130 L186 190 h6 L196 120 Q204 96 208 82 L222 72 L238 78 L240 86 L226 90 L218 106 L212 124 L204 128 L196 122 Q170 110 150 112 Q110 104 88 112 Q64 120 70 140Z"/><path d="M222 72 L214 60 L226 66 M228 70 l8 -12 -2 14" /><path d="M240 86 q12 2 18 10 l-12 0z"/>`,
+'Otter':`<path d="M30 150 Q60 100 110 118 Q150 134 180 108 Q200 90 220 96 Q240 90 244 106 Q236 114 224 112 Q214 118 206 130 Q190 160 150 156 Q110 152 80 164 Q56 176 30 168 Q22 160 30 150Z"/><path d="M224 96 q-4 -12 4 -14 M232 94 q2 -10 10 -8" stroke-width="3" fill="none"/><path d="M96 158 l-6 20 h10 l8 -18 M150 156 l-4 20 h10 l4 -18" /><path d="M30 150 q-14 -10 -22 4 q10 14 24 12z"/>`,
+'Terrier':`<path d="M74 118 Q110 110 150 118 Q184 120 198 104 L206 88 L222 76 L226 62 L232 76 L248 82 Q252 94 240 98 L226 98 Q216 116 208 132 L200 190 h-8 L184 150 Q150 154 116 152 L108 190 h-8 L98 150 Q74 150 70 136 L56 112 L64 104Z"/><path d="M226 62 l6 -14 6 14" />`,
+'Hare':`<path d="M62 150 Q64 112 110 112 Q150 108 178 118 Q198 112 206 96 L220 80 L218 40 Q226 26 232 46 L234 84 L246 82 L254 94 L248 104 L232 104 Q218 120 204 134 L214 188 h-12 L172 152 Q130 160 98 158 L92 188 h-10 L70 160Z"/><path d="M232 46 q8 -30 16 -4 L242 84" /><circle cx=60 cy=146 r=8 />`,
+'Horse':`<path d="M64 120 Q96 102 150 112 Q180 116 192 96 L200 72 L214 52 L230 44 L246 54 L248 70 L236 76 L226 96 L222 124 L214 134 L208 190 h-8 L186 152 Q150 156 112 152 L106 190 h-8 L92 150 Q70 150 66 138Z"/><path d="M214 52 Q196 56 196 86 M214 52 q-6 -14 -2 -22 l10 14" stroke-width="3" fill="none"/><path d="M64 120 q-20 20 -14 56 q-4 -26 4 -44" />`,
+'Phoenix':`<path d="M150 86 Q140 70 150 56 Q160 70 150 86Z"/><path d="M150 90 Q100 40 20 44 Q60 70 74 100 Q48 96 24 116 Q72 112 100 128 Q76 138 64 160 Q120 150 150 134Z"/><path d="M150 90 Q200 40 280 44 Q240 70 226 100 Q252 96 276 116 Q228 112 200 128 Q224 138 236 160 Q180 150 150 134Z"/><path d="M150 100 Q134 150 136 170 Q150 188 164 170 Q166 150 150 100Z"/><path d="M150 54 q-6 -14 4 -22" stroke-width="3" fill="none"/>`,
+'Cat':`<path d="M60 140 Q70 110 110 114 Q150 112 176 118 Q198 112 208 96 L212 76 L216 56 L222 70 L232 66 L236 84 L244 92 Q238 104 226 106 Q220 120 214 132 L216 188 h-10 L196 150 Q150 156 112 152 L106 188 h-10 L88 150 Q66 150 60 140Z"/><path d="M60 140 Q30 120 34 80 Q40 60 54 66 Q42 90 62 112" />`,
+};
+const who={Stag:'for Harry',Doe:'for Snape',Otter:'for Hermione',Terrier:'for Ron',Hare:'for Luna',Horse:'for Ginny',Phoenix:'for Dumbledore',Cat:'for McGonagall'};
+const g=document.getElementById('g');
+for(const [n,p] of Object.entries(A)){
+ g.insertAdjacentHTML('beforeend',`<div class="m"><svg viewBox="0 0 300 200"><defs><filter id="b${n}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="7"/></filter><radialGradient id="r${n}" cx=".5" cy=".4"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#9fd0ff"/></radialGradient></defs><g fill="#7fb8ff" stroke="#7fb8ff" opacity=".7" filter="url(#b${n})">${p}</g><g fill="url(#r${n})" stroke="#dff0ff" stroke-width="1.5" opacity=".95">${p}</g>${[...Array(14)].map((_,i)=>`<circle cx="${20+(i*83)%260}" cy="${20+(i*47)%150}" r="${1+i%3*.6}" fill="#cfe8ff" opacity=".6"/>`).join('')}</svg><b>${n}</b><small>${who[n]}</small></div>`)}
+</script>

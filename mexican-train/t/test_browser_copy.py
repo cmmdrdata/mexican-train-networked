@@ -11,10 +11,16 @@ def ok(c, m):
     if c: passed += 1
     else: failed += 1; print('  FAIL:', m)
 
-def lan_ip():
-    for ip in subprocess.check_output(['hostname', '-I'], text=True).split():
-        if '.' in ip and not ip.startswith('127.'): return ip
-    return None
+def lan_ip():                                   # this machine's private network address (192.168.x.x, 10.x.x.x or 172.16-31.x.x), or None; works on Mac and Linux
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(('10.255.255.255', 1)); ip = s.getsockname()[0]; s.close()
+    except Exception: return None
+    p = [int(x) for x in ip.split('.')]
+    return ip if p[0] == 10 or (p[0] == 172 and 16 <= p[1] <= 31) or (p[0] == 192 and p[1] == 168) else None
+
+if not lan_ip():                                 # (the server only offers a private network address as "this computer's address": with none, the host screen has nothing to show)
+    print('skipped: this machine has no private network address (192.168.x.x, 10.x.x.x or 172.16-31.x.x), which this test needs'); sys.exit(0)
 
 srv = subprocess.Popen(['node', os.path.join(HERE, 'browser_server.js')], stdout=subprocess.PIPE, text=True)
 port = json.loads(srv.stdout.readline())['port']

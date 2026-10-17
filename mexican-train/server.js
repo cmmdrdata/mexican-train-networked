@@ -322,6 +322,7 @@ function createGameServer(options) {
   function strike(c, code, message) { reply(c, code, message); if (++c.bad > 20) c.ws.close(1008, 'too many bad messages'); }
 
   /* ------------------------------ rooms ------------------------------ */
+  const pickBackdrop = () => G.BACKDROPS[(opt.nameRng || Math.random)() < 0.5 ? 0 : 1];      // the wizarding board's picture: chosen for every game, for everyone at the table
   function newRoom(c, name, settings) {
     let code; do { code = randomCode(); } while (rooms.has(code));
     const room = {
@@ -441,8 +442,8 @@ function createGameServer(options) {
       const level = room.settings[key];
       if (!level) { room[nameKey] = null; return; }
       const mine = new Set(taken); if (other) mine.add(other.toLowerCase());
-      if (room[nameKey] && !mine.has(room[nameKey].toLowerCase()) && G.levelOfName(room[nameKey], room.settings.theme) === level) return;   // keep its name while the level and theme are unchanged
-      room[nameKey] = G.pickCpuName(level, opt.nameRng || Math.random, mine, room.settings.theme);
+      if (room[nameKey] && !mine.has(room[nameKey].toLowerCase()) && room[nameKey + 'For'] === level + '|' + room.settings.theme) return;   // keep its name while the level and theme are unchanged
+      room[nameKey] = G.pickCpuName(level, opt.nameRng || Math.random, mine, room.settings.theme); room[nameKey + 'For'] = level + '|' + room.settings.theme;
     };
     one('computer', 'computerName', null);
     one('computer2', 'computer2Name', room.computerName);
@@ -552,6 +553,7 @@ function createGameServer(options) {
     if (!seatsOf(room).every(i => room.players[i]) || !connectedSeats(room).every(Boolean)) return reply(c, 'not_ready', room.settings.humans === 3 ? 'Wait for the other players to join.' : 'Wait for the other player to join.');
     room.state = 'playing';
     nameComputer(room);
+    room.settings.backdrop = pickBackdrop();
     startMatch(room);
     opt.log(`game ${showCode(room.code)} started: ${seatsOf(room).map(i => room.players[i].name).join(' vs ')}${computersText(room)}${room.settings.theme !== 'classic' ? ' [' + room.settings.theme + ' theme]' : ''}`);
     sendLobby(room);
@@ -600,7 +602,8 @@ function createGameServer(options) {
     sendAgain(room);
     if (room.state !== 'over' || st.gone.length || !seatsOf(room).every(i => room.again.has(i))) return;      // not everyone yet (or someone has gone, or the others have not seen their final score)
     room.again.clear(); room.state = 'playing'; room.over = null;
-    for (const i of seatsOf(room)) sendSeat(room, i, { t: 'rematch' });              // (told first, so a page forgets the finished game before the first state of the new one)
+    room.settings.backdrop = pickBackdrop();
+    for (const i of seatsOf(room)) sendSeat(room, i, { t: 'rematch', backdrop: room.settings.backdrop });              // (told first, so a page forgets the finished game before the first state of the new one)
     startMatch(room);
     opt.log(`game ${showCode(room.code)} started again: ${seatsOf(room).map(i => room.players[i].name).join(' vs ')}${computersText(room)}`);
   }

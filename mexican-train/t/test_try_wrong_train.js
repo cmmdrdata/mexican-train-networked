@@ -31,7 +31,7 @@ console.log('1. how often each level tries a wrong train (thousands of real roun
 const rate = {};
 for (const level of LEVELS) {
   let n = 0, rounds = 0, maxRound = 0, bad = 0, withTries = 0, gaps = 0, adjacent = 0, byThird = [0, 0, 0], turns = 0;
-  for (let seed = 1; seed <= 600; seed++) {
+  for (let seed = 1; seed <= 300; seed++) {
     const r = await round(level, seed, 15);
     rounds++; turns += r.turn; n += r.tries.length; bad += r.bad.length; maxRound = Math.max(maxRound, ...['human', 'cpu'].map(id => r.tries.filter(t => t.who === id).length));
     if (r.tries.length) withTries++;

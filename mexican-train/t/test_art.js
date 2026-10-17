@@ -43,7 +43,7 @@ const html = fs.readFileSync(path.join(ROOT, 'mexican-train.html'), 'utf8');
 const css = fs.readFileSync(path.join(ROOT, 'style.css'), 'utf8');
 ok(names.every(n => css.includes(`url(art:${n})`)), 'the stylesheet asks for each by name');
 ok(!/url\(art:/.test(html), 'the built page has none of those names left');
-ok((html.match(/url\("data:image\/svg\+xml,%3Csvg/g) || []).length === 3, 'it has each of the three, inlined (the page is still one file with nothing to fetch)');
+ok((html.match(/url\("data:image\/svg\+xml,%3Csvg/g) || []).length === 5, 'it has each of the five (three Lord of the Rings, two wizarding), inlined (the page is still one file with nothing to fetch)');
 ok(!/url\(["']?https?:/.test(html), 'and no picture is fetched from anywhere');
 const stamp = (html.match(/window\.MT_BUILD = "([0-9a-f]+)"/) || [])[1];
 const art0 = fs.readFileSync(path.join(ROOT, 'art', 'lotr-ring.svg'), 'utf8');

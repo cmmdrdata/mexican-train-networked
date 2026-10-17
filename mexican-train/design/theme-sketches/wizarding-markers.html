@@ -1,0 +1,29 @@
+<!doctype html><meta charset=utf-8><style>
+*{box-sizing:border-box;margin:0}
+body{background:#14101c;font-family:system-ui;color:#f1e6c8;padding:18px;width:1060px}
+h1{font-size:20px;margin-bottom:12px}
+.g{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+.m{background:#201a2c;border:1px solid #3a3050;border-radius:12px;padding:10px;text-align:center}
+.m svg{width:100%;height:96px}
+.m b{display:block;margin-top:6px;font-size:14px}
+.m small{color:#b9aecb}
+.rail{margin-top:8px;height:26px;border-radius:4px;background:repeating-linear-gradient(90deg,#6a4a2a 0 6px,#3a2a1a 6px 10px);position:relative}
+</style><h1>Train markers for a wizarding theme — pick any (each shown in the four player colours)</h1><div class="g" id="g"></div>
+<script>
+const cols=['#c0392b','#2e86de','#f1c40f','#27ae60'];
+const M={
+'Wand':c=>`<g transform="rotate(-25 50 50)"><rect x=12 y=46 width=70 height=8 rx=4 fill="#5a3a1e"/><rect x=12 y=46 width=22 height=8 rx=4 fill="${c}"/><circle cx=88 cy=50 r=4 fill="#fff"/><g stroke="${c}" stroke-width="2"><path d="M88 36v-8M88 64v8M74 50h-6M102 50h6" /></g></g>`,
+'Owl':c=>`<ellipse cx=50 cy=56 rx=24 ry=30 fill="${c}"/><path d="M30 34 l6 -14 8 12 M70 34 l-6 -14 -8 12" fill="${c}"/><circle cx=40 cy=46 r=9 fill="#fff"/><circle cx=60 cy=46 r=9 fill="#fff"/><circle cx=40 cy=46 r=4 fill="#111"/><circle cx=60 cy=46 r=4 fill="#111"/><path d="M46 54 l4 8 4 -8z" fill="#e8a317"/><path d="M36 70 q14 8 28 0" stroke="#0004" fill="none"/>`,
+'Candle':c=>`<rect x=40 y=44 width=20 height=44 fill="#f3ead0"/><rect x=40 y=44 width=20 height=8 fill="${c}"/><ellipse cx=50 cy=32 rx=6 ry=12 fill="#ffd36b"/><circle cx=50 cy=34 r=22 fill="#ffd36b" opacity=".2"/><path d="M34 88 h32" stroke="${c}" stroke-width="4"/>`,
+'Potion':c=>`<path d="M42 14 h16 v20 l18 36 q6 16 -10 18 h-32 q-16 -2 -10 -18 l18 -36z" fill="#2a2a3c" stroke="#aab" /><path d="M32 66 q18 -8 36 0 l4 6 q4 14 -10 14 h-24 q-14 0 -10 -14z" fill="${c}"/><rect x=40 y=8 width=20 height=8 rx=2 fill="#8a6a3a"/><circle cx=46 cy=70 r=3 fill="#fff" opacity=".7"/>`,
+'Cauldron':c=>`<path d="M20 44 q30 -16 60 0 q10 34 -6 42 h-48 q-16 -8 -6 -42z" fill="#1b1b22"/><ellipse cx=50 cy=44 rx=30 ry=7 fill="${c}"/><circle cx=40 cy=34 r=5 fill="${c}" opacity=".7"/><circle cx=58 cy=26 r=4 fill="${c}" opacity=".7"/><path d="M30 88 l-4 6 M70 88 l4 6" stroke="#1b1b22" stroke-width="5"/>`,
+'Old key':c=>`<circle cx=30 cy=40 r=16 fill="none" stroke="${c}" stroke-width="7"/><rect x=44 y=37 width=44 height=7 fill="${c}"/><rect x=72 y=44 width=6 height=14 fill="${c}"/><rect x=82 y=44 width=6 height=10 fill="${c}"/><path d="M26 56 q-8 8 -4 18" stroke="${c}" fill="none" stroke-width="3" opacity=".6"/>`,
+'Spellbook':c=>`<rect x=18 y=22 width=64 height=62 rx=5 fill="${c}"/><rect x=26 y=22 width=56 height=62 rx=3 fill="#f3ead0" opacity=".12"/><path d="M50 36 l5 10 11 1 -8 8 2 11 -10 -6 -10 6 2 -11 -8 -8 11 -1z" fill="#ffd36b"/>`,
+'Moon & star':c=>`<path d="M62 16 a34 34 0 1 0 14 56 a28 28 0 1 1 -14 -56z" fill="${c}"/><path d="M72 30 l3 7 8 1 -6 5 2 8 -7 -4 -7 4 2 -8 -6 -5 8 -1z" fill="#fff"/>`,
+'Pointed hat':c=>`<path d="M50 6 q6 30 16 54 h-32 q10 -24 16 -54z" fill="${c}"/><ellipse cx=50 cy=64 rx=36 ry=9 fill="${c}"/><rect x=36 y=50 width=28 height=7 fill="#0006"/><rect x=46 y=49 width=8 height=9 fill="#ffd36b"/>`,
+'Broomstick':c=>`<g transform="rotate(-18 50 50)"><rect x=8 y=47 width=62 height=5 fill="#7a5a2a"/><path d="M68 40 l26 -6 v32 l-26 -6z" fill="${c}"/><g stroke="#0005"><path d="M72 42 l18 -4 M72 50 h20 M72 58 l18 4"/></g><rect x=64 y=44 width=5 height=12 fill="#444"/></g>`,
+};
+const g=document.getElementById('g');
+for(const [n,f] of Object.entries(M)){
+ g.insertAdjacentHTML('beforeend',`<div class="m"><svg viewBox="0 0 100 100">${f(cols[0])}</svg><div style="display:flex">${cols.map(c=>`<svg viewBox="0 0 100 100" style="height:46px">${f(c)}</svg>`).join('')}</div><b>${n}</b></div>`)}
+</script>

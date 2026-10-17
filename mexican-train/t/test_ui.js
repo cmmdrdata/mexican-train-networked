@@ -98,7 +98,10 @@ async function waitFor(pred, label) {
   ok(G.levelOfName('Ingrid') === 'hard' && G.levelOfName('Marta') === 'normal' && G.levelOfName('Bea') === 'easy' && G.levelOfName('Nobody') === null, 'a name tells you its level');
   const justOne = G.CPU_PLAYERS.hard.slice(1).map(n => n.toLowerCase());
   ok(G.pickCpuName('hard', mulberry32(1), new Set(justOne)) === G.CPU_PLAYERS.hard[0], 'avoids every name in use');
-  ok(G.CPU_PLAYERS.easy.includes(G.pickCpuName('easy', mulberry32(1), new Set(G.CPU_NAMES.map(n => n.toLowerCase())))), 'falls back gracefully (and stays in the level) if every name is taken');
+  { const all = new Set(G.CPU_NAMES.map(n => n.toLowerCase())), n = G.pickCpuName('easy', mulberry32(1), all);
+    ok(!all.has(n.toLowerCase()) && G.CPU_PLAYERS.easy.some(b => n.startsWith(b + ' ')), `if every name is taken it still never repeats one: the same name with a number (${n})`);
+    const hardOut = new Set(G.CPU_PLAYERS.hard.map(x => x.toLowerCase())), m = G.pickCpuName('hard', mulberry32(1), hardOut);
+    ok(!hardOut.has(m.toLowerCase()) && G.levelOfName(m) !== null, `if a level's own names are all taken it borrows one from another level (${m})`); }
   ok(G.CPU_PLAYERS.normal.includes(G.pickCpuName('nonsense', mulberry32(1), new Set())), 'an unknown level uses the Medium pool');
   ok(G.CPU_NAMES.every(n => !/s$/i.test(n) && /^[A-Za-z]+$/.test(n)), 'pool is plain letters and reads well as a possessive');
   for (const lvl of ['easy', 'normal', 'hard']) {

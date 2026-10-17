@@ -1,0 +1,56 @@
+<!doctype html><meta charset=utf-8><style>
+*{box-sizing:border-box;margin:0}
+body{background:#0c0a10;font-family:Georgia,serif;color:#f1e6c8;padding:18px;display:grid;grid-template-columns:repeat(3,330px);gap:18px}
+.card{width:330px;height:560px;position:relative;overflow:hidden;border-radius:14px;border:1px solid #3a3050}
+svg.scene{position:absolute;inset:0;width:100%;height:100%}
+.cap{position:absolute;left:0;right:0;top:0;z-index:20;padding:7px 12px;font:700 14px system-ui;background:rgba(0,0,0,.7);color:#fff}
+.rows{position:absolute;top:44px;left:0;right:0;z-index:5}
+.row{height:92px;display:grid;grid-template-columns:84px 1fr;align-items:center;border-bottom:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.28)}
+.row b{text-align:center;font-size:15px;text-shadow:0 1px 3px #000}
+.tiles{display:flex;gap:5px}
+.t{width:58px;height:30px;border-radius:5px;background:linear-gradient(#fbf5df,#e9dcb4);border:1px solid #8a7a50;box-shadow:0 2px 3px rgba(0,0,0,.5);position:relative}
+.t::after{content:"";position:absolute;left:50%;top:3px;bottom:3px;width:1px;background:#8a7a50}
+.tray{position:absolute;left:8px;right:8px;bottom:8px;height:70px;border-radius:10px;background:rgba(0,0,0,.45);z-index:5}
+</style>
+<body>
+<script>
+const tiles='<div class="tiles"><div class="t"></div><div class="t"></div><div class="t"></div></div>';
+const rows=['Ron','Harry','Hermione'].map(n=>`<div class="row"><b>${n}</b>${tiles}</div>`).join('');
+const stars=(n,seed)=>{let s=seed,o='';for(let i=0;i<n;i++){s=(s*9301+49297)%233280;const x=s/233280*330;s=(s*9301+49297)%233280;const y=s/233280*300;o+=`<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${(i%3?0.8:1.4)}" fill="#fff" opacity="${0.4+(i%4)*.15}"/>`}return o};
+const candles=(n,seed,y0,y1)=>{let s=seed,o='';for(let i=0;i<n;i++){s=(s*9301+49297)%233280;const x=s/233280*330;s=(s*9301+49297)%233280;const y=y0+s/233280*(y1-y0);o+=`<g><rect x="${x-2}" y="${y}" width="4" height="14" fill="#f3ead0"/><ellipse cx="${x}" cy="${y-3}" rx="2.2" ry="4.5" fill="#ffd36b"/><circle cx="${x}" cy="${y-3}" r="9" fill="#ffd36b" opacity=".18"/></g>`}return o};
+const scenes=[
+['1 · Castle over the lake',`<defs><linearGradient id=a1 x1=0 y1=0 x2=0 y2=1><stop offset=0 stop-color="#0b1030"/><stop offset=.6 stop-color="#2b2a5c"/><stop offset=1 stop-color="#3b3a6e"/></linearGradient></defs>
+<rect width=330 height=560 fill="url(#a1)"/>${stars(60,7)}<circle cx=255 cy=70 r=26 fill="#f4efd6"/><circle cx=263 cy=64 r=24 fill="#0b1030" opacity=".0"/>
+<path d="M0 330 L40 300 L80 318 L130 270 L200 300 L260 260 L330 300 V560 H0Z" fill="#14122c"/>
+<g fill="#0a0818"><path d="M60 340 V250 h12 v-30 l8-18 8 18 v30 h10 v-50 l8-26 8 26 v50 h14 v-20 h10 v20 h14 V230 l9-30 9 30 v110Z"/><rect x=40 y=330 width=210 height=30 /><path d="M170 340 V270 l10-24 10 24 v70Z"/></g>
+<g fill="#ffd36b"><rect x=84 y=262 width=4 height=8 /><rect x=116 y=250 width=4 height=8 /><rect x=150 y=280 width=4 height=8 /><rect x=178 y=270 width=4 height=8 /><rect x=214 y=266 width=4 height=8 /><rect x=96 y=300 width=4 height=8 /><rect x=196 y=300 width=4 height=8 /></g>
+<rect y=360 width=330 height=200 fill="#1d2150"/><path d="M0 380 q40 -6 80 0 t80 0 t80 0 t90 0" stroke="#5560a0" fill="none" opacity=".5"/><path d="M60 360 h140 v200 h-140z" fill="#ffd36b" opacity=".08"/>`],
+['2 · Hall of floating candles',`<rect width=330 height=560 fill="#0f0b12"/><rect width=330 height=200 fill="#17101c"/>
+<g stroke="#2a1d33" stroke-width="3" fill="none"><path d="M0 200 L60 0M330 200 L270 0M110 200 L130 0M220 200 L200 0"/></g>
+<g fill="#1a1220"><path d="M20 560 V260 q40 -90 80 0 V560z"/><path d="M230 560 V260 q40 -90 80 0 V560z"/></g>
+<g fill="#6e1f2c" opacity=".9"><path d="M130 0 h30 v90 l-15 14 -15 -14z"/><path d="M175 0 h30 v90 l-15 14 -15 -14z"/></g>
+${candles(34,11,20,330)}<rect y=330 width=330 height=230 fill="#1c1218"/>`],
+['3 · Night platform & steam engine',`<rect width=330 height=560 fill="#0a0d1c"/>${stars(40,3)}
+<rect y=250 width=330 height=14 fill="#241a22"/><g fill="#24202e"><rect x=0 y=130 width=14 height=120/><rect x=316 y=130 width=14 height=120/><path d="M0 130 q165 -60 330 0 v10 q-165 -60 -330 0z"/></g>
+<g><circle cx=60 cy=210 r=26 fill="#ffd36b" opacity=".25"/><rect x=58 y=170 width=4 height=80 fill="#111"/><circle cx=60 cy=170 r=8 fill="#ffd36b"/></g>
+<g><circle cx=270 cy=210 r=26 fill="#ffd36b" opacity=".25"/><rect x=268 y=170 width=4 height=80 fill="#111"/><circle cx=270 cy=170 r=8 fill="#ffd36b"/></g>
+<g transform="translate(40 150)"><rect x=0 y=60 width=190 height=44 rx=4 fill="#7b1520"/><rect x=130 y=20 width=60 height=44 rx=3 fill="#7b1520"/><rect x=10 y=30 width=90 height=40 rx=20 fill="#5d101a"/><rect x=108 y=0 width=14 height=34 fill="#111"/><circle cx=40 cy=108 r=16 fill="#111"/><circle cx=110 cy=108 r=16 fill="#111"/><circle cx=160 cy=108 r=12 fill="#111"/><rect x=140 y=28 width=36 height=16 fill="#ffd36b" opacity=".8"/></g>
+<g fill="#fff" opacity=".35"><circle cx=170 cy=118 r=16/><circle cx=196 cy=92 r=22/><circle cx=230 cy=60 r=28/></g>
+<rect y=280 width=330 height=280 fill="#12141f"/>`],
+['4 · Moonlit forest, fireflies',`<defs><radialGradient id=m4 cx=.7 cy=.12 r=.5><stop offset=0 stop-color="#cfe7d8" stop-opacity=".5"/><stop offset=1 stop-color="#cfe7d8" stop-opacity="0"/></radialGradient></defs><rect width=330 height=560 fill="#06120f"/><rect width=330 height=560 fill="url(#m4)"/><circle cx=232 cy=66 r=22 fill="#e9f3e0"/>
+<g fill="#030a08"><path d="M0 560 V150 l14 -50 14 50 v60 l18 -70 20 80 v110z"/><path d="M60 560 V220 l12 -60 14 60 v340z"/><path d="M250 560 V160 l16 -70 16 70 v60 l16 -50 16 70 v350z"/><path d="M190 560 V230 l12 -50 12 50 v330z"/></g>
+${Array.from({length:30},(_,i)=>{const x=(i*97)%330,y=140+((i*53)%330);return `<circle cx=${x} cy=${y} r=2 fill="#d8ff7a"/><circle cx=${x} cy=${y} r=7 fill="#d8ff7a" opacity=".15"/>`}).join('')}
+<g fill="#7bffd0" opacity=".8"><circle cx=40 cy=520 r=4/><circle cx=300 cy=510 r=5/><circle cx=150 cy=530 r=3/></g>`],
+['5 · Library of drifting books',`<rect width=330 height=560 fill="#150f0b"/>
+<g>${Array.from({length:4},(_,r)=>`<rect x=0 y=${r*70+20} width=330 height=6 fill="#3a2616"/>`+Array.from({length:22},(_,i)=>`<rect x=${i*15+(r%2)*4} y=${r*70+20-44+((i*7+r)%12)} width=11 height=${44-((i*7+r)%12)} fill="${['#6e1f2c','#2a4a6a','#4a5a2a','#7a5a22','#41295e'][(i+r)%5]}"/>`).join('')).join('')}</g>
+<g fill="#e6d6a0" stroke="#5a4a22">${Array.from({length:6},(_,i)=>`<g transform="translate(${30+i*50} ${330-(i%3)*34}) rotate(${(i*17)%40-20})"><path d="M-14 -9 q14 -6 14 0 q0 -6 14 0 v16 q-14 -6 -14 0 q0 -6 -14 0z"/></g>`).join('')}</g>
+${candles(12,5,320,420)}<rect y=470 width=330 height=90 fill="#24170f"/>`],
+['6 · Dungeon & bubbling cauldron',`<rect width=330 height=560 fill="#0b1310"/>
+<g stroke="#17251f" stroke-width="2" fill="none">${Array.from({length:12},(_,r)=>`<path d="M0 ${r*28} H330"/>`+Array.from({length:8},(_,i)=>`<path d="M${i*46+(r%2)*23} ${r*28} v28"/>`).join('')).join('')}</g>
+<g fill="#0a0f0d"><path d="M0 300 V120 q60 -100 120 0 V300z"/><path d="M210 300 V120 q60 -100 120 0 V300z"/></g>
+<ellipse cx=165 cy=300 rx=120 ry=120 fill="#4cff9a" opacity=".07"/>
+<g transform="translate(110 250)"><path d="M0 20 q55 -40 110 0 q10 50 -10 62 h-90 q-20 -12 -10 -62z" fill="#101614"/><ellipse cx=55 cy=20 rx=52 ry=10 fill="#4cff9a"/><circle cx=30 cy=6 r=7 fill="#9bffc4" opacity=".7"/><circle cx=70 cy=-4 r=5 fill="#9bffc4" opacity=".7"/><circle cx=52 cy=-22 r=4 fill="#9bffc4" opacity=".6"/></g>
+<g fill="#7fe6a4" opacity=".6"><circle cx=40 cy=440 r=4/><circle cx=292 cy=420 r=3/></g><rect y=480 width=330 height=80 fill="#0e1613"/>`],
+];
+for(const [cap,svg] of scenes){document.body.insertAdjacentHTML('beforeend',`<div class="card"><svg class="scene" viewBox="0 0 330 560" preserveAspectRatio="xMidYMid slice">${svg}</svg><div class="cap">${cap}</div><div class="rows">${rows}</div><div class="tray"></div></div>`)}
+</script>

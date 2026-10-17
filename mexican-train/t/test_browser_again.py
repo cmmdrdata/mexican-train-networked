@@ -2,6 +2,7 @@
 """The end of a single-player game (against three computers): two buttons. Quit goes to the menu; Play again starts the same game again (same settings) at once."""
 import json, os, subprocess, sys, time
 from playwright.sync_api import sync_playwright
+os.makedirs('/tmp/shots', exist_ok=True)
 HERE = os.path.dirname(os.path.abspath(__file__))
 srv = subprocess.Popen(['node', os.path.join(HERE, 'browser_server.js')], stdout=subprocess.PIPE, text=True, env=dict(os.environ, MT_CHECK_BUILD='1'))
 base = f"http://127.0.0.1:{json.loads(srv.stdout.readline())['port']}/"
@@ -42,7 +43,7 @@ try:
         ok(finish(pg), 'the game reached its final screen')
         btns = pg.evaluate("() => [...document.querySelectorAll('.dialog .actions .btn')].map(b => b.textContent.trim())")
         ok(btns == ['Quit', 'Play again'], f'two buttons: {btns}')
-        pg.screenshot(path='/tmp/final_buttons.png')
+        pg.screenshot(path='/tmp/shots/final_buttons.png')
         names = pg.evaluate("() => window.MexicanTrainApp.state.cpuName")
         opts = pg.evaluate("() => JSON.stringify(window.MexicanTrainApp.state.opts)")
         pg.click('[data-action="playAgain"]'); pg.wait_for_selector('.hand-grid', timeout=10000)

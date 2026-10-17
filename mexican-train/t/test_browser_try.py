@@ -1,6 +1,7 @@
 """A try on the wrong train: the face-down tile goes there, shakes and comes back (a person's invalid try, and a computer's, during the turns)."""
 import json, os, subprocess, sys, time
 from playwright.sync_api import sync_playwright
+os.makedirs('/tmp/shots', exist_ok=True)
 ROOT = os.path.dirname(os.path.abspath(__file__))
 srv = subprocess.Popen(['node', os.path.join(ROOT, 'browser_server.js')], stdout=subprocess.PIPE, text=True, env=dict(os.environ, MT_CHECK_BUILD='1'))
 base = f"http://127.0.0.1:{json.loads(srv.stdout.readline())['port']}/"
@@ -48,7 +49,7 @@ try:
                 if seen: break
             check(f'{w}px: an Easy computer tries a wrong train during the turns (a shaking flight was seen)', seen == 1)
             check(f'{w}px: and never in the opening, before the turns start', early == 0)
-            if seen and w == 390: pg.screenshot(path='/tmp/try_phone.png')
+            if seen and w == 390: pg.screenshot(path='/tmp/shots/try_phone.png')
             check(f'{w}px: no page errors ({errs})', not errs)
             pg.close()
         b.close()

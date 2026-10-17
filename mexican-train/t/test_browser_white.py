@@ -2,7 +2,7 @@
 """Real Chromium, measured on pixels and computed styles: (1) the back of a domino is the same off-white as the face of a blank tile (#f6f0e0), with nothing on it (in a train, in the opponent's row, and the
    boneyard's stack); (2) the end-of-round dialog: its tiles (that same off-white) on the deep felt green, in both themes, with the writing readable; (3) the computer's train
    going down as well as up, one tile at a time, while it builds."""
-import json, os, subprocess, sys, time
+import time, json, os, subprocess, sys, time
 import cv2, numpy as np
 from playwright.sync_api import sync_playwright
 
@@ -21,7 +21,14 @@ def lum(rgb): return 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(
 def contrast(a, b): x, y = lum(a), lum(b); return (max(x, y) + 0.05) / (min(x, y) + 0.05)
 def parse(css): return [int(float(x)) for x in css[css.index('(') + 1:css.index(')')].replace('/', ' ').replace(',', ' ').split()[:3]]
 def shot(el):
-    data = el.screenshot(); return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)[..., ::-1]
+    for attempt in range(6):                                           # (the board may redraw between finding the tile and photographing it: look again)
+        try:
+            data = el.screenshot(timeout=4000); break
+        except Exception:
+            time.sleep(0.4)
+    else:
+        data = el.screenshot()
+    return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)[..., ::-1]
 errors = []
 CPU_LEN = "() => { const g = window.MexicanTrainApp.state.game; return g ? g.trains.cpu.tiles.length : -1; }"
 OPEN = """() => { const S = window.MexicanTrainApp.state, m = S.modal; return null; }"""

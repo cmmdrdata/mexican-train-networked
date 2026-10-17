@@ -710,3 +710,29 @@ Against the computer the final screen has two buttons: **Quit** (back to the men
 ## Easy sometimes draws for no reason
 
 On about one turn in five (20%) an **Easy** computer draws a tile although it has a play, and then plays any tile that fits: the new one or one it already held. It happens in single-player and in hosted games (the log says "... draws a tile it did not have to."), never while a double has to be covered or when the boneyard is empty, and it is not grumbled about like a forced draw. Medium, Hard and Expert never do it. It is decided from the position, not from the game's random numbers. Test: `test_easy_draw` (7).
+
+## Running the tests yourself
+
+`./run_tests.sh` runs every suite and writes `test-report-<date>/report.txt`. The suites run in parallel (by default one Node suite per CPU core, and 2 to 4 browser suites at a time); a suite that fails is run once more on its own, and one that passes the second time is listed as "flaky" and still counts as a pass.
+
+- `./run_tests.sh --node-only` or `--browser-only`: half of it. `./run_tests.sh four`: only suites with "four" in the name. `./run_tests.sh --list`: the suites.
+- `-j 6` sets how many run at once, `--serial` runs one at a time, `--no-retry` skips the second run.
+- It needs node 18 or newer, python3 and perl (all on a Mac). The browser suites also need `pip3 install playwright && python3 -m playwright install chromium`. The tests for the host's join screen and the copy-link button need the computer to have a private network address (192.168.x.x, 10.x.x.x or 172.16-31.x.x) and skip themselves without one.
+- On a slow machine, use `-j 2` or `--serial` if suites time out. The whole run takes about 25 minutes on a 2-core machine, and a lot less with more cores.
+
+## No two players with the same name
+
+At every table, single-player or hosted, all names differ (capitals ignored): the computers among themselves and against the people. A hosted table renames a second "Ann" to "Ann 2" (kept within 10 letters). A computer takes a name from its own skill's list first; where that list is used up (the Lord of the Rings has only two Hard names, so three Hard computers need more), it borrows an unused name from another skill's list of the same theme, and only if every name is taken adds a number ("Aragorn 2"). Test: `test_unique_names`.
+
+### Wizarding theme drafts
+`design/theme-sketches/wizarding-cast.md` (14 characters by level, with sample lines), `wizarding-backdrops.png` (6 backgrounds) and `wizarding-markers.png` (10 train markers). Draft only: nothing is in the game yet.
+Update: backgrounds 2 and 4 chosen (random per game), wand markers (`wizarding-wands.png`) and patronus drafts (`wizarding-patronus.png`) added.
+
+## The wizarding theme
+
+Choose "The wizarding world" under Theme (single player, or the host's setting online). Your opponents are 15 wizards and witches, fixed to a skill: Easy Neville, Hagrid, Ron, Dobby; Medium Harry, Ginny, Luna, Fred, Draco; Hard McGonagall, Sirius, Snape; Expert Dumbledore, Hermione, Voldemort. Each has about 55 lines of its own (all 20 kinds of comment, original and mild, with no quotes from the books or films), a home and three foods for the "hungry" jabs.
+
+- **Markers:** an open train is marked with a glowing guardian animal instead of the toy train. A character wears its own (Harry the stag, Snape the doe, Hermione the otter, Ron the terrier, Luna the hare, Ginny the horse, Dumbledore the phoenix, McGonagall the cat); everyone else gets another one, never two the same at a table. Drawn in `game.js` (`PATRONUS`).
+- **Boards:** a candlelit hall or a moonlit forest (`art/make_wizard_art.py` draws `art/wizard-hall.svg` and `art/wizard-forest.svg`), chosen at random every time a game starts, by a separate dice roll so deals never change. In a hosted game the server picks it for each game (and each rematch), so every screen shows the same one. Both are dark on purpose: the brightest pixel is below the classic board's, and `t/test_browser_wizard.py` measures that.
+- **Tests:** `test_wizard.js` (cast, voices, animals, boards, a hosted game, the art files) and `test_browser_wizard.py` (the pixels, in three screen sizes).
+- Earlier sketches (wands, patronus drafts, other backgrounds) stay in `design/theme-sketches/`.

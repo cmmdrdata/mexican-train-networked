@@ -14,7 +14,7 @@ const KINDS = Object.keys(G.LINES.normal);
 
 (async () => {
   console.log('the cast');
-  ok(G.THEME_IDS.join() === 'classic,lotr', 'two themes: classic and The Lord of the Rings');
+  ok(G.THEME_IDS.join() === 'classic,lotr,wizard', 'three themes: classic, The Lord of the Rings and the wizarding world');
   ok(LEVELS.every(l => T.players[l].length >= 2), 'at least two characters per level (so two computers of one level still get different ones: no more than two can be at one table)');
   ok(LEVELS.join() === 'easy,normal,hard,expert' && T.players.expert.join() === 'Gandalf,Galadriel,Saruman' && T.players.hard.join() === 'Aragorn,Elrond', 'the cast: Aragorn and Elrond are Hard; Gandalf, Galadriel and Saruman are the Experts');
   ok(new Set(cast).size === cast.length, 'nobody plays at two levels');

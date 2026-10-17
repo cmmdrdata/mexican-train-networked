@@ -1,6 +1,7 @@
 """Whose turn it is ("tunnel vision"): the row of that player is lit, the others dim, and the light slides from row to row."""
 import json, os, subprocess
 from playwright.sync_api import sync_playwright
+os.makedirs('/tmp/shots', exist_ok=True)
 ROOT = os.path.dirname(os.path.abspath(__file__))
 srv = subprocess.Popen(['node', os.path.join(ROOT, 'browser_server.js')], stdout=subprocess.PIPE, text=True, env=dict(os.environ, MT_CHECK_BUILD='1'))
 base = f"http://127.0.0.1:{json.loads(srv.stdout.readline())['port']}/"
@@ -47,7 +48,7 @@ try:
                 y2 = pg.evaluate("() => document.querySelector('.spot').getBoundingClientRect().top")
                 check(f'{tag}: bottom to top, and redrawn twice on the way: the light is still part-way (not jumped to the end): {y0:.0f} {y1:.0f} {y2:.0f}', y2 < y1 - 3 and y1 < y0 - 3 and y1 > y2 - 1 + 0 and top != 'human')
             setturn(pg, None); check(f'{tag}: nobody: no light, nothing dimmed', pg.evaluate(WHERE) == [] and pg.evaluate("() => [...document.querySelectorAll('.track')].every(r => +getComputedStyle(r.querySelector('.track-label')).opacity === 1)"))
-            if w == 390 and reduced != 'reduce': setturn(pg, 'cpu'); pg.wait_for_timeout(600); pg.screenshot(path='/tmp/spot_phone.png')
+            if w == 390 and reduced != 'reduce': setturn(pg, 'cpu'); pg.wait_for_timeout(600); pg.screenshot(path='/tmp/shots/spot_phone.png')
             check(f'{tag}: no page errors', not errs); ctx.close()
         # a real game: the light is on somebody once the turns begin, and it is always on exactly one name
         pg = b.new_page(viewport={'width': 1100, 'height': 900}); pg.goto(base); pg.wait_for_selector('#opt-rounds'); pg.select_option('#opt-rounds', '1'); pg.select_option('#opt-cpus', '1')

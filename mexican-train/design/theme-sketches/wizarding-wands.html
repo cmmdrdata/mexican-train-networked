@@ -1,0 +1,42 @@
+<!doctype html><meta charset=utf-8><style>
+*{box-sizing:border-box;margin:0}
+body{background:#14101c;font-family:system-ui;color:#f1e6c8;padding:18px;width:1000px}
+h1{font-size:20px;margin-bottom:12px}
+.g{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.m{background:#201a2c;border:1px solid #3a3050;border-radius:12px;padding:10px 14px}
+.m svg.big{width:100%;height:84px}
+.row{display:flex;gap:6px}.row svg{flex:1;height:34px}
+.m b{display:block;margin:6px 0 2px;font-size:14px}.m small{color:#b9aecb}
+</style><h1>Wands, drawn more realistically — each in its wood, with the player colour as a ring or stone (small row = the four player colours)</h1><div class="g" id="g"></div>
+<defs></defs>
+<script>
+const cols=['#c0392b','#2e86de','#f1c40f','#27ae60'];
+let uid=0;
+function wand(kind,c){
+ const id='w'+(uid++);
+ const woods={holly:['#8a5a30','#5a3418','#b27a44'],ebony:['#2b2020','#120c0c','#4a3a3a'],vine:['#7a5a2c','#4a3414','#a88048'],oak:['#9a7440','#6a4a22','#c49a5c'],elder:['#b09468','#7e6440','#d8bf92'],cherry:['#8a3a24','#5a2214','#b25a3c']};
+ const [a,b,h]={straight:woods.holly,spiral:woods.vine,knotted:woods.oak,ornate:woods.ebony,bone:woods.elder,carved:woods.cherry}[kind];
+ const defs=`<defs><linearGradient id="${id}" x1=0 y1=0 x2=0 y2=1><stop offset=0 stop-color="${h}"/><stop offset=.35 stop-color="${a}"/><stop offset=1 stop-color="${b}"/></linearGradient></defs>`;
+ const grain=`<g stroke="#000" stroke-opacity=".22" stroke-width=".7" fill="none"><path d="M30 29 q60 -2 120 1 t120 0 t110 -1"/><path d="M40 35 q80 2 140 -1 t140 1"/><path d="M60 24 q60 1 110 -1 t130 1"/></g><path d="M20 26 H360" stroke="#fff" stroke-opacity=".25" stroke-width="1.2"/>`;
+ let body='';
+ if(kind==='straight') body=`<path d="M8 30 L300 26 Q340 25 372 27 L372 33 Q340 35 300 36 L8 34 Z" fill="url(#${id})" transform="translate(0 0)"/><path d="M296 20 q6 -2 12 0 l-1 24 q-6 2 -12 0z" fill="url(#${id})"/><rect x=296 y=26 width=10 height=8 fill="${c}" opacity=".9"/><path d="M20 24 q4 -10 14 -10 h250 q6 0 8 8 v22 q-2 8 -8 8 h-250 q-10 0 -14 -10z" fill="url(#${id})"/><path d="M286 14 h14 v32 h-14z" fill="${c}" opacity=".85"/>`;
+ if(kind==='straight') body=`<path d="M26 22 Q26 12 40 12 H262 Q272 12 276 18 L372 28 Q374 30 372 32 L276 42 Q272 48 262 48 H40 Q26 48 26 38Z" fill="url(#${id})"/><rect x=262 y=12 width=10 height=36 fill="${c}" opacity=".9"/><circle cx=30 cy=30 r=10 fill="${c}" opacity=".7"/>`;
+ return `<svg class="${arguments[2]||''}" viewBox="0 0 380 60" xmlns="http://www.w3.org/2000/svg">${defs}${shape(kind,id,c,a,b,h)}</svg>`;
+}
+function shape(kind,id,c,a,b,h){
+ const taper=`M130 28 L372 29.5 L372 30.5 L130 32Z`;
+ const shaft=(x1)=>`<path d="M${x1} 25 L372 29.2 Q374 30 372 30.8 L${x1} 35Z" fill="url(#${id})"/>`;
+ const hl=`<path d="M40 24 L370 29.4" stroke="#fff" stroke-opacity=".28" stroke-width="1"/><path d="M40 36 L370 30.6" stroke="#000" stroke-opacity=".3" stroke-width="1"/>`;
+ const grain=`<g stroke="#000" stroke-opacity=".2" stroke-width=".6" fill="none"><path d="M120 28 q60 .2 120 1 t120 .4"/><path d="M130 32 q60 -.3 120 -1"/></g>`;
+ if(kind==='straight') return `<path d="M10 24 Q4 30 10 36 H110 Q130 35 138 33.5 L372 30.8 Q374 30 372 29.2 L138 26.5 Q130 25 110 24Z" fill="url(#${id})"/><rect x=104 y=23.5 width=7 height=13 rx=2 fill="${c}"/><rect x=118 y=24 width=3 height=12 fill="#000" opacity=".25"/>${hl}${grain}`;
+ if(kind==='spiral'){ let t='';for(let i=0;i<10;i++){t+=`<path d="M${14+i*10} 23 q6 7 0 14" stroke="#000" stroke-opacity=".35" stroke-width="2" fill="none"/>`}
+  return `<path d="M8 23 Q2 30 8 37 H126 Q132 34 140 33 L372 30.8 Q374 30 372 29.2 L140 27 Q132 26 126 23Z" fill="url(#${id})"/>${t}<circle cx=7 cy=30 r=3 fill="${c}"/><rect x=122 y=23 width=6 height=14 rx=2 fill="${c}"/>${hl}${grain}`;}
+ if(kind==='knotted') return `<path d="M8 25 q-5 5 0 10 q10 2 20 1 q6 5 14 0 q14 3 26 -1 q10 4 22 0 q18 1 40 -2 L372 30.8 Q374 30 372 29.2 L130 26 q-20 -3 -40 -1 q-10 -4 -22 0 q-12 -4 -26 0 q-8 -5 -14 0 q-10 -1 -22 -1Z" fill="url(#${id})"/><ellipse cx=48 cy=28 rx=4 ry=2.5 fill="#000" opacity=".3"/><ellipse cx=90 cy=32 rx=3 ry=2 fill="#000" opacity=".3"/><rect x=110 y=24.5 width=6 height=11 rx=3 fill="${c}"/>${hl}${grain}`;
+ if(kind==='ornate') return `<path d="M4 30 q4 -9 14 -8 q4 -2 8 0 H70 Q80 22 86 25 L98 24 q6 -2 8 2 L372 29.2 Q374 30 372 30.8 L106 34 q-2 4 -8 2 L86 35 Q80 38 70 38 H26 q-4 2 -8 0 q-10 1 -14 -8Z" fill="url(#${id})"/><circle cx=14 cy=30 r=6 fill="${c}"/><circle cx=14 cy=30 r=6 fill="none" stroke="#e8c870" stroke-width="1.6"/><rect x=68 y=22 width=4 height=16 fill="#e8c870"/><rect x=84 y=23 width=4 height=14 fill="#e8c870"/><path d="M26 30 H66" stroke="#e8c870" stroke-opacity=".6" stroke-dasharray="3 3"/>${hl}`;
+ if(kind==='bone') return `<path d="M8 22 q-6 3 -4 8 q-2 5 4 8 q6 2 10 -2 q10 2 40 .5 Q110 36 140 33 L372 30.8 Q374 30 372 29.2 L140 27 Q110 24 58 21.5 Q28 22 18 22 q-4 -3 -10 0Z" fill="url(#${id})"/><rect x=70 y=22.5 width=7 height=15 rx=2 fill="${c}"/><path d="M20 24 q30 2 50 0" stroke="#000" stroke-opacity=".18" fill="none"/>${hl}${grain}`;
+ if(kind==='carved') return `<path d="M6 24 Q0 30 6 36 H84 Q90 38 96 37 L110 35 L372 30.8 Q374 30 372 29.2 L110 26 L96 23 Q90 22 84 24Z" fill="url(#${id})"/><g stroke="#000" stroke-opacity=".3" fill="none"><path d="M14 27 l6 3 -6 3 M28 27 l6 3 -6 3 M42 27 l6 3 -6 3 M56 27 l6 3 -6 3 M70 27 l6 3 -6 3"/></g><rect x=84 y=23 width=6 height=14 rx=2 fill="${c}"/>${hl}${grain}`;
+}
+const kinds=[['straight','Smooth holly — a simple wand with a cork-like grip band'],['spiral','Spiral-carved vine wood'],['knotted','Knotted oak, left rough like a branch'],['ornate','Ebony with a gold-ringed stone pommel'],['bone','Pale elder wood, smooth and slim'],['carved','Cherry wood with a chevron-carved handle']];
+const g=document.getElementById('g');
+for(const [k,n] of kinds){g.insertAdjacentHTML('beforeend',`<div class="m">${wand(k,cols[0],'big')}<b>${n}</b><div class="row">${cols.map(c=>wand(k,c)).join('')}</div></div>`)}
+</script>
