@@ -116,6 +116,8 @@ with sync_playwright() as pw:
     pg.evaluate("s => document.querySelector('.rail').insertAdjacentHTML('afterbegin', s)", svg)
     box = pg.evaluate("() => { const e = document.querySelector('.toy-train.patronus svg'); const r = e.getBoundingClientRect(); return [r.width, r.height, getComputedStyle(e).filter]; }")
     ok(box[0] > 20 and box[1] > 14 and 'drop-shadow' in box[2], f'a marker is drawn at a visible size with its glow ({box[0]:.0f}x{box[1]:.0f})')
+    ratio = pg.evaluate("() => { const s = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--s')); return document.querySelector('.toy-train.patronus svg').getBoundingClientRect().width / (s * 1.3); }")
+    ok(1.45 <= ratio <= 1.55, f'and it is 50% larger than the toy train or the ring would be (x{ratio:.2f})')
     ctx.close()
 
     print('someone who asks for more contrast')
