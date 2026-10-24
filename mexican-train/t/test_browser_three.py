@@ -129,7 +129,7 @@ with sync_playwright() as pw:
     a.screenshot(path='/tmp/shots/three_game.png')
 
     print('3. talking')
-    b.click('[data-action="toggleSay"]'); time.sleep(0.2); b.keyboard.type('Good luck, Ann and Cat'); b.keyboard.press('Enter')
+    b.click('#say-text'); time.sleep(0.2); b.keyboard.type('Good luck, Ann and Cat'); b.keyboard.press('Enter')
     time.sleep(0.8)
     ba, bc = a.evaluate(BUBBLE), c.evaluate(BUBBLE)
     ok(ba and bc and ba['who'] == 'Ben' and bc['who'] == 'Ben' and ba['text'] == bc['text'] == 'Good luck, Ann and Cat', f'what Ben types appears in both other windows, as Ben\'s: {ba} / {bc}')

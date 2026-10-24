@@ -1,15 +1,15 @@
 # Wizarding theme: draft cast (for you to edit before it goes into the game)
 
-Same shape as the Lord of the Rings theme: 14 characters, each fixed to a skill level, each with a home, three foods and its own lines.
+Same shape as the Lord of the Rings theme: 19 characters (6 on the dark side: Voldemort, Draco, Bellatrix, Lucius, Umbridge, Pettigrew; they wear the serpent-and-dagger marker, not a patronus), each fixed to a skill level, each with a home, three foods and its own lines.
 All lines are original, written in the spirit of each character (no quotes from the books or films). Names are 10 letters or fewer.
 Below, each character has a SAMPLE of six of the ~25 line kinds the game uses (great, poor, slow, draw, ownBlocked, invalid). Once you pick the cast, I write the full sets.
 
 | Level | Characters |
 |---|---|
-| Easy | Neville, Hagrid, Ron, Dobby |
-| Normal | Harry, Ginny, Luna, Fred, Draco |
-| Hard | McGonagall, Sirius, Snape |
-| Expert | Dumbledore, Hermione, Voldemort |
+| Easy | Neville, Hagrid, Ron, Dobby, Pettigrew |
+| Normal | Harry, Ginny, Luna, Fred, Draco, Umbridge |
+| Hard | McGonagall, Sirius, Snape, Lucius |
+| Expert | Dumbledore, Hermione, Voldemort, Bellatrix |
 
 (Spares if you want to swap: Easy Crabbe, Lockhart; Normal George, Cedric, Seamus; Hard Lupin, Moody; Expert Riddle.)
 

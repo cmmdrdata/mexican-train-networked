@@ -31,7 +31,7 @@ const KINDS = Object.keys(G.LINES.normal);
   ok(cast.every(n => KINDS.every(k => Array.isArray(T.voices[n][k]) && T.voices[n][k].length >= 2)), `every character has at least two lines for each of the ${KINDS.length} kinds of comment`);
   ok(cast.every(n => Object.keys(T.voices[n]).every(k => KINDS.includes(k))), 'and no kind the game does not use');
   ok(all.every(([, , l]) => typeof l === 'string' && l.length >= 4 && l.length <= 110), `${all.length} lines, each short enough for a speech bubble`);
-  ok(all.every(([, k, l]) => k === 'openShort' || k === 'ownShort' || !/\{/.test(l)), 'only the short-train lines have placeholders (yours when you build a short opening, its own for its own)');
+  ok(all.every(([, k, l]) => k === 'openShort' || k === 'ownShort' || !/\{/.test(l.replace(/\{[mM]e\}/g, ''))), 'only the short-train lines have placeholders (and {me}, the person it talks to; yours when you build a short opening, its own for its own)');
   ok(all.filter(([, k]) => k === 'ownShort').every(([, , l]) => !/\{(?!built\})\w+\}/.test(l)) && cast.every(n => T.voices[n].ownShort.some(l => l.includes('{built}'))), 'and a character remarking on its own short train can say how many tiles, and only that'); 
   ok(all.filter(([, k]) => k === 'openShort').every(([, , l]) => (l.match(/\{(\w+)\}/g) || []).every(p => p === '{built}' || p === '{best}')), 'and those use only {built} and {best}');
   ok(cast.every(n => T.voices[n].openShort.some(l => l.includes('{built}'))), 'every character can quote how many tiles you built');

@@ -212,7 +212,7 @@ const inVoice = (name, kind, text) => {
     const who = host.S.online.players[2].name;
     host.d({ type: 'startOnline' });
     await until(() => host.S.game && guest.S.game);
-    ok(/Say something/.test(host.html()) && /data-action="toggleChat"[^>]*>Comments: on</.test(host.html()) && /data-action="toggleChat"[^>]*>Comments: on</.test(guest.html()), 'each player has a Comments switch on the computer\'s row (and still Say something)');
+    ok(/<section class="chat"/.test(host.html()) && /data-action="toggleChat"[^>]*>Comments: on</.test(host.html()) && /data-action="toggleChat"[^>]*>Comments: on</.test(guest.html()), 'each player has a Comments switch on the computer\'s row (and the chat)');
     guest.d({ type: 'toggleChat' });
     ok(guest.S.opts.chat === false && /Comments: off/.test(guest.html()), 'Ben turns the computer\'s comments off');
     const pol = r => c => { const a = c.S.awaiting, o = c.S.online; if (!a || !o || o.pending || o.conn !== 'open') return; const pick = () => a.moves[Math.floor(r() * a.moves.length)];

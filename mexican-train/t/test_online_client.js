@@ -246,7 +246,7 @@ const hostile = /<(script|img|svg|iframe|b|i)\b[^>]*>/i;
     const hh = host.html(), gh = guest.html();
     ok(/Online game/.test(hh) && !/Online game [A-Z0-9]{3}-[A-Z0-9]{3}/.test(hh) && /Double-12 online/.test(hh) && !/Computer:/.test(hh) && !/against the computer/.test(hh), 'the header says it is an online game, without the join code, and not "against the computer"');
     ok(/Leave game/.test(hh) && !/data-action="newGame"/.test(hh), 'there is a Leave game button instead of New game');
-    ok(/Say something/.test(hh) && !/Comments: /.test(hh) && !/class="tag tag-/.test(hh), 'quick phrases replace the computer\'s Comments toggle, and there is no skill-level tag');
+    ok(/<section class="chat"/.test(hh) && !/Say something/.test(hh) && !/Comments: /.test(hh) && !/class="tag tag-/.test(hh), 'the chat replaces the computer\'s Comments toggle, and there is no skill-level tag');
     ok(/<span class="who">Ben<\/span>/.test(hh) && /<span class="who">Ann<\/span>/.test(gh), 'each sees the other\'s name where the computer\'s used to be');
     ok(/net-dot up/.test(hh), 'with a green connected light');
     ok(!/CPU/.test(hh + gh), 'and nothing in either screen says "CPU"');
@@ -344,25 +344,26 @@ const hostile = /<(script|img|svg|iframe|b|i)\b[^>]*>/i;
   }
 
   /* ================================================================== */
-  console.log('6. quick phrases');
+  console.log('6. the chat');
   const C = await startServer({});
   {
     const { host: a, guest: b } = await lobby(C.srv, C.port, { rounds: 1, hand: 8 });
     a.dispatch({ type: 'startOnline' }); await until(() => inGame(a) && inGame(b));
-    ok(!/class="say-panel"/.test(a.html()), 'the phrase panel starts closed');
-    a.dispatch({ type: 'toggleSay' });
-    const panel = a.html();
-    ok(/class="say-panel"/.test(panel) && G.ONLINE_PHRASES.every(p => panel.includes(`>${p.replace(/'/g, '&#39;')}</button>`) || panel.includes(`>${p}</button>`)), 'Say something opens the panel with every phrase as a button');
+    ok(/<section class="chat"/.test(a.html()) && /<section class="chat"/.test(b.html()) && /No messages yet/.test(a.html()), 'both players have a chat beside the game history, empty at first');
+    a.dispatch({ type: 'sendText', text: 'Hello Ben' });
+    await until(() => b.S.comment && b.S.comment.text === 'Hello Ben');
+    ok(/<li class="mine"><b>You<\/b> <span>Hello Ben<\/span><\/li>/.test(a.html()) && /<li class="them"><b>Ann<\/b> <span>Hello Ben<\/span><\/li>/.test(b.html()), 'typed text shows in the sender\'s chat as "You" and in the other\'s as the sender\'s name');
+    await wait(1600);
     a.dispatch({ type: 'sendChat', key: '0' });
-    await until(() => b.S.comment);
+    await until(() => b.S.comment && b.S.comment.text === G.ONLINE_PHRASES[0]);
     ok(b.S.comment.text === G.ONLINE_PHRASES[0] && b.S.comment.kind === 'chat', 'the phrase appears on the other screen');
     ok(new RegExp(`<div class="bubble"><b>Ann</b><span>${G.ONLINE_PHRASES[0]}</span></div>`).test(b.html()), 'in a speech bubble with the sender\'s name');
-    ok(/You said: Nice play!/.test(a.html()) && !/class="say-panel"/.test(a.html()), 'the sender sees "You said...", and the panel closes');
-    a.dispatch({ type: 'toggleSay' }); a.dispatch({ type: 'sendChat', key: '1' });
-    await until(() => a.S.banner && /Not so fast/.test(a.S.banner), 2000);
-    ok(/Not so fast/.test(a.S.banner), 'sending again at once is turned down by the server, and the player is told');
+    ok(/<li class="mine"><b>You<\/b> <span>Nice play!<\/span><\/li>/.test(a.html()), 'the sender sees the phrase in the chat');
+    a.dispatch({ type: 'sendChat', key: '1' });
+    await until(() => /Not so fast/.test(a.html()) && a.S.chatLog.some(x => x.sys), 2000);
+    ok(a.S.chatLog.some(x => x.sys && /Not so fast/.test(x.text)) && /<li class="sys">Not so fast/.test(a.html()), 'sending again at once is turned down by the server, and the chat says so'); 
     a.dispatch({ type: 'sendChat', key: '99' }); a.dispatch({ type: 'sendChat', key: 'x' }); a.dispatch({ type: 'sendChat', key: '-1' }); a.dispatch({ type: 'sendChat', key: '1.5' });
-    ok(a.sent.filter(m => m.t === 'chat').length === 2, 'phrase numbers that do not exist are never sent');
+    ok(a.sent.filter(m => m.t === 'chat').length === 3, 'phrase numbers that do not exist are never sent');
     b.dispatch({ type: 'sendChat', key: String(G.ONLINE_PHRASES.length - 1) });
     await until(() => a.S.comment);
     ok(a.S.comment.text === G.ONLINE_PHRASES[G.ONLINE_PHRASES.length - 1], 'and it works the other way');

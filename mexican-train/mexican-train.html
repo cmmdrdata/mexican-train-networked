@@ -324,9 +324,6 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .hints-toggle { padding: 0.15rem 0.6rem; font-size: 0.85rem; }
 .hints-toggle[aria-pressed="false"] { opacity: 0.75; }
 .btn.toggle[aria-pressed="true"] { background: var(--brass-soft); box-shadow: inset 0 0 0 2px var(--brass); }
-.say-panel { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.4rem; }
-.say-panel .say { padding: 0.2rem 0.65rem; font-size: 0.85rem; }
-.you-said { margin-top: 0.3rem; font-size: 0.85rem; opacity: 0.8; font-style: italic; }
 
 /* the computer's level, shown beside its name */
 .tag { display: inline-block; padding: 0.05rem 0.55rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -455,6 +452,7 @@ select option { color: #1b2523; background: #fff; }
   .table.art-wizard.bk-forest { background: radial-gradient(ellipse at 50% 30%, #173a30 0%, #0a1a16 100%); }
 }
 /* The wizarding theme: the open-train marker is a glowing guardian animal, 50% larger than the toy train or the ring. */
+.toy-train.patronus.dark svg { filter: drop-shadow(0 0 5px rgba(80,230,140,.75)); }
 .toy-train.patronus svg { height: calc(var(--s) * 1.26); width: calc(var(--s) * 1.95); filter: drop-shadow(0 0 4px rgba(150, 205, 255, 0.9)) drop-shadow(0 0 9px rgba(120, 180, 255, 0.5)); }
 
 /* The Lord of the Rings theme: the open-train marker is a golden ring with a soft glow. */
@@ -466,20 +464,34 @@ select option { color: #1b2523; background: #fff; }
 .net-debug pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; font: inherit; }
 .net-debug .btn { padding: 2px 8px; font-size: 11px; }
 
-/* The box where a person types to the other person: made once, outside the redrawn page, and only shown or hidden. At the top of the
-   screen, where a phone's keyboard never covers it. */
-.say-dock {
-  position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 15;
-  width: min(580px, calc(100vw - 16px)); box-sizing: border-box; padding: 10px;
-  background: rgba(10, 40, 34, 0.98); border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+/* The chat of an online game: beside the game history at the bottom of the board, the same height. The list scrolls (newest at the bottom); the box to type in is under it. */
+.log-wrap { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 0 0.9rem; align-items: stretch; }
+.log-wrap.chat-only { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 640px) { .log-wrap { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 0 0.6rem; } .chat-form .btn { padding: 4px 9px; } }
+.chat { display: flex; flex-direction: column; box-sizing: border-box; height: 7.2rem; padding: 0.7rem 0 0.3rem; min-width: 0; }
+.chat-list {
+  flex: 1 1 auto; min-height: 0; margin: 0; padding: 0 0.4rem 0.2rem 0; list-style: none; overflow-y: auto; overscroll-behavior: contain; display: grid; align-content: start; gap: 0.15rem;
+  font-size: 0.9rem; color: var(--muted); scrollbar-width: thin; scrollbar-color: rgba(246, 240, 224, 0.4) transparent; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 8px rgba(0, 0, 0, 0.6);
 }
-.say-dock[hidden] { display: none; }
-.say-dock .say-form, .say-panel .say-form { display: flex; gap: 8px; align-items: center; }
-.say-dock input, .say-panel input { flex: 1 1 auto; min-width: 0; box-sizing: border-box; padding: 9px 11px; font: inherit; font-size: 16px; color: #1b2523; background: #f6f0e0; border: 1px solid rgba(0, 0, 0, 0.35); border-radius: 8px; }
-.say-dock .say-quick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.say-dock .say-quick .btn { padding: 5px 11px; font-size: 0.85rem; }
-.say-panel .say-form { flex-basis: 100%; margin-bottom: 6px; }
-.you-said.not-sent { color: #f2c06b; font-style: italic; }
+.chat-list:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; border-radius: 6px; }
+.chat-list li { overflow-wrap: anywhere; }
+.chat-list li b { color: var(--text); font-weight: 700; }
+.chat-list li.mine b { color: #f2d98a; }
+.chat-list li.cpu span { font-style: italic; }
+.chat-list li.sys, .chat-list li.empty { font-style: italic; opacity: 0.8; }
+.chat-list li.sys { color: #f2c06b; }
+.chat-form { display: flex; gap: 6px; align-items: center; flex: 0 0 auto; padding-top: 0.25rem; }
+.chat-form input { flex: 1 1 auto; min-width: 0; box-sizing: border-box; padding: 5px 9px; font: inherit; font-size: 16px; color: var(--text); background: rgba(0, 0, 0, 0.32); border: 1px solid rgba(246, 240, 224, 0.4); border-radius: 8px; caret-color: var(--text); }   /* semi-transparent: the table shows through */
+.chat-form input::placeholder { color: var(--muted); opacity: 1; }
+.chat-form input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; background: rgba(0, 0, 0, 0.45); }
+.chat-form .btn { padding: 4px 12px; flex: 0 0 auto; }
+:is(.v-compact, .v-tiny) .chat { height: 4.2rem; padding-top: 0.3rem; }
+.v-tiny .chat { height: 3.4rem; }
+:is(.v-compact, .v-tiny) .chat-form input { padding: 2px 8px; }
+:is(.v-compact, .v-tiny) .chat-form .btn { padding: 2px 10px; }
+/* in Compact and Tiny the bottom of the board floats at the bottom of the screen (the page scrolls behind it), the history and the chat together */
+:is(.v-compact, .v-tiny) .log-wrap { position: sticky; bottom: 0; z-index: 12; margin: 0 -4px; padding: 0 8px; }
+.log-wrap .log { position: static; margin: 0; padding-left: 0; padding-right: 0; }
 
 /* How the other player will join (the Host screen): three choices, the last with a box for an address typed by hand */
 .join-choices { border: 1px solid rgba(0, 0, 0, 0.18); border-radius: 10px; padding: 0.6rem 0.8rem 0.7rem; margin: 0 0 1rem; }
@@ -625,7 +637,7 @@ select option { color: #1b2523; background: #fff; }
 <div id="app"></div>
 <noscript>Mexican Train needs JavaScript turned on to run.</noscript>
 <script>
-window.MT_BUILD = "a31206b826";
+window.MT_BUILD = "84b4bd2f65";
 (function (global) {
   'use strict';
 
@@ -2778,9 +2790,9 @@ window.MT_BUILD = "a31206b826";
         },
         Gollum: {
           great: ['Gollum! Clever move. We hates clever moves.', 'Tricksy. Very tricksy. We does not like it.', 'It plays well. Too well. Suspicious, yes.'],
-          good: ['Hmm. Not bad, not bad, says we.', 'Safe little move. Sneaky little player.'],
+          good: ['Hmm. Not bad, not bad, says we.', 'Safe little move. Sneaky little {me}.'],
           poor: ['Ha! Silly move. We sees it, yes we does.', 'Bad tile, bad place. We likes it.', 'It does not know what it is doing. Good, good.'],
-          awful: ['Oh, terrible! Lovely, lovely terrible!', 'We laughs. Gollum, gollum. We laughs so much.', 'Such a gift it gives us. Thank you, nice player.'],
+          awful: ['Oh, terrible! Lovely, lovely terrible!', 'We laughs. Gollum, gollum. We laughs so much.', 'Such a gift it gives us. Thank you, nice {me}.'],
           missedOut: ['It could have won! And it did not! Gollum!', 'The winning tile, right there, and it walks past it. Ha!'],
           slow1: ['Hurry, hurry. We waits, but we does not like waiting.', 'What is it doing? What has it got in its hand?'],
           slow2: ['Long time. Long, long time. We counts the rocks.', 'Is it asleep? We could peek at its tiles... no, no, nice Gollum.'],
@@ -2794,7 +2806,7 @@ window.MT_BUILD = "a31206b826";
           invalid: ['Foolish! It does not fit, precious. It does not fit!', 'Tries to cheat, does it? We saw it. We saw!', 'Nasty tile, wrong train. Gollum, gollum.'],
           ownShort: ['Only {built}! A little train, a poor little train. We wanted more.', 'Short, it is short! The tiles cheated Gollum, yes they did.', 'Such a tiny train. It is not fair, precious.'],
           roundBlocked: ['Everyone is stuck! Nobody takes it. Nobody has it. We hates a stalemate.', 'All blocked, precious. Dark and quiet. Not even a fish.'],
-          openBest: ['Long train. Too long. We hates it.', 'All the tiles, all down. Nasty clever player.'],
+          openBest: ['Long train. Too long. We hates it.', 'All the tiles, all down. Nasty clever {me}.'],
           openShort: ['Only {built}! It could have done {best}. Silly.', 'Short little train. We is pleased, yes.', 'It keeps tiles. Hoards them. Like us! Ha!'],
           openNone: ['No train! Nothing! Gollum!', 'It builds nothing. Good. Very good for us.'],
         },
@@ -2858,7 +2870,7 @@ window.MT_BUILD = "a31206b826";
           ownDraw: ['Nothing fits, and the boneyard is the last place I want to be. Still, here I go.', 'The wrong tile again, and I am hungry, too. Drawing.', 'My old Gaffer used to say: if it does not fit, you draw. He never said it would be easy.'],
           ownDrawAgain: ['Another wrong one! I could have cooked a stew by now.', 'Still no luck. There must be a better tile in there somewhere. There must.'],
           ownBlocked: ['I cannot play and I cannot draw. I am proper stuck.', 'A pass, and a marker on my train. Well. It happens to the best of us.', 'Blocked in. Not even a bit of bread to cheer me up.'],
-          invalid: ['Beggin\' your pardon, but that one will not fit there.', 'Not there, Mr. Player. Have a look at the numbers.', 'Steady on. That tile and that train do not match.'],
+          invalid: ['Beggin\' your pardon, but that one will not fit there.', 'Not there, {Me}. Have a look at the numbers.', 'Steady on. That tile and that train do not match.'],
           ownShort: ['{built} tiles. It is a short train. A very short one. Begging your pardon.', 'My train is so small it would not feed a hobbit. A little one, anyway.', 'Short, it is. I did my best with what I had, and that is the truth.'],
           roundBlocked: ['Everything is stuck! Nobody can budge. Not even for second breakfast.', 'Blocked, all of us. Well. Count the tiles, then, and have a cup of tea.'],
           openBest: ['Lovely long train. Proper job.', 'Every tile down. My gaffer would approve.'],
@@ -3047,12 +3059,14 @@ window.MT_BUILD = "a31206b826";
     wizard: {
       label: 'The wizarding world',
       players: {
-        easy: ['Neville', 'Hagrid', 'Ron', 'Dobby'],
-        normal: ['Harry', 'Ginny', 'Luna', 'Fred', 'Draco'],
-        hard: ['McGonagall', 'Sirius', 'Snape'],
-        expert: ['Dumbledore', 'Hermione', 'Voldemort'],
+        easy: ['Neville', 'Hagrid', 'Ron', 'Dobby', 'Pettigrew'],
+        normal: ['Harry', 'Ginny', 'Luna', 'Fred', 'Draco', 'Umbridge'],
+        hard: ['McGonagall', 'Sirius', 'Snape', 'Lucius'],
+        expert: ['Dumbledore', 'Hermione', 'Voldemort', 'Bellatrix'],
       },
       // the animal each character's glowing guardian takes (the open-train marker is the guardian of whoever owns the train)
+      // the dark side: no guardian for them. Their trains wear a dark emblem (a serpent coiled round a dagger) in a sickly green
+      dark: ['Voldemort', 'Draco', 'Bellatrix', 'Lucius', 'Umbridge', 'Pettigrew'],
       patronus: { Harry: 'stag', Snape: 'doe', Hermione: 'otter', Ron: 'terrier', Luna: 'hare', Ginny: 'horse', Dumbledore: 'phoenix', McGonagall: 'cat' },
       food: {
         Neville: { c: 'the greenhouses', d: ['toad-in-the-hole', 'treacle tart', 'mint humbugs'] },
@@ -3069,6 +3083,10 @@ window.MT_BUILD = "a31206b826";
         Snape: { c: 'the dungeons', d: ['black coffee', 'dry toast', 'a bowl of plain porridge'] },
         Dumbledore: { c: 'the high tower', d: ['lemon sweets', 'a bowl of porridge', 'a hot mug of cocoa'] },
         Hermione: { c: 'the library', d: ['buttered crumpets', 'a cup of tea', 'a neat sandwich'] },
+        Bellatrix: { c: 'a drafty family house', d: ['a slice of dark plum cake', 'a cup of black tea', 'chocolate truffles'] },
+        Lucius: { c: 'the family manor', d: ['roast pheasant', 'a wedge of aged cheese', 'a pot of fine tea'] },
+        Umbridge: { c: 'the pink office', d: ['tea with a dainty biscuit', 'a pink iced cake', 'a tiny cucumber sandwich'] },
+        Pettigrew: { c: 'a warm little hole', d: ['a big piece of cheese', 'toast crumbs', 'a bowl of oats'] },
         Voldemort: { c: 'a cold hall', d: ['a glass of something dark', 'plain bread', 'a very old cheese'] },
       },
       foodLines: [
@@ -3163,7 +3181,7 @@ window.MT_BUILD = "a31206b826";
           awful: ["Oh no! Dobby must iron his ears for that one.", "Dobby does not mean to laugh. Dobby is laughing a little.", "A terrible play! Dobby is very, very pleased. Dobby is also sorry."],
           missedOut: ["Dobby saw it! You could have won! Dobby is bouncing in his seat.", "The winning tile was right there! Dobby almost cried out."],
           slow1: ["Dobby can wait. Dobby has waited for much longer, with much worse company.", "No hurry at all. Dobby is only polishing the tiles."],
-          slow2: ["Dobby has polished all the tiles twice. They are very shiny now.", "Is the player thinking? Dobby thinks very hard too, sometimes."],
+          slow2: ["Dobby has polished all the tiles twice. They are very shiny now.", "Are you thinking, {me}? Dobby thinks very hard too, sometimes."],
           slow3: ["Dobby has started knitting a sock while waiting. It is a long sock.", "Dobby will be very quiet. Dobby will only sigh once. Or twice."],
           draw: ["To the boneyard! Dobby hopes there is something kind in there.", "Drawing? Dobby will keep very still."],
           pass: ["A pass! Dobby may use the open train? Dobby may. Dobby will, very politely.", "The train is open. Dobby tiptoes in."],
@@ -3423,6 +3441,95 @@ window.MT_BUILD = "a31206b826";
           openShort: ["Only {built}, when {best} was possible? Disappointing.", "A short train. How cowardly.", "You kept some tiles back. Hoping I would not notice?"],
           openNone: ["No train at all. How cautious. How weak.", "You built nothing. I expected little, and you delivered less."],
         },
+        // ---- the dark side (more of the cast: each a villain, with a dark emblem instead of a guardian) ----
+        Bellatrix: {
+          great: ["Oh, that was delicious! Do it again. No, do not. I will take it.", "Lovely, lovely! You have a wicked streak. I approve.", "Ha! A clever little thing. I like clever things. I keep them."],
+          good: ["Ooh, tidy. Almost wicked.", "Not bad, darling. Not bad at all."],
+          poor: ["Boring! I expected sparks and you gave me a damp match.", "Oh, that was sad. Do try to be interesting.", "Tut, tut. Even a sleepy goblin would play better."],
+          awful: ["Oh, you precious fool! Do that again, I adore it.", "Magnificent! A disaster in tile form.", "Bravo, bravo! Such a beautiful mistake."],
+          missedOut: ["You could have won! Oh, I am delighted, and also cross with you.", "The winning tile, sitting right there. And you walked past it. Tragic."],
+          slow1: ["Tick tock, little one. I do not wait gracefully.", "Come on, come on. My patience has a short fuse."],
+          slow2: ["I am getting restless. That is rarely good for the furniture.", "If you take any longer I shall start humming. You will not like it."],
+          slow3: ["I have counted every crack in this table. Twice. Move!", "My Lord would have finished this game by now. And you. Move!"],
+          draw: ["Off to the boneyard! Bring me something shiny.", "Drawing again? Oh, the suspense."],
+          pass: ["A pass! Your train is open, sweet thing, and I am coming aboard.", "No tile for you? Then I shall borrow your train. Thank you!"],
+          doubleResent: ["A double? And now I must draw? Oh, you are going to pay for that.", "How rude, a double! I shall remember this, darling."],
+          ownDraw: ["Nothing fits. Ugh! I have to draw like a common person.", "To the boneyard I go. Somebody will suffer for this.", "No tile? Splendid. I simply adore being kept waiting. Not."],
+          ownDrawAgain: ["Wrong again! This pile is mocking me.", "Another dud! I shall hex the boneyard if this continues."],
+          ownBlocked: ["No move, no draw. I am quite vexed. Quite, quite vexed.", "A marker on my train! Who did this? Never mind. Someone did.", "Blocked! I shall be gracious about it. For a moment."],
+          invalid: ["Not there, silly. That is the wrong train.", "Oh, you almost had it. Almost. That one does not fit.", "Wrong train, little one. Look at the numbers, if you can bear to."],
+          ownShort: ["Only {built} on my train? A dramatic pause, nothing more.", "A short train, yes. I am saving my strength.", "I built {built} and not a tile more. Do not read anything into it."],
+          roundBlocked: ["Nobody can move! How thrilling. How infuriating.", "Stuck, all of us. Delightful. Dreadful. Both."],
+          openBest: ["Such a long line! Someone has been practicing.", "All those tiles in a row. I almost clapped."],
+          openShort: ["Only {built}, when you could have had {best}? Oh, you tease.", "A short train. Such a shy little thing.", "You held back, did you? {best} was right there."],
+          openNone: ["No train at all? How wonderfully timid.", "You built nothing! I do like a blank page. I like ruining it even more."],
+        },
+        Lucius: {
+          great: ["A well-judged move. I may have underestimated you.", "Impressive. Do not look so pleased. It does not suit you.", "That was elegant. I shall pretend I did not notice."],
+          good: ["Competent. I suppose that is something.", "A sensible play. How refreshingly dull."],
+          poor: ["A poor choice. But I expected nothing more.", "That was careless. Some of us were raised to know better.", "I would be embarrassed to be seen playing that."],
+          awful: ["How magnificently clumsy. I could not have planned it better.", "Do you always play like this? Do not tell me. I would rather not know.", "A catastrophe. Thank you for that."],
+          missedOut: ["You had the round and let it slip. How very common.", "The victory was in your hand. You wasted it."],
+          slow1: ["Do take your time. I have nothing important to do. Only everything.", "I trust you are not planning to keep me waiting."],
+          slow2: ["My time is worth rather a lot, you know.", "Your hesitation is costing me. I shall send a bill."],
+          slow3: ["I have composed a letter of complaint while you deliberated.", "At this rate I shall age before you play. Do hurry."],
+          draw: ["The boneyard, then. Do not wander.", "Drawing? A pity. Better planning avoids such trouble."],
+          pass: ["Your train is open to me now. How generous.", "You have left the door open, and I am walking in."],
+          doubleResent: ["A double. I must draw for it. I will not forget this, you know.", "How inconvenient of you. A double, and I must draw."],
+          ownDraw: ["Nothing fits. How tiresome.", "To the boneyard. Very undignified. Do not look.", "I must draw. A small indignity. I shall survive."],
+          ownDrawAgain: ["Wrong again? This pile is a disgrace.", "Another one that does not fit. I find it deeply offensive."],
+          ownBlocked: ["No move, no draw. I shall be speaking to the manager.", "A marker on my train. Insulting, frankly.", "I am stuck. I will not be discussing it."],
+          invalid: ["That tile does not go there. I thought you knew.", "A misplay. Do check the numbers before you embarrass yourself.", "Wrong train. Allow me to point out the obvious."],
+          ownShort: ["My train is {built} long. It is a statement, not a flaw.", "A short train. I have more important matters on my mind.", "Just {built}. I was being polite."],
+          roundBlocked: ["A stalemate. How inelegant.", "No one can move. I find it vulgar."],
+          openBest: ["A fine long train. Who taught you?", "That is a respectable line of tiles. Remarkable."],
+          openShort: ["Only {built}, when {best} was available? A waste.", "A short train. How cautious. How common.", "You kept tiles back. A weak move, if you ask me."],
+          openNone: ["No train? I shall assume that is strategy.", "You built nothing. How very modest."],
+        },
+        Umbridge: {
+          great: ["Oh, how nice, {me}! Very well played. Do not let it go to your head.", "That was lovely. I shall note it in your file.", "A splendid move, dear. I do hope you will play like that all the time."],
+          good: ["That will do very nicely, {me}.", "A sensible move. I do like sensible."],
+          poor: ["Oh dear. That was not very good, was it, {me}?", "I am sure you tried your best. That is the sad part.", "A little careless, dear. We shall make a note."],
+          awful: ["Oh, what a naughty mistake! I shall have to write that down.", "Dear, dear, dear. That was quite the blunder.", "How sweet. How very, very wrong."],
+          missedOut: ["You could have won, dear! And you did not. What a shame.", "The winning tile was right there. Tut. Such a pity."],
+          slow1: ["I do not like to rush, dear, but I am sure we would all like to finish.", "A little quicker, if you please, {me}."],
+          slow2: ["We are all waiting, dear. Do not make me remind you again.", "Time is passing, {me}. Do hurry along."],
+          slow3: ["I have filled out a form on your slowness. It is a long form.", "Detention is such a lovely thing, dear. Would you like one?"],
+          draw: ["Off to the boneyard, dear. Do not be long.", "A draw, how unfortunate. Rules are rules."],
+          pass: ["Your train is open, dear. I shall use it, as is quite proper.", "A pass, {me}? Then I will take your train. It is only fair."],
+          doubleResent: ["A double? And I must draw? Well. That is hardly in the spirit of things.", "How very inconsiderate, dear. A double. I shall remember."],
+          ownDraw: ["Nothing fits? How very irritating. I shall be gracious.", "To the boneyard I go. Do not look at me like that.", "I must draw. A small inconvenience. I shall smile through it."],
+          ownDrawAgain: ["Wrong again? I find that most unreasonable.", "Another tile that does not fit. I shall file a complaint."],
+          ownBlocked: ["No move. No draw. I find this most irregular.", "A marker on my train? How very rude of the game.", "I am stuck. There must be a rule about this somewhere."],
+          invalid: ["That tile does not go there, dear. Do read the numbers.", "Oh no, {me}, that is against the rules. Tut, tut.", "Not there, dear. A train has its place, and so does a tile."],
+          ownShort: ["Only {built} tiles on my train. A sensible, modest little train.", "A short train, dear. I do not like to show off.", "I built {built}. Perfectly proper."],
+          roundBlocked: ["Nobody can play? This is most irregular.", "A stalemate. I shall draft a notice."],
+          openBest: ["What a long train, dear. Rather showy, is it not?", "So many tiles in a row. I hope that was permitted."],
+          openShort: ["Only {built}, dear, when {best} was possible? Naughty.", "A short train. How very meek of you.", "You held some back, {me}. I do notice these things."],
+          openNone: ["No train at all? How very timid, dear.", "You built nothing. I shall assume you were just being cautious."],
+        },
+        Pettigrew: {
+          great: ["Oh, wonderful! Such a clever move. I always said you were clever.", "Marvelous! I would never dare to do something so bold.", "Oh my, that was good. Please do not be cross with me about it."],
+          good: ["That seems very sensible. Very sensible indeed.", "A fine move! I would have done the same. Probably."],
+          poor: ["Oh, er, that was a bit unwise. I do not mean it unkindly!", "That was risky. I would never. I am much too careful.", "Hm. Perhaps not that one. Sorry, sorry."],
+          awful: ["Oh dear. Oh dear, oh dear. That was a mistake. Do not blame me.", "I would not have done that. I would not have dared.", "A terrible choice! But please do not tell anyone I said so."],
+          missedOut: ["You could have won! Oh, I am terribly sorry for you.", "The winning tile! Oh, if only. I am so sorry."],
+          slow1: ["Oh, no rush! No rush at all. Please do not be cross.", "Take your time. I am only squeaking a little."],
+          slow2: ["I am a little nervous, waiting. Is it a long wait?", "I do hope I have not offended you by sitting here."],
+          slow3: ["I have chewed my nails to nothing. Please, will you move?", "Is the game still on? I have gone rather numb, waiting."],
+          draw: ["Off to the boneyard? Be quick. It is dark in there. I assume.", "Drawing again? Do not take a long time. Please."],
+          pass: ["A pass? Your train is open. I would not dream of using it. Hm, perhaps just once.", "Oh, may I? Your train is open. I will be very quick."],
+          doubleResent: ["A double! And I have to draw? Oh, that is not fair. Is it?", "Oh no, a double. I must go to the boneyard. Do not look at me."],
+          ownDraw: ["Nothing fits. Oh dear. I will just draw. Quietly.", "To the boneyard I go. Please do not watch.", "I have to draw? Oh. I will draw, then. Very carefully."],
+          ownDrawAgain: ["Wrong again! I knew it. I always draw the wrong one.", "Another one that does not fit. Oh, what a shame."],
+          ownBlocked: ["No move! No draw! I am frightfully sorry. I did try.", "A marker on my train. Oh, I knew this would happen.", "I am stuck. Please do not be angry. Please."],
+          invalid: ["Oh, that does not go there. I only mention it kindly.", "Er, sorry, that tile does not fit. Not there. Sorry.", "That is the wrong train, I think. I could be wrong! Probably not."],
+          ownShort: ["My train is only {built}. I am terribly sorry. It was all I could do.", "A short train. I did not want to take up too much room.", "Just {built}. Small and sensible. That is me."],
+          roundBlocked: ["Nobody can move! Oh dear. Please do not blame me.", "A stalemate. I did not do it! Honestly."],
+          openBest: ["What a long train! You must be very brave.", "So many tiles! I would be much too nervous."],
+          openShort: ["Only {built}? Oh, you could have had {best}! Not that I would dare to say so.", "A short train. Very wise. Very cautious. I approve.", "You held back. Good. I like holding back."],
+          openNone: ["No train at all? Oh, how very clever. How very safe.", "You built nothing. I do admire that, in a way."],
+        },
       },
     },
   };
@@ -3469,6 +3576,9 @@ window.MT_BUILD = "a31206b826";
    * player with a native language may be in it, with a translation; otherwise a line in the player's own voice. */
   function composeComment(kind, vars, o) {
     const rng = o.rng, name = o.name, slow = kind.indexOf('slow') === 0;
+    // {me} and {Me}: what the computer calls the person it is talking to: the name they entered (the same for both), or "player" / "Player" when they gave none
+    const myName = typeof o.me === 'string' ? o.me.trim() : '';
+    vars = Object.assign({ me: myName || 'player', Me: myName || 'Player' }, vars);
     const lang = nativeLangOf(name), pool = lang && NATIVE_LINES[lang][slow ? 'slow' : kind];
     const tier = slow ? Number(kind.slice(4)) : 0;
     const hungry = tier && foodOf(name, o.theme) && o.foodChance > 0 && rng() < o.foodChance
@@ -3625,13 +3735,9 @@ window.MT_BUILD = "a31206b826";
       </div>`;
     }).join('\n      ');
     // The two switches live in one place that never moves (above the opponents' rows), not in a row that changes with names, tags and counts:
-    // online, "Say something" (and Comments, when a computer is at the table); against the computer, Comments.
+    // Comments (when a computer is at the table; online, typed messages go in the Chat beside the game history).
     const anyComputer = on ? !!(S.opps && S.opps.some(o => o.computer)) : true;
-    const tools = (on ? `<button class="btn chat-toggle" data-action="toggleSay" aria-expanded="${S.sayOpen ? 'true' : 'false'}" data-focus-id="say">Say something</button>` : '')
-      + (anyComputer ? `<button class="btn chat-toggle" data-action="toggleChat" aria-pressed="${S.opts.chat ? 'true' : 'false'}" data-focus-id="chat">Comments: ${S.opts.chat ? 'on' : 'off'}</button>` : '');
-    const panel = on && S.sayOpen && !S.dockMode
-      ? `<div class="say-panel" role="group" aria-label="Say something"><form class="say-form" data-say-form><input id="say-text" type="text" maxlength="${CHAT_MAX}" placeholder="Type a message" aria-label="Your message" autocomplete="off"><button type="button" class="btn primary" data-action="sendText">Send</button></form>${ONLINE_PHRASES.map((ph, i) => `<button class="btn say" data-action="sendChat" data-key="${i}">${esc(ph)}</button>`).join('')}</div>` : '';
-    const mine = on && S.mySay ? `<div class="you-said${S.mySay.failed ? ' not-sent' : ''}">${S.mySay.failed ? '' : 'You said: '}${esc(S.mySay.text)}</div>` : '';
+    const tools = (anyComputer ? `<button class="btn chat-toggle" data-action="toggleChat" aria-pressed="${S.opts.chat ? 'true' : 'false'}" data-focus-id="chat">Comments: ${S.opts.chat ? 'on' : 'off'}</button>` : '');
     const speaker = c && c.from ? c.from : cpuName(S);
     return `<section class="opp${ids.length > 2 ? ' four' : ids.length > 1 ? ' three' : ''}" aria-label="Opponent and boneyard">
       <div class="opp-tools">${tools}</div>
@@ -3643,7 +3749,7 @@ window.MT_BUILD = "a31206b826";
       </button>
       <div class="bubble-slot" aria-live="polite">${!c ? '' : c.lang
         ? `<div class="bubble native"><b>${esc(speaker)}</b><span lang="${c.lang}"${NATIVE_DIR[c.lang] ? ' dir="rtl"' : ''}>${esc(c.text)}</span><small class="trans" lang="en">${esc(c.trans)}</small></div>`
-        : `<div class="bubble"><b>${esc(speaker)}</b><span>${esc(c.text)}</span></div>`}${mine}${panel}</div>
+        : `<div class="bubble"><b>${esc(speaker)}</b><span>${esc(c.text)}</span></div>`}</div>
     </section>`;
   }
 
@@ -3737,6 +3843,7 @@ window.MT_BUILD = "a31206b826";
    * (Harry's stag, Hermione's otter...) wears it on its train; everyone else gets one of the others, never two the same at a table. */
   const PATRONUS_ORDER = ['stag', 'otter', 'hare', 'phoenix', 'horse', 'cat', 'terrier', 'doe'];
   const PATRONUS = {
+    dagger: '<path d="M150 26 L166 92 L166 126 L134 126 L134 92Z"/><path d="M104 126 L196 126 L196 140 L104 140Z"/><path d="M142 140 L158 140 L158 176 L142 176Z"/><path d="M155.1 179.7 C160.7 181.2 168.8 172.9 175.4 168.5 C182.1 164.1 187.6 161.4 191.6 155.6 C195.7 149.9 198.4 143.4 197.6 137 C196.7 130.7 192.2 126 187 121 C181.8 116 176.1 113.6 169 109.7 C161.8 105.7 155.2 103.1 148.1 99.4 C140.9 95.8 135 92.9 130 89.8 C124.9 86.6 122.4 84.1 120.6 82.1 C118.7 80 118.6 80.6 119.8 78.5 C121.1 76.4 122.9 73.9 127.4 70.6 C131.9 67.3 137.5 64.2 144.4 60.3 C151.2 56.4 158 53.4 164.9 49.4 C171.8 45.4 180 42.3 182 38.4 C184 34.6 180.2 28.5 175.9 28.6 C171.7 28.6 165.8 34.9 158.8 38.6 C151.9 42.3 145.4 44.9 138.1 48.7 C130.8 52.5 124.8 55 119 59.4 C113.2 63.8 108.5 66.9 106.3 72.5 C104.1 78.1 104.5 84.3 107.1 89.9 C109.7 95.6 114.6 98.7 120.6 103.2 C126.6 107.8 132.7 110.5 139.9 114.6 C147.2 118.6 153.7 121.6 160 125.3 C166.4 129.1 171.1 132.3 174.4 135 C177.8 137.7 177.9 138.6 178.2 140 C178.5 141.3 178.7 140.4 176.1 142.4 C173.6 144.3 170 147.2 164.3 150.5 C158.5 153.8 146.5 154.9 144.9 160.3 C143.2 165.6 149.5 178.2 155.1 179.7Z"/><path d="M165 31.5 C162.3 27.5 167.6 17.8 173 15.5 C178.3 13.2 191 15.2 197 17.5 C203 19.8 210.3 25.8 209 29.5 C207.6 33.2 196.3 39.2 189 39.5 C181.6 39.8 167.6 35.5 165 31.5Z"/><path fill="#06140d" stroke="none" d="M185 21.5 C185.6 20.7 189.8 19.8 191 20.5 C192.1 21.2 192.6 24.7 192 25.5 C191.3 26.3 188.1 26.2 187 25.5 C185.8 24.8 184.3 22.3 185 21.5Z"/>',
     stag: '<path d="M78 108 C72 126 70 140 74 152 L77 184 H85 L84 154 C86 140 88 126 91 110Z"/><path d="M106 108 C100 126 98 140 102 152 L105 184 H113 L112 154 C114 140 116 126 119 110Z"/><path d="M164 110 C163 130 163 146 165 156 L164 184 H171 L170 156 C172 144 172 128 176 114Z"/><path d="M186 110 C185 130 185 146 187 156 L186 184 H193 L192 156 C194 144 194 128 198 114Z"/><path d="M58 104 C58 92 72 86 96 88 C130 90 160 88 178 84 C190 72 196 56 206 46 C212 40 220 38 226 42 L250 54 C254 57 252 62 246 63 L230 62 C224 62 220 66 214 72 C206 84 202 98 196 108 C190 118 170 122 150 120 C120 120 96 122 80 118 C64 114 58 112 58 104Z"/> <path d="M58 98 L44 90 L50 106Z"/><path d="M210 46 L200 36 L218 42Z"/> <path d="M216 42 C212 24 220 8 236 2 M217 31 L204 21 M221 17 L213 5 M228 8 L242 7 M226 42 C232 28 246 18 262 18 M236 29 L250 32 M246 21 L254 9 M254 18 L268 24" stroke-width="4.5" fill="none"/>',
     doe: '<path d="M78 108 C72 126 70 140 74 152 L77 184 H85 L84 154 C86 140 88 126 91 110Z"/><path d="M106 108 C100 126 98 140 102 152 L105 184 H113 L112 154 C114 140 116 126 119 110Z"/><path d="M164 110 C163 130 163 146 165 156 L164 184 H171 L170 156 C172 144 172 128 176 114Z"/><path d="M186 110 C185 130 185 146 187 156 L186 184 H193 L192 156 C194 144 194 128 198 114Z"/><path d="M58 104 C58 92 72 86 96 88 C130 90 160 88 176 84 C188 74 196 60 206 50 C212 44 220 42 226 46 L248 58 C252 61 250 66 244 67 L230 64 C224 64 220 68 214 74 C206 86 202 98 196 108 C190 118 170 122 150 120 C120 120 96 122 80 118 C64 114 58 112 58 104Z"/> <path d="M58 98 L46 92 L52 106Z"/><path d="M208 50 L190 34 L216 44Z"/><path d="M220 46 L232 26 L236 48Z"/>',
     otter: '<path d="M266.4 88.4 C266.8 87.5 263.5 85.8 261.1 87.1 C258.8 88.4 254.0 94.7 252.1 96.2 C250.1 97.7 250.1 97.5 249.4 96.2 C248.8 94.9 247.7 90.3 248.2 88.4 C248.6 86.4 252.1 85.2 252.1 84.5 C252.1 83.8 249.7 82.5 248.2 84.5 C246.6 86.5 247.3 94.0 242.9 96.2 C238.6 98.4 228.0 96.0 222.2 97.5 C216.3 99.0 212.6 102.0 207.8 105.3 C203.1 108.5 199.2 113.8 193.6 117.0 C187.9 120.2 179.0 123.3 174.1 124.8 C169.1 126.3 167.8 126.1 163.7 126.1 C159.5 126.1 156.3 126.5 149.3 124.8 C142.4 123.1 128.6 117.4 122.0 115.7 C115.5 114.0 114.7 114.4 110.3 114.4 C106.0 114.4 101.0 114.4 96.0 115.7 C91.1 117.0 84.6 120.0 80.5 122.2 C76.3 124.4 75.9 124.1 71.3 128.7 C66.8 133.2 58.6 146.2 53.1 149.5 C47.7 152.8 42.3 147.5 38.8 148.2 C35.4 148.8 33.6 151.9 32.3 153.4 C31.0 154.9 29.7 155.1 31.0 157.3 C32.3 159.5 34.9 163.6 40.1 166.4 C45.3 169.2 54.9 172.9 62.2 174.2 C69.6 175.5 75.7 175.7 84.3 174.2 C93.0 172.7 109.0 165.5 114.2 165.1 C119.5 164.7 115.8 169.0 115.5 171.6 C115.3 174.2 111.4 179.2 112.9 180.7 C114.5 182.2 121.2 184.2 124.7 180.7 C128.1 177.2 126.8 163.6 133.8 159.9 C140.7 156.2 160.0 158.4 166.2 158.6 C172.5 158.8 171.0 157.9 171.4 161.2 C171.9 164.4 167.5 175.1 168.8 178.1 C170.2 181.1 177.1 180.1 179.2 179.4 C181.4 178.8 181.2 176.8 181.8 174.2 C182.5 171.6 182.5 166.2 183.2 163.8 C183.8 161.4 183.2 160.8 185.8 159.9 C188.3 159.0 194.4 159.7 198.8 158.6 C203.1 157.5 207.0 156.7 211.8 153.4 C216.5 150.2 224.1 142.8 227.4 139.1 C230.6 135.4 229.1 134.3 231.2 131.3 C233.4 128.3 237.5 123.5 240.4 120.9 C243.2 118.3 245.3 116.6 248.2 115.7 C251.0 114.8 254.0 116.6 257.2 115.7 C260.5 114.8 266.1 112.7 267.6 110.5 C269.2 108.3 267.9 105.1 266.4 102.7 C264.8 100.3 259.9 97.9 258.6 96.2 C257.2 94.5 257.2 93.6 258.6 92.3 C259.9 91.0 265.9 89.3 266.4 88.4Z"/>',
@@ -3749,15 +3856,18 @@ window.MT_BUILD = "a31206b826";
   function patronusFor(S, id) {
     const own = {}, used = new Set(), ids = tableIds(S), table = THEMES.wizard.patronus;
     ids.forEach(x => { const a = table[nameOf(S, x)]; if (a && !used.has(a)) { own[x] = a; used.add(a); } });
+    const dark = x => THEMES.wizard.dark.includes(nameOf(S, x));
+    if (dark(id)) return 'dagger';                                              // the dark side: no guardian, a dark emblem
     if (own[id]) return own[id];
-    const rest = ids.filter(x => !own[x]).sort((a, b) => trainColor(S, a) - trainColor(S, b)), free = PATRONUS_ORDER.filter(a => !used.has(a));
+    const rest = ids.filter(x => !own[x] && !dark(x)).sort((a, b) => trainColor(S, a) - trainColor(S, b)), free = PATRONUS_ORDER.filter(a => !used.has(a));
     return free[Math.max(0, rest.indexOf(id)) % free.length];
   }
   function patronusSVG(animal, color) {
-    const a = PATRONUS[animal] ? animal : 'stag', g = `pg-${a}-r${color}`;
-    return `<span class="toy-train patronus c${color}" aria-hidden="true"><svg viewBox="0 0 300 200" focusable="false">
-      <defs><radialGradient id="${g}" cx="0.5" cy="0.4" r="0.7"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#9fd0ff"/></radialGradient></defs>
-      <g fill="url(#${g})" stroke="#dff0ff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">${PATRONUS[a]}</g></svg></span>`;
+    const a = PATRONUS[animal] ? animal : 'stag', g = `pg-${a}-r${color}`, dk = a === 'dagger';
+    const stops = dk ? ['#e6ffe9', '#7fe0a0', '#2f8f58'] : ['#ffffff', '#9fd0ff'];
+    return `<span class="toy-train patronus${dk ? ' dark' : ''} c${color}" aria-hidden="true"><svg viewBox="0 0 300 200" focusable="false">
+      <defs><radialGradient id="${g}" cx="0.5" cy="0.4" r="0.7">${stops.map((c, i) => `<stop offset="${i / (stops.length - 1)}" stop-color="${c}"/>`).join('')}</radialGradient></defs>
+      <g fill="url(#${g})" stroke="${dk ? '#a6f5c0' : '#dff0ff'}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">${PATRONUS[a]}</g></svg></span>`;
   }
 
   function viewTrack(S, id) {
@@ -3961,6 +4071,23 @@ window.MT_BUILD = "a31206b826";
       const cls = (i === 0 ? 'latest ' : '') + (/^Round \d+:/.test(l) ? 'round' : '');
       return `<li${cls.trim() ? ` class="${cls.trim()}"` : ''}>${l}</li>`;
     }).join('')}</ol></section>`;
+  }
+
+  /* The chat of an online game: what the people at the table typed, oldest at the top and the newest at the bottom (it follows the newest unless the reader has scrolled up),
+   * with the box to type in underneath. It sits beside the game history. What is typed is escaped here, and cleaned by cleanChatText when it is sent and when it arrives. */
+  const CHAT_KEEP = 300;
+  function viewChat(S) {
+    const items = S.chatLog.map(m => m.sys
+      ? `<li class="sys">${esc(m.text)}</li>`
+      : `<li class="${m.mine ? 'mine' : m.computer ? 'cpu' : 'them'}"><b>${m.mine ? 'You' : esc(m.who || 'Opponent')}</b> <span>${esc(m.text)}</span></li>`).join('');
+    return `<section class="chat" aria-label="Chat"><ol class="chat-list" role="log" aria-live="polite" tabindex="0" aria-label="Chat messages, newest at the bottom">${items || '<li class="empty">No messages yet.</li>'}</ol>`
+      + `<form class="say-form chat-form" data-say-form autocomplete="off"><input id="say-text" type="text" maxlength="${CHAT_MAX}" placeholder="Type a message" aria-label="Your message" autocomplete="off" autocapitalize="sentences"><button type="button" class="btn primary" data-action="sendText">Send</button></form></section>`;
+  }
+  // The bottom of the board: the game history, and in an online game the chat beside it.
+  function viewBottom(S) {
+    const history = S.opts.log !== false ? viewLog(S) : '';
+    if (!(S.online && S.game)) return history;
+    return `<div class="log-wrap${history ? '' : ' chat-only'}">${history}${viewChat(S)}</div>`;
   }
 
   const RULES_HTML = `
@@ -4278,7 +4405,7 @@ window.MT_BUILD = "a31206b826";
     const body = g
       ? viewOpp(S) +
         `<section class="tracks${g.turn && g.turn !== 'mexican' && g.trains[g.turn] ? ' has-turn' : ''}" aria-label="Trains">${tableIds(S).slice(1).map(id => viewTrack(S, id)).join('')}${viewTrack(S, 'mexican')}${viewTrack(S, 'human')}</section>` +
-        viewStatus(S) + viewTray(S) + (S.opts.log !== false ? viewLog(S) : '')
+        viewStatus(S) + viewTray(S) + viewBottom(S)
       : '<section class="empty"><p>Choose your game settings to deal the first round.</p></section>';
     return `<div class="shell v-${viewMode(S)}" style="--tray-a:${S.opts.tray === undefined ? 50 : S.opts.tray}%">${viewBar(S)}<main class="table${themeNow(S) === 'lotr' ? ' art-lotr' : themeNow(S) === 'wizard' ? ' art-wizard bk-' + backdropNow(S) : ''}">${body}</main>${viewOverlay(S)}${S.debugNet && S.online ? viewNetDebug(S) : ''}</div>`;
   }
@@ -4701,7 +4828,7 @@ window.MT_BUILD = "a31206b826";
       dropTrain: null, dropFrom: null, comment: null, pendingRating: null, lastCommentAt: -Infinity, lastLine: null,
       banner: '', log: [], lastCounts: {}, lastDialog: null,
       opps: null, cpu2Name: null, cpu3Name: null, seats: null, hostInfo: null, netLog: [], debugNet: false, showHints: true, notice: '',
-      online: null, onlineError: '', form: null, sayOpen: false, mySay: null, dockMode: !!(env && env.dock), build: String((env && env.build) || ''), copied: false, qrIndex: 0,
+      online: null, onlineError: '', form: null, chatLog: [], chatClear: 0, build: String((env && env.build) || ''), copied: false, qrIndex: 0,
     };
     S.opts = loadOpts();
     S.narrow = env && env.narrow !== undefined ? !!env.narrow : !!(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 640px)').matches);      // a phone-sized screen
@@ -4805,7 +4932,7 @@ window.MT_BUILD = "a31206b826";
       } catch (e) { /* the light just jumps */ }
     }
     function render(force) {                           // returns whether the page was redrawn
-      if (!force && S.overlay && S.lastDialog === S.overlay) { if (dock) dock.sync(false); return false; }
+      if (!force && S.overlay && S.lastDialog === S.overlay) return false;
       S.flashPhase = Math.floor(now() % FLASH_MS);   // re-drawing restarts CSS animations; this keeps the flash in step
       S.nowMs = now();                               // for the countdown shown while waiting for a dropped player
       const saved = {};
@@ -4817,10 +4944,32 @@ window.MT_BUILD = "a31206b826";
       const logBefore = root.querySelector ? root.querySelector('.log') : null;
       const logSaved = logBefore && typeof logBefore.scrollTop === 'number' ? { top: logBefore.scrollTop, height: logBefore.scrollHeight } : null;
 
+      // The chat pane: the box people are typing in must survive the page being drawn again (the words, the cursor, the focus, and where the list was scrolled). The old pane is
+      // kept as it is and put back in place of the new one, with the new list of messages poured into it.
+      const chatOld = root.querySelector ? root.querySelector('.chat') : null;
+      let chatKeep = null;
+      if (chatOld && doc && typeof chatOld.querySelector === 'function' && typeof chatOld.replaceWith !== 'undefined') {
+        const inp = chatOld.querySelector('#say-text'), list = chatOld.querySelector('.chat-list');
+        chatKeep = { node: chatOld, inp, list, focused: !!inp && doc.activeElement === inp, atBottom: !list || list.scrollHeight - list.scrollTop - list.clientHeight < 12, top: list ? list.scrollTop : 0 };
+      }
+
       const toysBefore = markerSnapshot();
       const spotBefore = spotSnapshot();
       syncCount();
       root.innerHTML = viewApp(S);
+      {
+        const fresh = root.querySelector ? root.querySelector('.chat') : null;
+        const freshList = fresh && fresh.querySelector ? fresh.querySelector('.chat-list') : null;
+        if (chatKeep && fresh && fresh.replaceWith && chatKeep.list && freshList) {
+          const grew = chatKeep.list.innerHTML !== freshList.innerHTML;
+          if (grew) chatKeep.list.innerHTML = freshList.innerHTML;
+          fresh.replaceWith(chatKeep.node);
+          if (chatKeep.inp && chatClearSeen !== S.chatClear) { chatKeep.inp.value = ''; }
+          chatKeep.list.scrollTop = chatKeep.atBottom || (grew && chatClearSeen !== S.chatClear) ? chatKeep.list.scrollHeight : chatKeep.top;
+          if (chatKeep.focused && chatKeep.inp && chatKeep.inp.focus) { try { chatKeep.inp.focus({ preventScroll: true }); } catch (e) { chatKeep.inp.focus(); } }
+        } else if (freshList && typeof freshList.scrollHeight === 'number') freshList.scrollTop = freshList.scrollHeight;     // (a new pane starts at the newest message)
+        chatClearSeen = S.chatClear;
+      }
       animateMarkers(toysBefore);
       moveSpot(spotBefore);
       if (logSaved && logSaved.top > 0) {                                  // (at the top, the newest, it stays at the top: nothing to keep)
@@ -4854,7 +5003,6 @@ window.MT_BUILD = "a31206b826";
       if (fx) fx.reapply();
       S.lastPlay = null;
       S.revealed = null;
-      if (dock) dock.sync(!!(S.sayOpen && S.online && S.game && !S.overlay && !S.modal));
       return true;
     }
 
@@ -4953,6 +5101,7 @@ window.MT_BUILD = "a31206b826";
     function setBanner(text) { S.banner = text; }
 
     /* ---------- the computer's comments ---------- */
+    let chatClearSeen = 0;
     let commentTimers = [], commentId = 0, slowTimer = null, slowCount = 0, slowDish = null, slowSpeaker = 'cpu';
     // With two computers, either may say something; with one it is always that one (and no random number is used)
     function pickSpeaker() {
@@ -4976,7 +5125,7 @@ window.MT_BUILD = "a31206b826";
       let text, extra = {};
       const spk = kind.indexOf('slow') === 0 ? slowSpeaker : (speakerId || pickSpeaker());        // who is talking: during one wait it stays the same computer
       const spkName = nameOf(S, spk), spkLevel = levelFor(S, spk), theme = S.online ? 'classic' : S.opts.theme;
-      const said = composeComment(kind, vars, { name: spkName, level: spkLevel, theme, rng: chatRng, nativeChance, foodChance, last: S.lastLine, dish: slowDish });
+      const said = composeComment(kind, vars, { me: S.online ? '' : S.myName, name: spkName, level: spkLevel, theme, rng: chatRng, nativeChance, foodChance, last: S.lastLine, dish: slowDish });
       text = said.text;
       if (said.dish !== undefined) slowDish = said.dish;                                  // hungry, and off for something from home: the same dish all wait
       if (said.lang) extra = { lang: said.lang, trans: said.trans };                       // in its own language, with a translation
@@ -5253,7 +5402,6 @@ window.MT_BUILD = "a31206b826";
      * connection is checked at once instead. */
     const NET = { checkMs: 5000, pingIdleMs: 10000, deadMs: 30000, wakeProbeMs: 6000, firstRetryMs: 250, suspendedMs: 10000 };
     const build = env.build ? String(env.build) : '';              // which version of the page this is (build.py stamps it); sent when creating or joining a game
-    const dock = env.dock || null;                      // the place where a person types to the other person (outside the redrawn page; see boot)
     const netConsole = env.netConsole !== undefined ? env.netConsole : (typeof window !== 'undefined' && typeof document !== 'undefined');
     // Everything that happens to the connection is written down (the last 60 events): to the browser's console, to the
     // reconnect screen, and, with ?debug=1 in the address, to a panel on the page.
@@ -5496,7 +5644,7 @@ window.MT_BUILD = "a31206b826";
           if (o.settings && BACKDROPS.includes(m.backdrop)) o.settings.backdrop = m.backdrop;      // (and it may have a new picture behind it)
           lastSeq = -1; o.round = null; o.again = null; o.againSent = false; o.lastActor = null; o.pending = null;
           S.modal = null; S.awaiting = null; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0, cpu3: 0 }; S.matchActive = false;
-          S.comment = null; S.mySay = null; S.sayOpen = false; S.notice = ''; S.lastPlay = null;
+          S.comment = null; S.notice = ''; S.lastPlay = null; S.chatLog = [];
           S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.handOrder = null; S.handArranged = false; S.flips = {}; S.flipLocked = {}; S.unlucky = {}; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
           clearChatTimers();
           if (fx) fx.cancelAll();
@@ -5523,9 +5671,7 @@ window.MT_BUILD = "a31206b826";
           if (o.resuming && m.code === 'no_such_game') { clearSession(); netClose(); S.online = null; S.overlay = 'setup'; S.game = null; S.modal = null; S.awaiting = null; S.matchActive = false; render(true); return; }
           o.pending = null;
           if (m.code === 'slow_down') {                              // what was typed or tapped was not sent: do not say it was, and say so where "You said" would be
-            const fid = ++commentId;
-            S.mySay = { id: fid, text: clean(m.message || 'Not so fast: that message was not sent.'), failed: true };
-            later(() => { if (S.mySay && S.mySay.id === fid) { S.mySay = null; render(); } }, 4500);
+            addChat({ sys: true, text: String(m.message || 'Not so fast: that message was not sent.').slice(0, 200) });
           }
           S.banner = clean(m.message || 'That did not work.');
           render();
@@ -5677,6 +5823,7 @@ window.MT_BUILD = "a31206b826";
       const id = ++commentId;
       const person = S.opps && ((Number.isInteger(from) && S.opps.find(x => !x.computer && x.seat === from)) || S.opps.find(x => !x.computer));       // (with three people, the one who said it)
       S.comment = { id, kind: 'chat', text: String(text), from: person ? person.name : null };
+      addChat({ who: person ? person.name : 'Opponent', text: String(text) }, false);
       if (render()) popBubble();
       later(() => { if (S.comment && S.comment.id === id) { S.comment = null; render(); } }, Math.min(12000, CHAT.showMs + 45 * String(text).length));      // a longer message stays up longer
     }
@@ -5688,29 +5835,32 @@ window.MT_BUILD = "a31206b826";
       // entry of the table and not an inherited property such as "constructor", and must come with a translation)
       const id = ++commentId, lang = typeof m.lang === 'string' && typeof m.trans === 'string' && Object.prototype.hasOwnProperty.call(NATIVE_LINES, m.lang) ? m.lang : null;
       S.comment = Object.assign({ id, kind: 'computer', text: m.text.slice(0, 160), from: cleanPlayerName(m.from, 'Computer') }, lang ? { lang, trans: m.trans.slice(0, 160) } : {});
+      addChat({ who: S.comment.from, computer: true, text: S.comment.text + (lang ? ' (' + m.trans.slice(0, 160) + ')' : '') }, false);
       if (render()) popBubble();
       later(() => { if (S.comment && S.comment.id === id) { S.comment = null; render(); } }, CHAT.showMs);
     }
-    /* Something typed. It is cleaned the way the server will clean it, so what the person sees as "You said" is what is sent. */
+    /* A line for the chat. (`draw` is false when the caller draws the page itself straight afterwards.) */
+    function addChat(entry, draw = true) {
+      S.chatLog.push(entry);
+      if (S.chatLog.length > CHAT_KEEP) S.chatLog.splice(0, S.chatLog.length - CHAT_KEEP);
+      if (draw) render();
+    }
+    /* Something typed. It is cleaned the way the server will clean it, so what the person sees in the chat is what is sent. */
     function sendText(text) {
       if (!S.online || !S.game) return;
       const said = cleanChatText(text);
       if (!said) return;
       if (!netSend({ t: 'chat', text: said })) return;
-      const mid = ++commentId;
-      S.mySay = { id: mid, text: said }; S.sayOpen = false;
-      if (dock) dock.clear();
-      later(() => { if (S.mySay && S.mySay.id === mid) { S.mySay = null; render(); } }, Math.min(12000, 4000 + 45 * said.length));
+      S.chatClear++;                                          // (the box is emptied when the page is drawn again)
+      addChat({ mine: true, text: said }, false);
       render(true);
     }
     function sendChat(i) {
       const id = Number(i);
       if (!S.online || !Number.isInteger(id) || id < 0 || id >= ONLINE_PHRASES.length) return;
       if (!netSend({ t: 'chat', id })) return;
-      const mid = ++commentId;
-      S.mySay = { id: mid, text: ONLINE_PHRASES[id] }; S.sayOpen = false;
-      later(() => { if (S.mySay && S.mySay.id === mid) { S.mySay = null; render(); } }, 4000);
-      render();
+      addChat({ mine: true, text: ONLINE_PHRASES[id] }, false);
+      render(true);
     }
 
     function beginOnline(kind, a) {
@@ -5759,7 +5909,7 @@ window.MT_BUILD = "a31206b826";
       if (o) { o.leaving = true; if (!quiet && o.token) netSend({ t: 'leave' }); }
       netClose(); if (!keepSession) clearSession();      // (the window that took over still needs the saved game)
       S.online = null; S.game = null; S.modal = null; S.awaiting = null; S.matchActive = false;
-      S.comment = null; S.mySay = null; S.sayOpen = false; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0, cpu3: 0 }; S.opps = null; S.cpu2Name = null; S.cpu3Name = null; S.seats = null;
+      S.comment = null; S.chatLog = []; S.log = []; S.banner = ''; S.totals = { human: 0, cpu: 0, cpu2: 0, cpu3: 0 }; S.opps = null; S.cpu2Name = null; S.cpu3Name = null; S.seats = null;
       S.selectedKey = null; S.drawnKey = null; S.freshKey = null; S.handOrder = null; S.handArranged = false; S.flips = {}; S.flipLocked = {}; S.unlucky = {}; S.dragKey = null; S.dropTrain = null; S.dropFrom = null;
       lastSeq = -1;
       clearChatTimers();
@@ -6284,7 +6434,6 @@ window.MT_BUILD = "a31206b826";
         case 'startOnline': if (S.online && S.online.host) netSend({ t: 'start' }); return;
         case 'sendChat': return sendChat(a.key);
         case 'sendText': return sendText(a.text);
-        case 'toggleSay': S.sayOpen = !S.sayOpen; return render(true);
         case 'askLeave': S.menuOpen = false; S.overlay = 'online-leave'; return render(true);
         case 'confirmLeave': leaveOnline(false); S.overlay = 'setup'; return render(true);
         case 'playAgainOnline': if (S.online && !S.online.againSent && S.modal && S.modal.type === 'final') { S.online.againSent = true; netSend({ t: 'rematch' }); render(true); } return;
@@ -6345,31 +6494,8 @@ window.MT_BUILD = "a31206b826";
     // Served by a game server (http://...)? Then that server is the default for hosting and joining.
     let defaultServer = '';
     try { if (location.protocol === 'http:' && location.host) defaultServer = location.host; } catch (e) { /* ignore */ }
-    /* Where a person types to the other person. It lives OUTSIDE the page's redrawn area on purpose: the page is redrawn on every move
-     * the other player makes, and a text box inside it would lose the words, the cursor (and, on a phone, the keyboard) in the
-     * middle of a sentence. This one is made once and only shown or hidden. */
-    let dock = null;
-    try {                                               // (if the page cannot make it, the quick-phrase panel inside the page is used instead)
-      if (!(document.createElement && document.body && document.body.appendChild)) throw new Error('no document');
-      const box = document.createElement('div');
-      box.id = 'say-dock'; box.className = 'say-dock'; box.hidden = true;
-      box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Say something to the others at the table');
-      box.innerHTML = `<form class="say-form" autocomplete="off"><input id="say-text" type="text" maxlength="${CHAT_MAX}" placeholder="Type a message, then press Enter" aria-label="Your message" autocomplete="off" autocapitalize="sentences" enterkeyhint="send"><button class="btn primary" type="submit">Send</button><button class="btn" type="button" data-dock="close">Close</button></form>`
-        + `<div class="say-quick" role="group" aria-label="Quick phrases">${ONLINE_PHRASES.map((ph, i) => `<button class="btn say" type="button" data-phrase="${i}">${esc(ph)}</button>`).join('')}</div>`;
-      document.body.appendChild(box);
-      const input = box.querySelector('#say-text');
-      dock = { sync(open) { const was = !box.hidden; box.hidden = !open; if (open && !was && input && input.focus) input.focus(); }, clear() { if (input) input.value = ''; } };
-      box.addEventListener('submit', e => { e.preventDefault(); app.dispatch({ type: 'sendText', text: input ? input.value : '' }); });
-      box.addEventListener('click', e => {
-        const b = e.target && e.target.closest ? e.target.closest('button') : null;
-        if (!b || !b.dataset) return;
-        if (b.dataset.phrase !== undefined) app.dispatch({ type: 'sendChat', key: b.dataset.phrase });
-        else if (b.dataset.dock === 'close') app.dispatch({ type: 'toggleSay' });
-      });
-      box.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); app.dispatch({ type: 'toggleSay' }); } });
-    } catch (err) { dock = null; }
     const app = createApp({
-      root, storage, reducedMotion: reduced, sound, fx, dock,
+      root, storage, reducedMotion: reduced, sound, fx,
       WebSocket: global.WebSocket, defaultServer, build: global.MT_BUILD || '', fetch: global.fetch ? global.fetch.bind(global) : null,
       rng: seed !== null && seed !== '' ? mulberry32(Number(seed)) : Math.random,
     });
@@ -6399,7 +6525,7 @@ window.MT_BUILD = "a31206b826";
           const val = id => { const n = root.querySelector(id); return n ? n.value : undefined; };
           app.dispatch({ type: d.action, server: val('#net-server'), name: val('#net-name'), code: val('#net-code'), rounds: val('#net-rounds'), hand: val('#net-hand'), computer: val('#net-computer'), computer2: val('#net-computer2'), theme: val('#net-theme'), allowHints: !(app.state.form && app.state.form.allowHints === false),
             joinVia: (root.querySelector('input[name="net-via"]:checked') || {}).value, joinManual: val('#join-manual') });
-        } else if (d.action === 'sendText') {                  // (the in-page box, used only when there is no separate one)
+        } else if (d.action === 'sendText') {                  // the Send button of the chat
           const n = root.querySelector('#say-text');
           app.dispatch({ type: 'sendText', text: n ? n.value : '' });
         } else if (d.action === 'copyLink') {
@@ -6451,6 +6577,13 @@ window.MT_BUILD = "a31206b826";
         if (f3) f3.hidden = String(e.target.value) !== '3';
         return;
       }
+    });
+    // Enter in the chat box sends the message
+    root.addEventListener('submit', e => {
+      if (!e.target || !e.target.hasAttribute || !e.target.hasAttribute('data-say-form')) return;
+      e.preventDefault();
+      const n = root.querySelector('#say-text');
+      app.dispatch({ type: 'sendText', text: n ? n.value : '' });
     });
     // Enter in a text box of the host/join form presses its main button
     root.addEventListener('keydown', e => {

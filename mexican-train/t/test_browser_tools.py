@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real Chromium: the Comments and Say something buttons stay exactly where they are (above the opponents' rows) while a game is played, with one, two and three computers,
+"""Real Chromium: the Comments button stays exactly where they are (above the opponents' rows) while a game is played, with one, two and three computers,
    on a desktop and a phone, and in a hosted game; and they never sit in a row between the computers' names."""
 import json, os, subprocess, time
 from playwright.sync_api import sync_playwright
@@ -22,7 +22,7 @@ def watch(pg, secs, label):
     seen = []; t0 = time.time()
     while time.time() - t0 < secs:
         pg.evaluate(STEP); seen.append(pg.evaluate(SAMPLE)); time.sleep(0.05)
-    seen = [s for s in seen if s['comments'] or s['say']]
+    seen = [s for s in seen if s['comments']]
     ok(len(seen) > 50, f'{label}: sampled {len(seen)} times')
     for k in ('say', 'comments'):
         vals = {json.dumps(s[k]) for s in seen if s[k]}
@@ -50,11 +50,12 @@ with sync_playwright() as pw:
     seen = []; t0 = time.time()
     while time.time() - t0 < 30:
         p2.evaluate(STEP); a.evaluate(STEP); seen.append(a.evaluate(SAMPLE)); time.sleep(0.05)
-    ok(all(s['say'] and s['comments'] for s in seen), 'hosted: both Say something and Comments are there')
-    for k in ('say', 'comments'): ok(len({json.dumps(s[k]) for s in seen}) == 1, f'hosted: the {k} button never moves')
+    ok(all(s['comments'] and not s['say'] for s in seen) and a.query_selector('.chat') is not None, 'hosted: Comments is there, the Say something button is gone, and the chat is at the bottom')
+    ok(len({json.dumps(s['comments']) for s in seen}) == 1, 'hosted: the Comments button never moves')
     ok(all(s['tools'][1] + s['tools'][3] <= min(r[0] for r in s['rows']) + 1 for s in seen), 'hosted: above the rows')
-    a.evaluate("() => window.MexicanTrainApp.dispatch({ type: 'toggleSay' })"); time.sleep(0.2); after = a.evaluate(SAMPLE)
-    ok(after['say'] == seen[0]['say'] and after['comments'] == seen[0]['comments'], 'opening the Say something panel does not move the buttons')
+    a.evaluate("() => document.getElementById('say-text').focus({ preventScroll: true })"); a.keyboard.type('hello'); time.sleep(0.2); after = a.evaluate(SAMPLE)
+    c0, c1, t0, t1 = seen[0]['comments'], after['comments'], seen[0]['tools'], after['tools']
+    ok(c1[0] == c0[0] and c1[2:] == c0[2:] and c1[1] - t1[1] == c0[1] - t0[1], f'typing in the chat does not move the buttons within their strip (the page itself may scroll to the cursor: {c0} -> {c1})')
     a.screenshot(path=f'{SHOTS}/tools_online.png')
     b.close()
 srv.terminate()

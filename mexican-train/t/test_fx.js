@@ -598,7 +598,7 @@ const R = (left, top, width, height) => ({ left, top, width, height });
     ok(/scrollbar-width:\s*none/.test(rule('.scroller')) && /display:\s*none/.test(rule('.scroller::-webkit-scrollbar')), 'scroll bars are hidden (Firefox and Chrome/Safari/Edge)');
     ok(/overflow-x:\s*auto/.test(rule('.scroller')), 'trains can still be moved by swiping or a trackpad');
     ok(/mask-image/.test(rule('.scroller.more-left')), 'a soft fade shows when older tiles are out of sight');
-    ok(!/scrollbar-color|scrollbar-width:\s*thin/.test(css.replace(rule('.log'), '')), 'no leftover visible scroll bar styling anywhere but the history panel');
+    ok(!/scrollbar-color|scrollbar-width:\s*thin/.test(css.replace(rule('.log'), '').replace(rule('.chat-list'), '')), 'no leftover visible scroll bar styling anywhere but the history panel and the chat list');
     ok(/scrollbar-width:\s*thin/.test(rule('.log')) && /overflow-y:\s*auto/.test(rule('.log')), '(the history panel, which scrolls, has a thin scroll bar so that you can see that it does)');
 
     const sc = ['human', 'cpu', 'mexican'].map(id => { const e = new FakeEl('div'); e.dataset.train = id; e.scrollLeft = 0; e.scrollWidth = 1800; return e; });

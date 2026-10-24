@@ -19,7 +19,7 @@ const KINDS = Object.keys(G.LINES.normal);
   console.log('1. the cast');
   ok(G.THEME_IDS.includes('wizard') && G.THEME_IDS.join() === 'classic,lotr,wizard', 'the theme is one of the choices, after Classic and The Lord of the Rings');
   ok(T.label === 'The wizarding world', 'its name in the menus');
-  ok(LEVELS.join() === 'easy,normal,hard,expert' && T.players.easy.join() === 'Neville,Hagrid,Ron,Dobby' && T.players.normal.join() === 'Harry,Ginny,Luna,Fred,Draco' && T.players.hard.join() === 'McGonagall,Sirius,Snape' && T.players.expert.join() === 'Dumbledore,Hermione,Voldemort', 'fifteen characters: four Easy, five Medium, three Hard, three Expert');
+  ok(LEVELS.join() === 'easy,normal,hard,expert' && T.players.easy.join() === 'Neville,Hagrid,Ron,Dobby,Pettigrew' && T.players.normal.join() === 'Harry,Ginny,Luna,Fred,Draco,Umbridge' && T.players.hard.join() === 'McGonagall,Sirius,Snape,Lucius' && T.players.expert.join() === 'Dumbledore,Hermione,Voldemort,Bellatrix', 'nineteen characters: five Easy, six Medium, four Hard, four Expert');
   ok(LEVELS.every(l => T.players[l].length >= 3), 'at least three per level, so three computers of one skill still get different characters');
   ok(new Set(cast).size === cast.length && cast.every(n => !G.CPU_NAMES.includes(n) && !G.THEMES.lotr.players.easy.concat(G.THEMES.lotr.players.normal, G.THEMES.lotr.players.hard, G.THEMES.lotr.players.expert).includes(n)), 'nobody plays at two levels and no name is also a classic player or a Middle-earth character');
   ok(cast.every(n => n.length <= 10 && G.cleanPlayerName(n, '') === n), 'every name fits in the 10 letters a name may have');
@@ -34,9 +34,9 @@ const KINDS = Object.keys(G.LINES.normal);
   ok(cast.every(n => KINDS.every(k => Array.isArray(T.voices[n][k]) && T.voices[n][k].length >= 2)), `every character has at least two lines for each of the ${KINDS.length} kinds of comment`);
   ok(cast.every(n => Object.keys(T.voices[n]).every(k => KINDS.includes(k))), 'and no kind the game does not use');
   ok(all.every(([, , l]) => typeof l === 'string' && l.length >= 4 && l.length <= 110), `${all.length} lines, each short enough for a speech bubble`);
-  ok(all.every(([, k, l]) => k === 'openShort' || k === 'ownShort' || !/\{/.test(l)), 'only the short-train lines have placeholders');
+  ok(all.every(([, k, l]) => k === 'openShort' || k === 'ownShort' || !/\{/.test(l.replace(/\{[mM]e\}/g, ''))), 'only the short-train lines have placeholders (and {me}, the name of the person it is talking to)');
   ok(all.filter(([, k]) => k === 'ownShort').every(([, , l]) => !/\{(?!built\})\w+\}/.test(l)) && cast.every(n => T.voices[n].ownShort.some(l => l.includes('{built}'))), 'a character remarking on its own short train can say how many tiles, and only that');
-  ok(all.filter(([, k]) => k === 'openShort').every(([, , l]) => (l.match(/\{(\w+)\}/g) || []).every(p => p === '{built}' || p === '{best}')) && cast.every(n => T.voices[n].openShort.some(l => l.includes('{built}'))), 'the opening-short lines use only {built} and {best}, and each character can quote what you built');
+  ok(all.filter(([, k]) => k === 'openShort').every(([, , l]) => (l.match(/\{(\w+)\}/g) || []).every(p => p === '{built}' || p === '{best}' || p === '{me}' || p === '{Me}')) && cast.every(n => T.voices[n].openShort.some(l => l.includes('{built}'))), 'the opening-short lines use only {built} and {best}, and each character can quote what you built');
   const rude = all.filter(([, , l]) => blocked.test(l));
   ok(rude.length === 0, 'mild language only' + (rude[0] ? ': ' + rude[0].join(' / ') : ''));
   const brit = all.filter(([, , l]) => BRITISH.test(l)).concat(cast.map(n => [n, 'food', T.food[n].c + ' ' + T.food[n].d.join(' ')]).filter(([, , l]) => BRITISH.test(l)));
@@ -71,13 +71,22 @@ const KINDS = Object.keys(G.LINES.normal);
 
   console.log('5. the guardian animals');
   const animals = Object.values(T.patronus);
-  ok(G.PATRONUS && Object.keys(G.PATRONUS).length === 8 && animals.every(a => G.PATRONUS[a]), 'eight animals are drawn, and every character that has one has it drawn');
+  ok(G.PATRONUS && Object.keys(G.PATRONUS).length === 9 && animals.every(a => G.PATRONUS[a]), 'eight animals and the dark emblem are drawn, and every character that has one has it drawn');
   ok(T.patronus.Harry === 'stag' && T.patronus.Hermione === 'otter' && T.patronus.Ron === 'terrier' && T.patronus.Luna === 'hare' && T.patronus.Ginny === 'horse' && T.patronus.Dumbledore === 'phoenix' && T.patronus.Snape === 'doe' && T.patronus.McGonagall === 'cat' && Object.keys(T.patronus).every(n => cast.includes(n)), 'the stag, otter, terrier, hare, horse, phoenix, doe and cat, for the characters they belong to');
   for (const a of Object.keys(G.PATRONUS)) {
     const svg = G.patronusSVG(a, 1);
-    ok(/^<span class="toy-train patronus c1" aria-hidden="true"><svg viewBox="0 0 300 200"/.test(svg) && /<\/svg><\/span>$/.test(svg) && !/<script|href=|\son[a-z]+=|<image/i.test(svg), `${a}: a plain marker in the place of the toy train`);
+    ok(/^<span class="toy-train patronus( dark)? c1" aria-hidden="true"><svg viewBox="0 0 300 200"/.test(svg) && /<\/svg><\/span>$/.test(svg) && !/<script|href=|\son[a-z]+=|<image/i.test(svg), `${a}: a plain marker in the place of the toy train`);
     const opens = (svg.match(/<(?!\/|!)[a-zA-Z]/g) || []).length, selfs = (svg.match(/\/>/g) || []).length, closes = (svg.match(/<\/[a-zA-Z]/g) || []).length;
     ok(opens === selfs + closes, `${a}: every tag is closed`);
+  }
+  {
+    const dk = T.dark, S = { game: { players: [1, 2, 3, 4] }, myName: '', online: null, cpuName: 'Voldemort', cpu2Name: 'Harry', cpu3Name: 'Umbridge', seats: null, opts: {} };
+    ok(dk.join() === 'Voldemort,Draco,Bellatrix,Lucius,Umbridge,Pettigrew' && dk.every(n => T.voices[n] && !T.patronus[n]), 'six dark characters, none with a guardian');
+    ok(G.patronusFor(S, 'cpu') === 'dagger' && G.patronusFor(S, 'cpu3') === 'dagger' && G.patronusFor(S, 'cpu2') === 'stag', 'dark characters wear the serpent-and-dagger emblem; Harry keeps his stag');
+    ok(/patronus dark c2/.test(G.patronusSVG('dagger', 2)) && G.patronusSVG('dagger', 2).includes('#2f8f58') && !G.patronusSVG('stag', 2).includes('dark'), 'the dagger marker is green and tagged dark');
+    ok(!G.PATRONUS_ORDER || !G.PATRONUS_ORDER.includes('dagger'), 'the fallback never hands out the dark emblem');
+    let seen = new Set(); for (const n of ['Neville', 'Hagrid', 'Ron', 'Dobby', 'Luna']) { S.cpuName = n; S.cpu2Name = 'Voldemort'; S.cpu3Name = 'Lucius'; seen.add(G.patronusFor(S, 'cpu')); }
+    ok(!seen.has('dagger'), 'a good character never wears the dagger');
   }
   ok(G.patronusSVG('dragon', 0).includes('pg-stag-r0'), 'an unknown animal falls back to the stag');
   {

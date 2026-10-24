@@ -459,7 +459,7 @@ class OnlineMatch {
     if (this.talker === undefined || this.over || !this.humans.includes(seat)) return;
     const who = speaker !== undefined ? speaker : this._speaker();
     const st = this.talk[seat], name = this.names[who];
-    const said = G.composeComment(kind, vars, { name, level: this.computers[who].level, theme: this.theme, rng: this.chatRng,
+    const said = G.composeComment(kind, vars, { me: this.names[seat], name, level: this.computers[who].level, theme: this.theme, rng: this.chatRng,
       nativeChance: this.nativeChance, foodChance: this.foodChance, last: st.last, dish: st.dish });
     if (said.dish !== undefined) st.dish = said.dish;
     st.last = said.text;

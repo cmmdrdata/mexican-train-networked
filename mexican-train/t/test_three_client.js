@@ -151,7 +151,7 @@ async function lobby(port, settings, level) {
     ok(names(gh)[0] === host.S.cpu2Name && names(gh)[1] === 'Ann', 'Ben sees the computer first, then Ann (the order is the table order after himself)');
     ok(/tag tag-normal/.test(hh) && /tag tag-normal/.test(gh) && (hh.match(/net-dot/g) || []).length === 1, 'the computer opponent carries its level tag; the person carries the connection light');
     ok(/<div class="tot"><b>0<\/b><span>You<\/span><\/div>/.test(hh) && (hh.match(/class="tot"/g) || []).length === 3, 'the header shows three scores');
-    ok(!/CPU/.test(hh + gh) && /Say something/.test(hh), 'nothing says "CPU", and Say something is still there');
+    ok(!/CPU/.test(hh + gh) && /<section class="chat"/.test(hh) && !/Say something/.test(hh), 'nothing says "CPU", and the chat is there');
     ok(/Waiting for|Everyone builds/.test(hh), '(and the opening prompt is on screen)');
   }
 

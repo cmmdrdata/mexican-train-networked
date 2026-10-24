@@ -145,7 +145,7 @@ function matchOf(opts) {
     for (let i = 2; i <= 6; i++) FakeWS.last.say({ t: 'state', seq: i, view: view(i, true), events: [] });
     ok(/A wizard is never late/.test(root.html) && root.adds === 1, 'and stays steady through the moves that follow');
     ok(/class="toy-train ring c2"/.test(root.html) && !/class="toy-train c2"/.test(root.html), 'in the Lord of the Rings theme the computer\'s open train wears a ring, not a toy train (and that is unaffected by the comment)');
-    advance(6100); ok(!/A wizard is never late/.test(root.html), 'and goes away after a few seconds');
+    advance(6100); ok(!/class="bubble"/.test(root.html) && /<li class="cpu"><b>Gandalf<\/b> <span>A wizard is never late\.<\/span><\/li>/.test(root.html), 'and the bubble goes away after a few seconds, while the chat keeps the line');
     const say = o => { advance(6100); FakeWS.last.say(Object.assign({ t: 'say', from: 'Gandalf', kind: 'draw' }, o)); };
     say({ text: '<img src=x onerror=alert(1)>', from: '<b>Evil</b>' });
     ok(!/<img src=x|<b>Evil/.test(root.html) && /&lt;img src=x onerror=alert\(1\)&gt;/.test(root.html), 'text and a name containing markup are shown as plain text');

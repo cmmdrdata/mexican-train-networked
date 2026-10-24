@@ -150,7 +150,7 @@ const rowOf = (html, id) => { const m = html.split('<div class="cpu-hand').slice
   {
     const names = c => (c.S.opps || []).map(o => `${o.name}:${o.seat}:${o.computer}`).sort().join();
     ok(names(host) === 'Ben:1:false,Cat:2:false' && names(ben) === 'Ann:0:false,Cat:2:false' && names(cat) === 'Ann:0:false,Ben:1:false', 'each page has two human opponents, with their real seats: ' + names(host) + ' | ' + names(ben) + ' | ' + names(cat));
-    ok([host, ben, cat].every(c => (c.html().match(/class="cpu-hand/g) || []).length === 2 && (c.html().match(/data-action="toggleSay"/g) || []).length === 1 && !/Comments: /.test(c.html())), 'each shows two opponent rows, one "Say something" (it goes to both) and no computer-comments switch');
+    ok([host, ben, cat].every(c => (c.html().match(/class="cpu-hand/g) || []).length === 2 && (c.html().match(/<section class="chat"/g) || []).length === 1 && !/Comments: |Say something/.test(c.html())), 'each shows two opponent rows, one chat (it goes to both) and no computer-comments switch');
     ok(['cpu', 'cpu2'].every(id => /net-dot up/.test(rowOf(host.html(), id))), 'both opponents show as connected');
     ok([host, ben, cat].every(c => /Open to all players/.test(c.html()) && !/Open to both players/.test(c.html())), 'the shared Mexican train says it is open to all players');
     ok(ben.S.opps.every(o => !o.computer) && /Cat/.test(rowOf(ben.html(), 'cpu')) && /Ann/.test(rowOf(ben.html(), 'cpu2')), '(the others come in seat order after you: on Ben\'s page Cat is the first row and Ann the second)');
@@ -158,15 +158,16 @@ const rowOf = (html, id) => { const m = html.split('<div class="cpu-hand').slice
 
   console.log('4. talking');
   {
-    host.dispatch({ type: 'toggleSay' }); host.dispatch({ type: 'sendText', text: 'Hello both' });
+    host.dispatch({ type: 'sendText', text: 'Hello both' });
     await until(() => ben.S.comment && ben.S.comment.text === 'Hello both' && cat.S.comment && cat.S.comment.text === 'Hello both');
     ok(ben.S.comment.from === 'Ann' && cat.S.comment.from === 'Ann' && /<div class="bubble"><b>Ann<\/b><span>Hello both<\/span>/.test(ben.html()) && /<b>Ann<\/b><span>Hello both/.test(cat.html()), 'what Ann says appears on both pages, as Ann\'s: ' + ben.S.comment.from);
-    ok(/You said: Hello both/.test(host.html()) && !host.S.comment, 'and Ann sees "You said", not a bubble of her own');
-    ben.dispatch({ type: 'toggleSay' }); ben.dispatch({ type: 'sendText', text: 'Hi Ann and Cat' });
+    ok(/<li class="mine"><b>You<\/b> <span>Hello both<\/span>/.test(host.html()) && !host.S.comment, 'and Ann sees it in her chat as "You", not a bubble of her own');
+    ok(/<li class="them"><b>Ann<\/b> <span>Hello both<\/span>/.test(ben.html()) && /<li class="them"><b>Ann<\/b> <span>Hello both<\/span>/.test(cat.html()), 'and in both of the others\' chats as Ann\'s');
+    ben.dispatch({ type: 'sendText', text: 'Hi Ann and Cat' });
     await until(() => host.S.comment && host.S.comment.text === 'Hi Ann and Cat' && cat.S.comment && cat.S.comment.text === 'Hi Ann and Cat');
     ok(host.S.comment.from === 'Ben' && cat.S.comment.from === 'Ben', 'what Ben says shows as Ben\'s on both of the others (so Cat can tell whom it came from, not just "someone")');
     await wait(1600);
-    cat.dispatch({ type: 'toggleSay' }); cat.dispatch({ type: 'sendChat', key: 1 });
+    cat.dispatch({ type: 'sendChat', key: 1 });
     await until(() => host.S.comment && host.S.comment.from === 'Cat' && ben.S.comment && ben.S.comment.from === 'Cat');
     ok(host.S.comment.text === G.ONLINE_PHRASES[1] && ben.S.comment.text === G.ONLINE_PHRASES[1], 'a quick phrase from Cat reaches both: "' + host.S.comment.text + '"');
   }
